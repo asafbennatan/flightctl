@@ -304,6 +304,22 @@ func (caClient *CAClient) GetCABundle() ([]byte, error) {
 	return oscrypto.EncodeCertificates(certs...)
 }
 
+// GetClientCABundleX509 returns the CA certificates that should be used for client certificate validation.
+// This allows separation between server CAs and client CAs.
+func (caClient *CAClient) GetClientCABundleX509() []*x509.Certificate {
+	// For now, this returns the same as GetCABundleX509() to maintain backward compatibility
+	// In the future, this could be extended to return a different set of CAs specifically for client validation
+	return caClient.GetCABundleX509()
+}
+
+// GetServerCABundleX509 returns the CA certificates that should be used for server certificate validation.
+// This allows separation between server CAs and client CAs.
+func (caClient *CAClient) GetServerCABundleX509() []*x509.Certificate {
+	// For now, this returns the same as GetCABundleX509() to maintain backward compatibility
+	// In the future, this could be extended to return a different set of CAs specifically for server validation
+	return caClient.GetCABundleX509()
+}
+
 // CanReadCertAndKey checks if both the certificate and key files exist and are readable.
 // Returns true if both files are accessible, false if neither exists, and an error if one is missing.
 func CanReadCertAndKey(certPath, keyPath string) (bool, error) {

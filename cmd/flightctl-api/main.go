@@ -131,7 +131,13 @@ func main() {
 		log.Fatalf("running initial migration: %v", err)
 	}
 
-	tlsConfig, agentTlsConfig, err := crypto.TLSConfigForServer(ca.GetCABundleX509(), serverCerts)
+	// Use separate CA bundles for server and client certificate validation
+	// This allows server certificates to be issued by a different CA than client certificates
+	tlsConfig, agentTlsConfig, err := crypto.TLSConfigForServerWithClientCAs(
+		ca.GetServerCABundleX509(),   // CAs for server certificate chain
+		ca.GetClientCABundleX509(),   // CAs for client certificate validation
+		serverCerts,
+	)
 	if err != nil {
 		log.Fatalf("failed creating TLS config: %v", err)
 	}
