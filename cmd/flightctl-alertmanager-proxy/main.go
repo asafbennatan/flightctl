@@ -189,7 +189,12 @@ func main() {
 	}
 
 	// Create TLS config
-	tlsConfig, _, err := crypto.TLSConfigForServer(ca.GetCABundleX509(), serverCerts)
+	// Use separate CA bundles for server and client certificate validation
+	tlsConfig, _, err := crypto.TLSConfigForServerWithClientCAs(
+		ca.GetServerCABundleX509(),   // CAs for server certificate chain
+		ca.GetClientCABundleX509(),   // CAs for client certificate validation
+		serverCerts,
+	)
 	if err != nil {
 		logger.Fatalf("failed creating TLS config: %v", err)
 	}
