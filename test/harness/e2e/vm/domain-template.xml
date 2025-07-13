@@ -44,7 +44,6 @@
       <driver name="qemu" type="qcow2"></driver>
       <source file="{{.DiskImagePath}}"></source>
       <target bus="virtio" dev="vda"></target>
-      <transient/>
     </disk>
     {{.CloudInitCDRom}}
     <rng model='virtio'>

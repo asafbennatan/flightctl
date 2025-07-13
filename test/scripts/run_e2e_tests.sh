@@ -8,6 +8,10 @@ GO_E2E_DIRS=("${@:2}")
 GINKGO_FOCUS=${GINKGO_FOCUS:-""}
 #Filtering e2e tests by labels
 GINKGO_LABEL_FILTER=${GINKGO_LABEL_FILTER:-""}
+#Parallel execution - default to 1 but can be overridden
+GINKGO_PROCS=${GINKGO_PROCS:-1}
+#Output interceptor mode for parallel execution - 'dup' shows output from all nodes
+GINKGO_OUTPUT_INTERCEPTOR_MODE=${GINKGO_OUTPUT_INTERCEPTOR_MODE:-"dup"}
 FOCUS_FLAG=""
 
 
@@ -28,9 +32,12 @@ if [[ -n "${GINKGO_LABEL_FILTER}" ]]; then
   CMD+=("--label-filter" "${GINKGO_LABEL_FILTER}")
 fi
 
-CMD+=(--timeout 120m --race -vv --junit-report "${REPORTS}/junit_e2e_test.xml" --github-output)
+CMD+=(--timeout 120m --race -vv --junit-report "${REPORTS}/junit_e2e_test.xml" --github-output --procs "${GINKGO_PROCS}" --show-node-events --trace --force-newlines --output-interceptor-mode "${GINKGO_OUTPUT_INTERCEPTOR_MODE}")
 
 CMD+=("${GO_E2E_DIRS[@]}")
+
+echo "Running e2e tests with ${GINKGO_PROCS} parallel processes..."
+echo "Output interceptor mode: ${GINKGO_OUTPUT_INTERCEPTOR_MODE} (dup=show all output, swap=clean output)"
 
 # Run the command
 "${CMD[@]}"

@@ -1,7 +1,6 @@
 package cli_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -34,21 +33,8 @@ var (
 
 // _ is a blank identifier used to ignore values or expressions, often applied to satisfy interface or assignment requirements.
 var _ = Describe("cli operation", func() {
-	var (
-		ctx     context.Context
-		harness *e2e.Harness
-	)
-
 	BeforeEach(func() {
-		ctx = util.StartSpecTracerForGinkgo(suiteCtx)
-		harness = e2e.NewTestHarness(ctx)
 		login.LoginToAPIWithToken(harness)
-	})
-
-	AfterEach(func() {
-		err := harness.CleanUpAllResources()
-		Expect(err).ToNot(HaveOccurred())
-		harness.Cleanup(false) // do not print console on error
 	})
 
 	Context("apply/fleet", func() {
@@ -95,7 +81,7 @@ var _ = Describe("cli operation", func() {
 
 	Context("Plural names for resources and autocompletion in the cli work well", func() {
 		It("Should let you list resources by plural names", Label("80453"), func() {
-			deviceID := harness.StartVMAndEnroll()
+			deviceID, _ := harness.EnrollAndWaitForOnlineStatus()
 			By("Should let you list devices")
 			out, err := harness.CLI("get", "devices")
 			Expect(err).ToNot(HaveOccurred())
@@ -540,19 +526,8 @@ var _ = Describe("cli operation", func() {
 })
 
 var _ = Describe("cli login", func() {
-	var (
-		ctx     context.Context
-		harness *e2e.Harness
-	)
 
 	Context("login validation", func() {
-		BeforeEach(func() {
-			ctx = util.StartSpecTracerForGinkgo(suiteCtx)
-			harness = e2e.NewTestHarness(ctx)
-		})
-		AfterEach(func() {
-			harness.Cleanup(false) // do not print console on error
-		})
 
 		It("Validations work when logging into flightctl CLI", Label("78748", "sanity"), func() {
 			By("Prepare invalid API endpoint")

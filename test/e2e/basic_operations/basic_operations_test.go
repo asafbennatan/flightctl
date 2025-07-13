@@ -17,7 +17,7 @@ import (
 
 var (
 	suiteCtx context.Context
-	ctx      context.Context
+	harness  *e2e.Harness
 )
 
 func TestBasicOperations(t *testing.T) {
@@ -27,19 +27,26 @@ func TestBasicOperations(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	suiteCtx = testutil.InitSuiteTracerForGinkgo("Basic Operations E2E Suite")
+
+	// Create harness using VM pool function but without getting a VM
+	var err error
+	harness, err = e2e.NewTestHarnessWithVMPool(suiteCtx, 0)
+	Expect(err).ToNot(HaveOccurred())
+
+	// Remove the VM since this test doesn't need it
+	harness.VM = nil
+})
+
+var _ = AfterSuite(func() {
+	if harness != nil {
+		harness.Cleanup(false)
+		err := harness.CleanUpAllResources()
+		Expect(err).ToNot(HaveOccurred())
+	}
 })
 
 var _ = Describe("Basic Operations", Label("integration", "82220"), func() {
 	const createdResource = "201 Created"
-
-	var (
-		harness *e2e.Harness
-	)
-
-	BeforeEach(func() {
-		ctx = testutil.StartSpecTracerForGinkgo(suiteCtx)
-		harness = e2e.NewTestHarness(ctx)
-	})
 
 	DescribeTable("Create a resource from example file",
 		func(resourceType string, fileName string, extractResourceNameFromExampleFile func(*e2e.Harness, string) (string, error)) {

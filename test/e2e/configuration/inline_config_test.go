@@ -1,20 +1,14 @@
 package configuration_test
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
 	"github.com/flightctl/flightctl/api/v1alpha1"
 	"github.com/flightctl/flightctl/test/harness/e2e"
-	testutil "github.com/flightctl/flightctl/test/util"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
-)
-
-var (
-	suiteCtx context.Context
 )
 
 func TestConfigurations(t *testing.T) {
@@ -22,27 +16,13 @@ func TestConfigurations(t *testing.T) {
 	RunSpecs(t, "Inline configuration E2E Suite")
 }
 
-var _ = BeforeSuite(func() {
-	suiteCtx = testutil.InitSuiteTracerForGinkgo("Inline configuration E2E Suite")
-})
-
 var _ = Describe("Inline configuration tests", func() {
 	var (
-		ctx      context.Context
-		harness  *e2e.Harness
 		deviceId string
 	)
 	// Setup for the suite
 	BeforeEach(func() {
-		ctx = testutil.StartSpecTracerForGinkgo(suiteCtx)
-		harness = e2e.NewTestHarness(ctx)
-		deviceId = harness.StartVMAndEnroll()
-	})
-
-	AfterEach(func() {
-		err := harness.CleanUpAllResources()
-		Expect(err).ToNot(HaveOccurred())
-		harness.Cleanup(true)
+		deviceId, _ = harness.EnrollAndWaitForOnlineStatus()
 	})
 
 	Context("Inline config tests", func() {

@@ -1,7 +1,6 @@
 package agent_test
 
 import (
-	"context"
 	"fmt"
 	"slices"
 	"strconv"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/flightctl/flightctl/api/v1alpha1"
 	"github.com/flightctl/flightctl/test/harness/e2e"
-	testutil "github.com/flightctl/flightctl/test/util"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
@@ -18,19 +16,14 @@ import (
 
 var _ = Describe("VM Agent behavior during updates", func() {
 	var (
-		ctx      context.Context
-		harness  *e2e.Harness
 		deviceId string
 	)
 
 	BeforeEach(func() {
-		ctx = testutil.StartSpecTracerForGinkgo(suiteCtx)
-		harness = e2e.NewTestHarness(ctx)
-		deviceId = harness.StartVMAndEnroll()
-	})
-
-	AfterEach(func() {
-		harness.Cleanup(true)
+		// Use the shared harness from the suite test
+		// The harness is already set up with VM from pool and agent started
+		// We just need to enroll the device
+		deviceId, _ = harness.EnrollAndWaitForOnlineStatus()
 	})
 
 	Context("updates", func() {
@@ -248,7 +241,7 @@ var _ = Describe("VM Agent behavior during updates", func() {
 				Expect(err).NotTo(HaveOccurred())
 				return logs
 			}).
-				WithContext(harness.Context).
+				WithContext(harness.GetTestContext()).
 				WithTimeout(dur).
 				WithPolling(time.Second * 10).
 				Should(ContainSubstring(fmt.Sprintf("Attempting to rollback to previous renderedVersion: %d", expectedVersion)))

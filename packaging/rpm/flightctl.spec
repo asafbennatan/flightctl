@@ -12,8 +12,8 @@
     restorecon -v /usr/bin/flightctl-agent
 
 Name:           flightctl
-Version:        0.6.0
-Release:        1%{?dist}
+Version:        get~73~g4fb863d2
+Release:        1.20250713171343000439.e2e.speedup.73.g4fb863d2%{?dist}
 Summary:        Flight Control service
 
 %gometa
@@ -21,7 +21,7 @@ Summary:        Flight Control service
 License:        Apache-2.0 AND BSD-2-Clause AND BSD-3-Clause AND ISC AND MIT
 URL:            %{gourl}
 
-Source0:        1%{?dist}
+Source0:        flightctl-get~73~g4fb863d2.tar.gz
 
 BuildRequires:  golang
 BuildRequires:  make
@@ -398,7 +398,7 @@ echo "Flightctl Observability Stack uninstalled."
 
 %prep
 %goprep -A
-%setup -q %{forgesetupargs}
+%setup -q %{forgesetupargs} -n flightctl-get~73~g4fb863d2
 
 %build
     # if this is a buggy version of go we need to set GOPROXY as workaround
@@ -622,6 +622,44 @@ rm -rf /usr/share/sosreport
     /usr/lib/systemd/system/flightctl.target
 
 %changelog
+* Sun Jul 13 2025 Super User - get~73~g4fb863d2-1.20250713171343000439.e2e.speedup.73.g4fb863d2
+- midway (Asaf Ben Natan)
+- mid way (Asaf Ben Natan)
+- NO-ISSUE: Complete Metrics Callback Implementation (#1239) (Siddarth Royapally)
+- NO-ISSUE: Flight Control Quadlet Developer Docs (Dakota Crowder)
+- EDM-1675: Create observability backend stanalone quadlets (Ori Amizur)
+- EDM-1833: agent/spec: clarify logging (Sam Batschelet)
+- EDM-1833: agent/client/podman: add ArtifactExists (Sam Batschelet)
+- EDM-1151: Automation of policy update enforcement (#1276) (kkyrazis)
+- NO-ISSUE: Move Jaeger helm from flightctl to e2e-extras (Avishay Traeger)
+- EDM-432: helm clean flightctl-alertmanager pvc (Avishay Traeger)
+- EDM-1824: Fix deploy-quadlets (Avishay Traeger)
+- EDM-1813: Get certs from Secret in alertmanager-proxy (Avishay Traeger)
+- NO-ISSUE: stop building centos9, rhel, fedora-eln (#1354) (Gregory Shilin)
+- Update claude.yaml (asafbennatan)
+- EDM-1816: Address config mismatches for alert-exporter and alertmanager-proxy quadlet services (Dakota Crowder)
+- EDM-1811: Fix server certificate name mismatch for api in quadlets deployment (Dakota Crowder)
+- EDM-1809: making sure infinite key exists (Asaf Ben Natan)
+- EDM-1809: using WaitForBootstrapAndUpdateToVersion to set image version (Asaf Ben Natan)
+- EDM-465: handling no such file or directory error while running devicesimulator (noga-magen)
+- EDM-1810: introduce centralized signer mechanism with dedicated signer types (#1322) (Assaf Albo)
+- NO-ISSUE: add claude.yaml workflow (Asaf Ben Natan)
+- EDM-1760: Emit events for invalid device specs (Avishay Traeger)
+- NO-ISSUE: Emit InternalTaskFailed events for all tasks (Avishay Traeger)
+- NO-ISSUE: Remove DeviceOwnershipChanged event reason (Avishay Traeger)
+- NO-ISSUE: Emit MultipleOwners events to service layer (Avishay Traeger)
+- NO-ISSUE: Optionally deploy Jaeger with helm (Avishay Traeger)
+- EDM-1792: agent: implement prefetch manager (Sam Batschelet)
+- EDM-1792: pkg/poll: remove timeout (Sam Batschelet)
+- EDM-1792: agent: add prefetch manager (Sam Batschelet)
+- NO-ISSUE: add resources cleaning after cli tests (sserafin)
+- EDM-1793: Ensure event names conform to k8s standards (Avishay Traeger)
+- NO-ISSUE: Optimize DeviceDisconnected task (Avishay Traeger)
+- EDM-1813: Publish containers for new microservices (Avishay Traeger)
+- EDM-1533: Clarify event output headers in CLI (Avishay Traeger)
+- NO-ISSUE: fix and remove redundant part in resourcesync (noga-magen)
+- EDM-1179: Prevent ER application when device exists (noga-magen)
+
 * Sun Jul 6 2025 Ori Amizur <oamizur@redhat.com> - 0.9.0-1
 - Add support for Flight Control standalone observability stack
 * Tue Apr 15 2025 Dakota Crowder <dcrowder@redhat.com> - 0.6.0-4

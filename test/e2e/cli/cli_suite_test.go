@@ -3,6 +3,7 @@ package cli_test
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -24,15 +25,76 @@ const (
 	LONG_POLLING = 10 * time.Second
 )
 
+var (
+	workerID int
+	harness  *e2e.Harness
+)
+
 var _ = BeforeSuite(func() {
 	SetDefaultEventuallyTimeout(TIMEOUT)
 	SetDefaultEventuallyPollingInterval(POLLING)
 	suiteCtx = util.InitSuiteTracerForGinkgo("CLI E2E Suite")
+	workerID = GinkgoParallelProcess()
+
+	fmt.Printf("🔄 [BeforeSuite] Worker %d: Starting VM and harness setup\n", workerID)
+
+	// Setup VM for this worker using the global pool
+	var err error
+	_, err = e2e.SetupVMForWorker(workerID, os.TempDir(), 2233)
+	Expect(err).ToNot(HaveOccurred())
+
+	// Create harness once for the entire suite
+	harness, err = e2e.NewTestHarnessWithVMPool(suiteCtx, workerID)
+	Expect(err).ToNot(HaveOccurred())
 
 	// A best-effort clean-up to ensure the cluster is empty before tests start.
-	h := e2e.NewTestHarness(suiteCtx)
 	fmt.Println("[BeforeSuite] Cleaning existing resources …")
-	Expect(h.CleanUpAllResources()).To(Succeed())
+	Expect(harness.CleanUpAllResources()).To(Succeed())
+
+	fmt.Printf("✅ [BeforeSuite] Worker %d: VM and harness setup completed successfully\n", workerID)
+})
+
+var _ = AfterSuite(func() {
+	fmt.Printf("🔄 [AfterSuite] Worker %d: Starting cleanup\n", workerID)
+
+	// Clean up harness
+	if harness != nil {
+		harness.Cleanup(true)
+	}
+
+	// Clean up this worker's VM
+	err := e2e.CleanupVMForWorker(workerID)
+	Expect(err).ToNot(HaveOccurred())
+
+	fmt.Printf("✅ [AfterSuite] Worker %d: Cleanup completed successfully\n", workerID)
+})
+
+var _ = BeforeEach(func() {
+	fmt.Printf("🔄 [BeforeEach] Worker %d: Setting up test with VM from pool\n", workerID)
+
+	// Create test-specific context for proper tracing
+	ctx := util.StartSpecTracerForGinkgo(suiteCtx)
+
+	// Set the test context in the harness
+	harness.SetTestContext(ctx)
+
+	// Setup VM from pool, revert to pristine snapshot, and start agent
+	err := harness.SetupVMFromPoolAndStartAgent(workerID)
+	Expect(err).ToNot(HaveOccurred())
+
+	fmt.Printf("✅ [BeforeEach] Worker %d: Test setup completed\n", workerID)
+})
+
+var _ = AfterEach(func() {
+	fmt.Printf("🔄 [AfterEach] Worker %d: Cleaning up test resources\n", workerID)
+
+	// Restore suite context for cleanup operations
+	harness.SetTestContext(suiteCtx)
+
+	err := harness.CleanUpAllResources()
+	Expect(err).ToNot(HaveOccurred())
+
+	fmt.Printf("✅ [AfterEach] Worker %d: Test cleanup completed\n", workerID)
 })
 
 // TestCLI is the single entry-point that runs the whole spec set.

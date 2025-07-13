@@ -28,6 +28,7 @@ const (
 
 var (
 	suiteCtx context.Context
+	harness  *e2e.Harness
 )
 
 // FieldSelectorTestParams defines the parameters for field selector tests, including arguments, expected match status, and expected output.
@@ -56,11 +57,29 @@ func TestFieldSelectors(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	suiteCtx = InitSuiteTracerForGinkgo("Field Selectors E2E Suite")
+
+	// Create harness using VM pool function but without getting a VM
+	var err error
+	harness, err = e2e.NewTestHarnessWithVMPool(suiteCtx, 0)
+	Expect(err).ToNot(HaveOccurred())
+
+	// Remove the VM since this test doesn't need it
+	harness.VM = nil
+
+	login.LoginToAPIWithToken(harness)
+	logrus.Infof("Harness Created")
+})
+
+var _ = AfterSuite(func() {
+	if harness != nil {
+		harness.Cleanup(false)
+		err := harness.CleanUpAllResources()
+		Expect(err).ToNot(HaveOccurred())
+	}
 })
 
 var _ = Describe("Field Selectors in Flight Control", Ordered, func() {
 	var (
-		harness       *e2e.Harness
 		deviceInfo    v1alpha1.Device
 		deviceBInfo   v1alpha1.Device
 		deviceAName   string
@@ -70,22 +89,6 @@ var _ = Describe("Field Selectors in Flight Control", Ordered, func() {
 
 	BeforeEach(func() {
 		_ = StartSpecTracerForGinkgo(suiteCtx)
-	})
-
-	// Setup for the suite
-	BeforeAll(func() {
-		harness = e2e.NewTestHarness(suiteCtx)
-		login.LoginToAPIWithToken(harness)
-		logrus.Infof("Harness Created")
-	})
-
-	AfterEach(func() {
-		harness.Cleanup(false)
-	})
-
-	AfterAll(func() {
-		err := harness.CleanUpAllResources()
-		Expect(err).ToNot(HaveOccurred())
 	})
 
 	Context("Basic Functionality Tests", func() {

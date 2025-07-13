@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/flightctl/flightctl/test/harness/e2e"
 	testutil "github.com/flightctl/flightctl/test/util"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -11,7 +12,7 @@ import (
 
 var (
 	suiteCtx context.Context
-	ctx      context.Context
+	harness  *e2e.Harness
 )
 
 func TestFieldSelector(t *testing.T) {
@@ -21,6 +22,22 @@ func TestFieldSelector(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	suiteCtx = testutil.InitSuiteTracerForGinkgo("Field Selectors Extension E2E Suite")
+
+	// Create harness using VM pool function but without getting a VM
+	var err error
+	harness, err = e2e.NewTestHarnessWithVMPool(suiteCtx, 0)
+	Expect(err).ToNot(HaveOccurred())
+
+	// Remove the VM since this test doesn't need it
+	harness.VM = nil
+})
+
+var _ = AfterSuite(func() {
+	if harness != nil {
+		harness.Cleanup(false)
+		err := harness.CleanUpAllResources()
+		Expect(err).ToNot(HaveOccurred())
+	}
 })
 
 const (

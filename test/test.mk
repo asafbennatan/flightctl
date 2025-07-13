@@ -69,6 +69,11 @@ in-cluster-e2e-test: prepare-e2e-test
 e2e-test: deploy bin/output/qcow2/disk.qcow2
 	$(MAKE) _e2e_test
 
+# Run e2e tests with optional parallel execution
+# Set GINKGO_PROCS to control number of parallel processes (defaults to number of CPU cores)
+# Set GINKGO_OUTPUT_INTERCEPTOR_MODE to control parallel output (defaults to "dup" for full output)
+# Example: make run-e2e-test GO_E2E_DIRS=test/e2e/agent GINKGO_PROCS=4
+# Example: make run-e2e-test GO_E2E_DIRS=test/e2e/agent GINKGO_OUTPUT_INTERCEPTOR_MODE=swap
 run-e2e-test:
 	$(ENV_TRACE_FLAGS) $(MAKE) _e2e_test
 

@@ -1,5 +1,56 @@
 package e2e
 
+/*
+VM Pool Pattern - The Only Supported Way to Manage VMs
+
+The harness enforces a strict VM pool pattern to ensure proper test isolation and performance:
+
+1. BEFORE SUITE (Once per worker):
+   - Call e2e.RegisterVMPoolCleanup() to register cleanup
+   - Call e2e.SetupVMForWorker(workerID, tempDir, sshPort) to create VM for this worker
+   - VM is created once and reused across all tests
+
+2. BEFORE EACH (Before each test):
+   - Use e2e.NewTestHarnessWithVMPool(ctx, workerID) to get harness with VM from pool
+   - Call harness.SetupVMFromPoolAndStartAgent(workerID) to revert to pristine snapshot and start agent
+   - Or call harness.SetupVMFromPoolAndEnroll(workerID) to also handle enrollment
+
+3. DURING TESTS:
+   - Use the VM from the pool, never create new VMs
+   - All VM state changes are isolated through snapshots
+   - Each test starts with a pristine VM state
+
+4. AFTER EACH:
+   - Clean up test resources with harness.CleanUpAllResources()
+   - Call harness.Cleanup(true) to clean up harness
+
+5. AFTER SUITE:
+   - Call e2e.CleanupVMForWorker(workerID) to clean up the VM
+
+REMOVED METHODS (violated VM pool pattern):
+- NewTestHarness() - Created VMs directly (removed)
+- NewTestHarnessWithoutVM() - Manual VM setup (removed)
+- AddVM() / AddMultipleVMs() - Created VMs outside pool (removed)
+- StartMultipleVMAndEnroll() - Created multiple VMs directly (removed)
+
+Example usage:
+```go
+var _ = BeforeSuite(func() {
+    e2e.RegisterVMPoolCleanup()
+    workerID = GinkgoParallelProcess()
+    _, err = e2e.SetupVMForWorker(workerID, os.TempDir(), 2233)
+    Expect(err).ToNot(HaveOccurred())
+})
+
+var _ = BeforeEach(func() {
+    harness, err = e2e.NewTestHarnessWithVMPool(ctx, workerID)
+    Expect(err).ToNot(HaveOccurred())
+    deviceId, device, err = harness.SetupVMFromPoolAndEnroll(workerID)
+    Expect(err).ToNot(HaveOccurred())
+})
+```
+*/
+
 import (
 	"bytes"
 	"context"
@@ -20,7 +71,6 @@ import (
 	service "github.com/flightctl/flightctl/internal/service/common"
 	"github.com/flightctl/flightctl/test/harness/e2e/vm"
 	"github.com/flightctl/flightctl/test/util"
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 	. "github.com/onsi/gomega"
@@ -108,63 +158,6 @@ func kubernetesClient() (kubernetes.Interface, error) {
 	return iface, nil
 }
 
-func NewTestHarness(ctx context.Context) *Harness {
-
-	startTime := time.Now()
-
-	testVM, err := vm.NewVM(vm.TestVM{
-		TestDir:       GinkgoT().TempDir(),
-		VMName:        "flightctl-e2e-vm-" + uuid.New().String(),
-		DiskImagePath: filepath.Join(findTopLevelDir(), "bin/output/qcow2/disk.qcow2"),
-		VMUser:        "user",
-		SSHPassword:   "user",
-		SSHPort:       2233, // TODO: randomize and retry on error
-	})
-	Expect(err).ToNot(HaveOccurred())
-
-	baseDir, err := client.DefaultFlightctlClientConfigPath()
-	Expect(err).ToNot(HaveOccurred())
-
-	c, err := client.NewFromConfigFile(baseDir)
-	Expect(err).ToNot(HaveOccurred())
-
-	ctx, cancel := context.WithCancel(ctx)
-
-	k8sCluster, err := kubernetesClient()
-	Expect(err).ToNot(HaveOccurred(), "failed to get kubernetes cluster")
-
-	return &Harness{
-		VMs:       []vm.TestVMInterface{testVM},
-		Client:    c,
-		Context:   ctx,
-		Cluster:   k8sCluster,
-		ctxCancel: cancel,
-		startTime: startTime,
-		VM:        testVM,
-	}
-}
-
-func (h *Harness) AddVM(vmParams vm.TestVM) (vm.TestVMInterface, error) {
-	testVM, err := vm.NewVM(vmParams)
-	if err != nil {
-		return nil, err
-	}
-	h.VMs = append(h.VMs, testVM)
-	return testVM, nil
-}
-
-func (h *Harness) AddMultipleVMs(vmParamsList []vm.TestVM) ([]vm.TestVMInterface, error) {
-	var createdVMs []vm.TestVMInterface
-	for _, params := range vmParamsList {
-		vm, err := h.AddVM(params)
-		if err != nil {
-			return nil, err
-		}
-		createdVMs = append(createdVMs, vm)
-	}
-	return createdVMs, nil
-}
-
 // ReadPrimaryVMAgentLogs reads flightctl-agent journalctl logs from the primary VM
 func (h *Harness) ReadPrimaryVMAgentLogs(since string) (string, error) {
 	if h.VM == nil {
@@ -221,6 +214,7 @@ func (h *Harness) Cleanup(printConsole bool) {
 		fmt.Printf("oops... %s failed\n", CurrentSpecReport().FullText())
 	}
 
+	// Clean up VMs in the VMs slice (created by this harness)
 	for _, vm := range h.VMs {
 		if running, _ := vm.IsRunning(); running && testFailed {
 			fmt.Println("VM is running, attempting to get logs and details")
@@ -241,6 +235,9 @@ func (h *Harness) Cleanup(printConsole bool) {
 		Expect(err).ToNot(HaveOccurred())
 	}
 
+	// Note: We don't clean up h.VM here because it's managed externally (e.g., by VM pool)
+	// The external manager is responsible for cleaning up h.VM
+
 	diffTime := time.Since(h.startTime)
 	fmt.Printf("Test took %s\n", diffTime)
 
@@ -248,22 +245,34 @@ func (h *Harness) Cleanup(printConsole bool) {
 	h.ctxCancel()
 }
 
-func (h *Harness) GetEnrollmentIDFromConsole(vms ...vm.TestVMInterface) string {
-	// Use the first VM if no specific VM is passed
-	var selectedVM vm.TestVMInterface
-	if len(vms) > 0 && vms[0] != nil {
-		selectedVM = vms[0]
-	} else {
-		selectedVM = h.VM
-	}
+// GetServiceLogs returns the logs from the specified service using journalctl.
+// This is useful for debugging service output and capturing logs from the latest service invocation.
+func (h *Harness) GetServiceLogs(serviceName string) (string, error) {
+	return h.VM.GetServiceLogs(serviceName)
+}
 
-	// Wait for the enrollment ID on the console
+// GetServiceLogs returns the logs from the specified service using journalctl.
+// This is useful for debugging service output and capturing logs from the latest service invocation.
+func (h *Harness) GetFlightctlAgentLogs() (string, error) {
+	return h.VM.GetServiceLogs("flightctl-agent")
+}
+
+// GetEnrollmentIDFromServiceLogs returns the enrollment ID from the service logs using journalctl.
+// This is more reliable than console output as it captures service output regardless of how the service is started.
+func (h *Harness) GetEnrollmentIDFromServiceLogs(serviceName string) string {
+	// Wait for the enrollment ID in the service logs
 	enrollmentId := ""
 	Eventually(func() string {
-		consoleOutput := selectedVM.GetConsoleOutput()
-		enrollmentId = util.GetEnrollmentIdFromText(consoleOutput)
+		// Get logs from the latest service invocation using systemd invocation ID
+		output, err := h.GetServiceLogs(serviceName)
+
+		if err != nil {
+			logrus.Debugf("Failed to get service logs: %v", err)
+			return ""
+		}
+		enrollmentId = util.GetEnrollmentIdFromText(output)
 		return enrollmentId
-	}, TIMEOUT, POLLING).ShouldNot(BeEmpty(), "Enrollment ID not found in VM console output")
+	}, TIMEOUT, POLLING).ShouldNot(BeEmpty(), fmt.Sprintf("Enrollment ID not found in %s service logs", serviceName))
 
 	return enrollmentId
 }
@@ -294,8 +303,8 @@ func (h *Harness) StartVMAndEnroll() string {
 	err := h.VM.RunAndWaitForSSH()
 	Expect(err).ToNot(HaveOccurred())
 
-	enrollmentID := h.GetEnrollmentIDFromConsole()
-	logrus.Infof("Enrollment ID found in VM console output: %s", enrollmentID)
+	enrollmentID := h.GetEnrollmentIDFromServiceLogs("flightctl-agent")
+	logrus.Infof("Enrollment ID found in flightctl-agent service logs: %s", enrollmentID)
 
 	_ = h.WaitForEnrollmentRequest(enrollmentID)
 	h.ApproveEnrollment(enrollmentID, util.TestEnrollmentApproval())
@@ -306,73 +315,6 @@ func (h *Harness) StartVMAndEnroll() string {
 		enrollmentID).ShouldNot(BeNil())
 
 	return enrollmentID
-}
-
-func (h *Harness) StartMultipleVMAndEnroll(count int) ([]string, error) {
-	if count <= 0 {
-		return nil, fmt.Errorf("count must be positive, got %d", count)
-	}
-
-	// add count-1 vms to the harness using AddMultipleVMs method
-	vmParamsList := make([]vm.TestVM, count-1)
-	baseDir := GinkgoT().TempDir()
-	topDir := findTopLevelDir()
-	baseDiskPath := filepath.Join(topDir, "bin/output/qcow2/disk.qcow2")
-
-	for i := 0; i < count-1; i++ {
-		vmName := "flightctl-e2e-vm-" + uuid.New().String()
-		overlayDiskPath := filepath.Join(baseDir, fmt.Sprintf("%s-disk.qcow2", vmName))
-
-		// Create a qcow2 overlay that uses the base image as backing file
-		cmd := exec.Command(
-			"qemu-img", "create",
-			"-f", "qcow2",
-			"-b", baseDiskPath,
-			"-F", "qcow2",
-			overlayDiskPath)
-
-		if err := cmd.Run(); err != nil {
-			return nil, fmt.Errorf("failed to create overlay disk for VM %s: %w", vmName, err)
-		}
-
-		vmParamsList[i] = vm.TestVM{
-			TestDir:       GinkgoT().TempDir(),
-			VMName:        "flightctl-e2e-vm-" + uuid.New().String(),
-			DiskImagePath: overlayDiskPath,
-			VMUser:        "user",
-			SSHPassword:   "user",
-			SSHPort:       2233 + i + 1,
-		}
-	}
-
-	_, err := h.AddMultipleVMs(vmParamsList)
-	if err != nil {
-		return nil, fmt.Errorf("failed to add multiple VMs: %w", err)
-	}
-
-	var enrollmentIDs []string
-
-	for _, vm := range h.VMs {
-		err := vm.RunAndWaitForSSH()
-		if err != nil {
-			return nil, fmt.Errorf("failed to run VM and wait for SSH: %w", err)
-		}
-
-		enrollmentID := h.GetEnrollmentIDFromConsole(vm)
-		logrus.Infof("Enrollment ID found in VM console output: %s", enrollmentID)
-
-		_ = h.WaitForEnrollmentRequest(enrollmentID)
-		h.ApproveEnrollment(enrollmentID, util.TestEnrollmentApproval())
-		logrus.Infof("Waiting for device %s to report status", enrollmentID)
-
-		// Wait for the device to pick up enrollment and report measurements on device status
-		Eventually(h.GetDeviceWithStatusSystem, TIMEOUT, POLLING).WithArguments(
-			enrollmentID).ShouldNot(BeNil())
-
-		enrollmentIDs = append(enrollmentIDs, enrollmentID)
-	}
-
-	return enrollmentIDs, nil
 }
 
 func (h *Harness) ApiEndpoint() string {
@@ -518,8 +460,8 @@ func waitForResourceContents[T any](id string, description string, fetch func(st
 }
 
 func (h *Harness) EnrollAndWaitForOnlineStatus() (string, *v1alpha1.Device) {
-	deviceId := h.GetEnrollmentIDFromConsole()
-	logrus.Infof("Enrollment ID found in VM console output: %s", deviceId)
+	deviceId := h.GetEnrollmentIDFromServiceLogs("flightctl-agent")
+	logrus.Infof("Enrollment ID found in flightctl-agent service logs: %s", deviceId)
 	Expect(deviceId).NotTo(BeNil())
 
 	// Wait for the approve enrollment request response to not be nil
@@ -1083,4 +1025,132 @@ func (h Harness) getRegistryEndpointInfo() (ip string, port string, err error) {
 	}
 
 	return "", "", fmt.Errorf("unknown context")
+}
+
+// NewTestHarnessWithVMPool creates a new test harness with VM pool management.
+// This centralizes the VM pool logic that was previously duplicated in individual tests.
+func NewTestHarnessWithVMPool(ctx context.Context, workerID int) (*Harness, error) {
+	startTime := time.Now()
+
+	baseDir, err := client.DefaultFlightctlClientConfigPath()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client config path: %w", err)
+	}
+
+	c, err := client.NewFromConfigFile(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+
+	k8sCluster, err := kubernetesClient()
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("failed to get kubernetes cluster: %w", err)
+	}
+
+	// Create harness without VM first
+	harness := &Harness{
+		VMs:       []vm.TestVMInterface{},
+		Client:    c,
+		Context:   ctx,
+		Cluster:   k8sCluster,
+		ctxCancel: cancel,
+		startTime: startTime,
+		VM:        nil,
+	}
+
+	// Get VM from the pool (this should already exist from BeforeSuite)
+	_, err = harness.GetVMFromPool(workerID)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("failed to get VM from pool: %w", err)
+	}
+
+	return harness, nil
+}
+
+// GetVMFromPool retrieves a VM from the pool for the given worker ID.
+// This enforces the proper VM pool pattern where VMs are only created in BeforeSuite.
+// If the VM doesn't exist in the pool, it returns an error.
+func (h *Harness) GetVMFromPool(workerID int) (vm.TestVMInterface, error) {
+	// Get VM from the global pool (this should already exist from BeforeSuite)
+	testVM, err := SetupVMForWorker(workerID, os.TempDir(), 2233)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get VM from pool for worker %d: %w", workerID, err)
+	}
+
+	// Set the VM in the harness
+	h.VM = testVM
+
+	// Add to VMs slice if not already present
+	found := false
+	for _, existingVM := range h.VMs {
+		if existingVM == testVM {
+			found = true
+			break
+		}
+	}
+	if !found {
+		h.VMs = append(h.VMs, testVM)
+	}
+
+	return testVM, nil
+}
+
+// SetupVMFromPoolAndStartAgent sets up a VM from the pool, reverts to pristine snapshot,
+// and starts the agent. This is useful for tests that use the VM pool pattern.
+func (h *Harness) SetupVMFromPoolAndStartAgent(workerID int) error {
+	// Get VM from pool (this should already exist from BeforeSuite)
+	testVM, err := h.GetVMFromPool(workerID)
+	if err != nil {
+		return fmt.Errorf("failed to get VM from pool: %w", err)
+	}
+
+	// Revert to pristine snapshot
+	if err := testVM.RevertToSnapshot("pristine"); err != nil {
+		return fmt.Errorf("failed to revert to pristine snapshot: %w", err)
+	}
+
+	// Wait for SSH to be ready
+	if err := testVM.WaitForSSHToBeReady(); err != nil {
+		return fmt.Errorf("failed to wait for SSH: %w", err)
+	}
+
+	// Set SELinux to permissive
+	if _, err := testVM.RunSSH([]string{"sudo", "setenforce", "0"}, nil); err != nil {
+		return fmt.Errorf("failed to set SELinux to permissive: %w", err)
+	}
+
+	// Stop the agent to ensure clean state
+	if _, err := testVM.RunSSH([]string{"sudo", "systemctl", "restart", "flightctl-agent"}, nil); err != nil {
+		return fmt.Errorf("failed to stop flightctl-agent: %w", err)
+	}
+
+	return nil
+}
+
+// SetupVMFromPoolAndEnroll sets up a VM from the pool, starts the agent, and handles enrollment.
+// This is a convenience method that combines SetupVMFromPoolAndStartAgent with EnrollAndWaitForOnlineStatus.
+func (h *Harness) SetupVMFromPoolAndEnroll(workerID int) (string, *v1alpha1.Device, error) {
+	if err := h.SetupVMFromPoolAndStartAgent(workerID); err != nil {
+		return "", nil, fmt.Errorf("failed to setup VM and start agent: %w", err)
+	}
+
+	deviceId, device := h.EnrollAndWaitForOnlineStatus()
+	return deviceId, device, nil
+}
+
+// SetTestContext sets the context for the current test.
+// This allows tests to use their own context for operations while keeping
+// the suite context for cleanup operations.
+func (h *Harness) SetTestContext(ctx context.Context) {
+	h.Context = ctx
+}
+
+// GetTestContext returns the current test context.
+// If no test context has been set, it returns the suite context.
+func (h *Harness) GetTestContext() context.Context {
+	return h.Context
 }

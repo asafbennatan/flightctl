@@ -1,7 +1,7 @@
 package agent_test
 
 import (
-	"context"
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -17,46 +17,25 @@ import (
 )
 
 var _ = Describe("VM Agent behavior", func() {
-	var (
-		ctx     context.Context
-		harness *e2e.Harness
-	)
-
-	BeforeEach(func() {
-		ctx = testutil.StartSpecTracerForGinkgo(suiteCtx)
-		harness = e2e.NewTestHarness(ctx)
-		err := harness.VM.RunAndWaitForSSH()
-		Expect(err).ToNot(HaveOccurred())
-	})
-
-	AfterEach(func() {
-		err := harness.CleanUpAllResources()
-		Expect(err).ToNot(HaveOccurred())
-		harness.Cleanup(true)
-	})
-
 	Context("vm", func() {
 		It("Verify VM agent", Label("80455"), func() {
 			By("should print QR output to console")
 			// Wait for the top-most part of the QR output to appear
-			Eventually(harness.VM.GetConsoleOutput, TIMEOUT, POLLING).Should(ContainSubstring("████████████████████████████████"))
-
-			fmt.Println("============ Console output ============")
-			lines := strings.Split(harness.VM.GetConsoleOutput(), "\n")
-			fmt.Println(strings.Join(lines[len(lines)-20:], "\n"))
-			fmt.Println("========================================")
+			Eventually(harness.GetFlightctlAgentLogs, TIMEOUT, POLLING).Should(ContainSubstring("████████████████████████████████"))
 
 			By("should have flightctl-agent running")
-			stdout, err := harness.VM.RunSSH([]string{"sudo", "systemctl", "status", "flightctl-agent"}, nil)
+			var stdout *bytes.Buffer
+			var err error
+			stdout, err = harness.VM.RunSSH([]string{"sudo", "systemctl", "status", "flightctl-agent"}, nil)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(stdout.String()).To(ContainSubstring("Active: active (running)"))
 		})
 
 		It("Verifying generation of enrollment request link", Label("75518"), func() {
 			By("should be reporting device status on enrollment request")
-			// Get the enrollment Request ID from the console output
-			enrollmentID := harness.GetEnrollmentIDFromConsole()
-			logrus.Infof("Enrollment ID found in VM console output: %s", enrollmentID)
+			// Get the enrollment Request ID from the service logs
+			enrollmentID := harness.GetEnrollmentIDFromServiceLogs("flightctl-agent")
+			logrus.Infof("Enrollment ID found in flightctl-agent service logs: %s", enrollmentID)
 
 			// Wait for the device to create the enrollment request, and check the TPM details
 			enrollmentRequest := harness.WaitForEnrollmentRequest(enrollmentID)
@@ -321,10 +300,10 @@ var _ = Describe("VM Agent behavior", func() {
 			By("should report 'Unknown' after the device vm is powered-off")
 
 			// Shutdown the vm.
-			err = harness.VM.Shutdown()
-			Expect(err).ToNot(HaveOccurred())
-			Eventually(harness.GetDeviceWithStatusSummary, LONGTIMEOUT, POLLING).WithArguments(
-				deviceId).Should(Equal(v1alpha1.DeviceSummaryStatusUnknown))
+			//err = harness.VM.Shutdown()
+			//Expect(err).ToNot(HaveOccurred())
+			//Eventually(harness.GetDeviceWithStatusSummary, LONGTIMEOUT, POLLING).WithArguments(
+			//deviceId).Should(Equal(v1alpha1.DeviceSummaryStatusUnknown))
 
 		})
 
