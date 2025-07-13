@@ -16,17 +16,8 @@ if is_acm_installed; then
     echo "IMAGE_LIST=${IMAGE_LIST}"
 fi
 
-# if FLIGHTCTL_RPM is not empty
-if [ -n "${FLIGHTCTL_RPM:-}" ]; then
-    RPM_COPR=$(copr_repo)
-    RPM_PACKAGE=$(package_agent)
-    # if the package reference includes version, we need to append the system variant, always el9 for our images
-    if [[ "${RPM_PACKAGE}" != "flightctl-agent" ]]; then
-        RPM_PACKAGE="${RPM_PACKAGE}.el9"
-    fi
-    BUILD_ARGS="--build-arg=RPM_COPR=${RPM_COPR}"
-    BUILD_ARGS="${BUILD_ARGS} --build-arg=RPM_PACKAGE=${RPM_PACKAGE}"
-fi
+# Build arguments for agent images (now building from source)
+BUILD_ARGS=""
 
 build_single_image() {
     local img="$1"

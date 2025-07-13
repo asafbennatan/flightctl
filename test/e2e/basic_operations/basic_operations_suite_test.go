@@ -1,28 +1,40 @@
 package basic_operations
 
 import (
-	"github.com/flightctl/flightctl/test/e2e/global_setup"
+	"context"
+	"testing"
+
+	"github.com/flightctl/flightctl/test/harness/e2e"
 	testutil "github.com/flightctl/flightctl/test/util"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 var (
+	suiteCtx context.Context
 	workerID int
+	harness  *e2e.Harness
 )
 
-// Initialize suite-specific settings
-func init() {
-	// VM pool cleanup is now handled in global teardown
+func TestBasicOperations(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Basic Operations E2E Suite")
 }
 
-// AfterSuite is no longer needed as cleanup is handled by SynchronizedAfterSuite
+var _ = BeforeSuite(func() {
+	// Setup VM and harness for this worker
+	var err error
+	harness, suiteCtx, err = e2e.SetupWorkerHarness()
+	Expect(err).ToNot(HaveOccurred())
+
+	workerID = GinkgoParallelProcess()
+})
 
 var _ = BeforeEach(func() {
-	// Get the harness and context that were set up by the centralized SynchronizedBeforeSuite
+	// Get the harness and context that were set up in BeforeSuite
 	workerID = GinkgoParallelProcess()
-	harness = global_setup.GetWorkerHarness()
-	suiteCtx = global_setup.GetWorkerContext()
+	harness = e2e.GetWorkerHarness()
+	suiteCtx = e2e.GetWorkerContext()
 
 	GinkgoWriter.Printf("🔄 [BeforeEach] Worker %d: Setting up test context\n", workerID)
 

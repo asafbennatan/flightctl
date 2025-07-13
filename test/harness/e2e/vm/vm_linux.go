@@ -109,24 +109,41 @@ func (v *VMInLibvirt) Run() error {
 		v.libvirtConn = conn
 	}
 
-	// If domain is not created yet, create it
+	// If domain is not created yet, try to get existing one or create it
 	if v.domain == nil {
-		domainXML, err := v.parseDomainTemplate()
+		// First try to lookup existing domain by name
+		v.domain, err = conn.LookupDomainByName(v.TestVM.VMName)
 		if err != nil {
-			return fmt.Errorf("unable to parse domain template: %w", err)
-		}
+			// Domain doesn't exist, create it
+			domainXML, err := v.parseDomainTemplate()
+			if err != nil {
+				return fmt.Errorf("unable to parse domain template: %w", err)
+			}
 
-		logrus.Debugf("domainXML:\n%s\n\n", domainXML)
+			logrus.Debugf("domainXML:\n%s\n\n", domainXML)
 
-		v.domain, err = conn.DomainDefineXMLFlags(domainXML, libvirt.DOMAIN_DEFINE_VALIDATE)
-		if err != nil {
-			return fmt.Errorf("unable to define virtual machine domain: %w", err)
+			v.domain, err = conn.DomainDefineXMLFlags(domainXML, libvirt.DOMAIN_DEFINE_VALIDATE)
+			if err != nil {
+				return fmt.Errorf("unable to define virtual machine domain: %w", err)
+			}
+		} else {
+			logrus.Infof("Reusing existing domain %s", v.TestVM.VMName)
 		}
 	}
 
-	err = v.domain.Create()
+	// Check if domain is already running before trying to start it
+	state, _, err := v.domain.GetState()
 	if err != nil {
-		return fmt.Errorf("unable to start virtual machine domain: %w", err)
+		return fmt.Errorf("unable to get domain state: %w", err)
+	}
+
+	if state != libvirt.DOMAIN_RUNNING {
+		err = v.domain.Create()
+		if err != nil {
+			return fmt.Errorf("unable to start virtual machine domain: %w", err)
+		}
+	} else {
+		logrus.Infof("Domain %s is already running", v.TestVM.VMName)
 	}
 
 	err = v.waitForVMToBeRunning()

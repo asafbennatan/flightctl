@@ -4,11 +4,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/flightctl/flightctl/test/harness/e2e/vm"
@@ -40,6 +38,7 @@ func GetVMPool() *VMPool {
 			vms: make(map[int]vm.TestVMInterface),
 		}
 	})
+
 	return globalVMPool
 }
 
@@ -139,13 +138,6 @@ func (p *VMPool) createVMForWorker(workerID int) (vm.TestVMInterface, error) {
 	}
 	fmt.Printf("✅ [VMPool] Worker %d: VM struct created\n", workerID)
 
-	// Clean up any existing VM with the same name
-	fmt.Printf("🔄 [VMPool] Worker %d: Checking for existing VM\n", workerID)
-	if err := p.cleanupExistingVM(newVM); err != nil {
-		return nil, fmt.Errorf("failed to cleanup existing VM: %w", err)
-	}
-	fmt.Printf("✅ [VMPool] Worker %d: Existing VM cleanup completed\n", workerID)
-
 	// Start the VM and wait for SSH to be ready
 	fmt.Printf("🔄 [VMPool] Worker %d: Starting VM and waiting for SSH\n", workerID)
 	if err := newVM.RunAndWaitForSSH(); err != nil {
@@ -153,7 +145,16 @@ func (p *VMPool) createVMForWorker(workerID int) (vm.TestVMInterface, error) {
 	}
 	fmt.Printf("✅ [VMPool] Worker %d: VM started and SSH ready\n", workerID)
 
-	// Take a snapshot of the running state (VM stays running)
+	// Take a snapshot of the running state (VM stayso running)
+	exists, err := newVM.HasSnapshot("pristine")
+	if err != nil {
+		return nil, fmt.Errorf("failed to check if VM has snapshot: %w", err)
+	}
+	if exists {
+		fmt.Printf("✅ [VMPool] Worker %d: Pristine snapshot already exists, skipping creation\n", workerID)
+		return newVM, nil
+	}
+
 	fmt.Printf("🔄 [VMPool] Worker %d: Creating pristine snapshot\n", workerID)
 	if err := newVM.CreateSnapshot("pristine"); err != nil {
 		// Clean up on failure
@@ -209,6 +210,9 @@ func (p *VMPool) CleanupWorkerVM(workerID int) error {
 	vm, exists := p.vms[workerID]
 	if exists {
 		delete(p.vms, workerID) // Remove from map immediately
+		fmt.Printf("🔍 [VMPool] Worker %d: VM removed from pool map (total VMs in map: %d)\n", workerID, len(p.vms))
+	} else {
+		fmt.Printf("🔍 [VMPool] Worker %d: No VM found in pool map to remove\n", workerID)
 	}
 	p.mutex.Unlock() // 🔓 Release mutex before VM operations
 
@@ -274,6 +278,7 @@ func (p *VMPool) CleanupAll() error {
 		// Clean up worker directory
 		p.cleanupWorkerDirectory(workerID)
 	}
+	fmt.Printf("🔍 [VMPool] Clearing VM pool map (was %d VMs)\n", len(p.vms))
 	p.vms = make(map[int]vm.TestVMInterface)
 
 	// For external snapshots, no overlays to clean up
@@ -329,25 +334,4 @@ func SetupVMForWorker(workerID int, tempDir string, sshPortBase int) (vm.TestVMI
 	}
 
 	return vmPool.GetVMForWorker(workerID)
-}
-
-// CleanupVMForWorker is a convenience function to clean up a worker's VM
-func CleanupVMForWorker(workerID int) error {
-	vmPool := GetVMPool()
-	return vmPool.CleanupWorkerVM(workerID)
-}
-
-// RegisterVMPoolCleanup sets up a signal handler to clean up all VMs on process exit
-var cleanupRegistered sync.Once
-
-func RegisterVMPoolCleanup() {
-	cleanupRegistered.Do(func() {
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-		go func() {
-			<-c
-			_ = GetVMPool().CleanupAll()
-			os.Exit(1)
-		}()
-	})
 }

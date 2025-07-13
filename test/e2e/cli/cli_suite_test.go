@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flightctl/flightctl/test/e2e/global_setup"
 	"github.com/flightctl/flightctl/test/harness/e2e"
 	"github.com/flightctl/flightctl/test/util"
 	. "github.com/onsi/ginkgo/v2"
@@ -35,11 +34,20 @@ func init() {
 	SetDefaultEventuallyPollingInterval(POLLING)
 }
 
-var _ = BeforeEach(func() {
-	// Get the harness and context that were set up by the centralized SynchronizedBeforeSuite
+var _ = BeforeSuite(func() {
+	// Setup VM and harness for this worker
+	var err error
+	harness, suiteCtx, err = e2e.SetupWorkerHarness()
+	Expect(err).ToNot(HaveOccurred())
+
 	workerID = GinkgoParallelProcess()
-	harness = global_setup.GetWorkerHarness()
-	suiteCtx = global_setup.GetWorkerContext()
+})
+
+var _ = BeforeEach(func() {
+	// Get the harness and context that were set up in BeforeSuite
+	workerID = GinkgoParallelProcess()
+	harness = e2e.GetWorkerHarness()
+	suiteCtx = e2e.GetWorkerContext()
 
 	GinkgoWriter.Printf("🔄 [BeforeEach] Worker %d: Setting up test with VM from pool\n", workerID)
 

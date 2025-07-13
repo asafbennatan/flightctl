@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/flightctl/flightctl/test/e2e/global_setup"
 	"github.com/flightctl/flightctl/test/harness/e2e"
 	testutil "github.com/flightctl/flightctl/test/util"
 	. "github.com/onsi/ginkgo/v2"
@@ -44,13 +43,20 @@ func TestAgent(t *testing.T) {
 	RunSpecs(t, "Agent E2E Suite")
 }
 
-// AfterSuite is no longer needed as cleanup is handled by SynchronizedAfterSuite
+var _ = BeforeSuite(func() {
+	// Setup VM and harness for this worker
+	var err error
+	harness, suiteCtx, err = e2e.SetupWorkerHarness()
+	Expect(err).ToNot(HaveOccurred())
+
+	workerID = GinkgoParallelProcess()
+})
 
 var _ = BeforeEach(func() {
-	// Get the harness and context that were set up by the centralized SynchronizedBeforeSuite
+	// Get the harness and context that were set up in BeforeSuite
 	workerID = GinkgoParallelProcess()
-	harness = global_setup.GetWorkerHarness()
-	suiteCtx = global_setup.GetWorkerContext()
+	harness = e2e.GetWorkerHarness()
+	suiteCtx = e2e.GetWorkerContext()
 
 	GinkgoWriter.Printf("🔄 [BeforeEach] Worker %d: Setting up test with VM from pool\n", workerID)
 

@@ -10,6 +10,7 @@ ifeq ($(SPEC_FETCH_INTERVAL),)
 	SPEC_FETCH_INTERVAL := 0m2s
 endif
 
+# Create kind cluster if it doesn't exist (idempotent)
 cluster: bin/e2e-certs/ca.pem
 	test/scripts/install_kind.sh
 	kind get clusters | grep kind || test/scripts/create_cluster.sh

@@ -25,7 +25,7 @@ The harness enforces a strict VM pool pattern to ensure proper test isolation an
    - Call harness.Cleanup(true) to clean up harness
 
 5. AFTER SUITE:
-   - Call e2e.CleanupVMForWorker(workerID) to clean up the VM
+   - VM cleanup is handled by make scripts after all tests complete
 
 REMOVED METHODS (violated VM pool pattern):
 - NewTestHarness() - Created VMs directly (removed)
@@ -1248,6 +1248,39 @@ func (h Harness) getRegistryEndpointInfo() (ip string, port string, err error) {
 	}
 
 	return "", "", fmt.Errorf("unknown context")
+}
+func NewTestHarnessWithoutVM(ctx context.Context) (*Harness, error) {
+	startTime := time.Now()
+
+	baseDir, err := client.DefaultFlightctlClientConfigPath()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client config path: %w", err)
+	}
+
+	c, err := client.NewFromConfigFile(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+
+	k8sCluster, err := kubernetesClient()
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("failed to get kubernetes cluster: %w", err)
+	}
+
+	// Create harness without VM first
+	return &Harness{
+		VMs:       []vm.TestVMInterface{},
+		Client:    c,
+		Context:   ctx,
+		Cluster:   k8sCluster,
+		ctxCancel: cancel,
+		startTime: startTime,
+		VM:        nil,
+	}, nil
+
 }
 
 // NewTestHarnessWithVMPool creates a new test harness with VM pool management.

@@ -134,5 +134,25 @@ echo "Output interceptor mode: ${GINKGO_OUTPUT_INTERCEPTOR_MODE} (dup=show all o
 echo "Reports will be saved to: ${REPORTS}"
 echo "Individual worker reports will be preserved with --keep-separate-reports"
 
-# Run the command
-"${CMD[@]}"
+# Step 1: Run startup
+echo "🔄 [Test Execution] Step 1: Running startup..."
+if ! test/scripts/e2e_startup.sh; then
+    echo "❌ [Test Execution] Startup failed, exiting"
+    exit 1
+fi
+echo "✅ [Test Execution] Startup completed successfully"
+
+# Step 2: Run the tests
+echo "🔄 [Test Execution] Step 2: Running tests..."
+TEST_EXIT_CODE=0
+"${CMD[@]}" || TEST_EXIT_CODE=$?
+
+# Step 3: Run cleanup (always run, even if tests failed)
+echo "🔄 [Test Execution] Step 3: Running cleanup..."
+if ! test/scripts/e2e_cleanup.sh; then
+    echo "⚠️  [Test Execution] Cleanup failed, but continuing..."
+fi
+echo "✅ [Test Execution] Cleanup completed"
+
+# Exit with the test exit code
+exit $TEST_EXIT_CODE

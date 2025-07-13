@@ -29,6 +29,7 @@ _integration_test: $(REPORTS)
 
 _e2e_test: $(REPORTS)
 	sudo chown $(shell whoami):$(shell whoami) -R bin/output
+	test/scripts/setup_e2e_environment.sh
 	test/scripts/run_e2e_tests.sh "$(REPORTS)" $(GO_E2E_DIRS)
 
 _unit_test: $(REPORTS)
@@ -104,7 +105,6 @@ e2e-test: deploy bin/output/qcow2/disk.qcow2
 # Example: make run-e2e-test GO_E2E_DIRS=test/e2e/agent GINKGO_OUTPUT_INTERCEPTOR_MODE=swap
 run-e2e-test:
 	$(ENV_TRACE_FLAGS) $(MAKE) _e2e_test
-
 
 view-coverage: $(REPORTS)/unit-coverage.out $(REPORTS)/unit-coverage.out
 	# TODO: merge unit and integration coverage reports

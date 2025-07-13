@@ -1,11 +1,9 @@
 package basic_operations
 
 import (
-	"context"
 	"fmt"
 	"regexp"
 	"strings"
-	"testing"
 
 	"github.com/flightctl/flightctl/test/e2e/resources"
 	"github.com/flightctl/flightctl/test/harness/e2e"
@@ -14,16 +12,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-var (
-	suiteCtx context.Context
-	harness  *e2e.Harness
-)
-
-func TestBasicOperations(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Basic Operations E2E Suite")
-}
 
 var _ = Describe("Basic Operations", Label("integration", "82220"), func() {
 	const createdResource = "201 Created"
