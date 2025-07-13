@@ -1,29 +1,19 @@
-package hooks
+package basic_operations
 
 import (
-	"context"
-	"testing"
-
 	"github.com/flightctl/flightctl/test/e2e/global_setup"
-	"github.com/flightctl/flightctl/test/harness/e2e"
 	testutil "github.com/flightctl/flightctl/test/util"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
-const TIMEOUT = "1m"
-const POLLING = "125ms"
-const LONGTIMEOUT = "2m"
-
 var (
-	suiteCtx context.Context
 	workerID int
-	harness  *e2e.Harness
 )
 
-func TestHooks(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Hooks E2E Suite")
+// Initialize suite-specific settings
+func init() {
+	// VM pool cleanup is now handled in global teardown
 }
 
 // AfterSuite is no longer needed as cleanup is handled by SynchronizedAfterSuite
@@ -34,17 +24,13 @@ var _ = BeforeEach(func() {
 	harness = global_setup.GetWorkerHarness()
 	suiteCtx = global_setup.GetWorkerContext()
 
-	GinkgoWriter.Printf("🔄 [BeforeEach] Worker %d: Setting up test with VM from pool\n", workerID)
+	GinkgoWriter.Printf("🔄 [BeforeEach] Worker %d: Setting up test context\n", workerID)
 
 	// Create test-specific context for proper tracing
 	ctx := testutil.StartSpecTracerForGinkgo(suiteCtx)
 
 	// Set the test context in the harness
 	harness.SetTestContext(ctx)
-
-	// Setup VM from pool, revert to pristine snapshot, and start agent
-	err := harness.SetupVMFromPoolAndStartAgent(workerID)
-	Expect(err).ToNot(HaveOccurred())
 
 	GinkgoWriter.Printf("✅ [BeforeEach] Worker %d: Test setup completed\n", workerID)
 })

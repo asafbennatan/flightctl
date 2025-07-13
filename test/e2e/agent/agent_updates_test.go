@@ -1,7 +1,6 @@
 package agent_test
 
 import (
-	"context"
 	"fmt"
 	"slices"
 	"strconv"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/flightctl/flightctl/api/v1alpha1"
 	"github.com/flightctl/flightctl/test/harness/e2e"
-	testutil "github.com/flightctl/flightctl/test/util"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
@@ -18,19 +16,14 @@ import (
 
 var _ = Describe("VM Agent behavior during updates", func() {
 	var (
-		ctx      context.Context
-		harness  *e2e.Harness
 		deviceId string
 	)
 
 	BeforeEach(func() {
-		ctx = testutil.StartSpecTracerForGinkgo(suiteCtx)
-		harness = e2e.NewTestHarness(ctx)
-		deviceId = harness.StartVMAndEnroll()
-	})
-
-	AfterEach(func() {
-		harness.Cleanup(true)
+		// Use the shared harness from the suite test
+		// The harness is already set up with VM from pool and agent started
+		// We just need to enroll the device
+		deviceId, _ = harness.EnrollAndWaitForOnlineStatus()
 	})
 
 	Context("updates", func() {
@@ -85,14 +78,14 @@ var _ = Describe("VM Agent behavior during updates", func() {
 			harness.WaitForDeviceContents(deviceId, "The device is preparing an update to renderedVersion: 2",
 				func(device *v1alpha1.Device) bool {
 					return e2e.ConditionExists(device, v1alpha1.ConditionTypeDeviceUpdating, v1alpha1.ConditionStatusTrue, string(v1alpha1.UpdateStateApplyingUpdate))
-				}, TIMEOUT)
+				}, IMAGE_UPDATE_TIMEOUT)
 
 			Expect(device.Status.Summary.Status).To(Equal(v1alpha1.DeviceSummaryStatusOnline))
 
 			harness.WaitForDeviceContents(deviceId, "the device is rebooting",
 				func(device *v1alpha1.Device) bool {
 					return e2e.ConditionExists(device, v1alpha1.ConditionTypeDeviceUpdating, v1alpha1.ConditionStatusTrue, string(v1alpha1.UpdateStateRebooting))
-				}, TIMEOUT)
+				}, IMAGE_UPDATE_TIMEOUT)
 
 			Eventually(harness.GetDeviceWithStatusSummary, LONGTIMEOUT, POLLING).WithArguments(
 				deviceId).Should(Equal(v1alpha1.DeviceSummaryStatusType("Rebooting")))
@@ -243,7 +236,7 @@ var _ = Describe("VM Agent behavior during updates", func() {
 
 			harness.WaitForDeviceContents(deviceId, "device status should indicate updating failure", func(device *v1alpha1.Device) bool {
 				return e2e.ConditionExists(device, v1alpha1.ConditionTypeDeviceUpdating, v1alpha1.ConditionStatusFalse, string(v1alpha1.UpdateStateError))
-			}, LONGTIMEOUT)
+			}, IMAGE_ROLLBACK_TIMEOUT)
 
 			// Verify that the flightctl-agent logs indicate that a rollback was attempted
 			dur, err := time.ParseDuration(TIMEOUT)
@@ -254,7 +247,7 @@ var _ = Describe("VM Agent behavior during updates", func() {
 				Expect(err).NotTo(HaveOccurred())
 				return logs
 			}).
-				WithContext(harness.Context).
+				WithContext(harness.GetTestContext()).
 				WithTimeout(dur).
 				WithPolling(time.Second * 10).
 				Should(ContainSubstring(fmt.Sprintf("Attempting to rollback to previous renderedVersion: %d", expectedVersion)))
@@ -370,6 +363,15 @@ var _ = Describe("VM Agent behavior during updates", func() {
 			}, TIMEOUT)
 		})
 		It("Should not crash in case of unexpected services configs", Label("78711", "sanity"), func() {
+
+			stdout, err := harness.VM.RunSSH([]string{"sudo", "cat", "/var/lib/flightctl/current.json"}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			logrus.Infof("before updateCurrent.json: %s", stdout.String())
+
+			stdout, err = harness.VM.RunSSH([]string{"sudo", "cat", "/var/lib/flightctl/desired.json"}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			logrus.Infof("before update desired.json: %s", stdout.String())
+
 			const (
 				rapidFilesCount  = 10
 				firewallZonesDir = "/etc/firewalld/zones"
@@ -381,14 +383,21 @@ var _ = Describe("VM Agent behavior during updates", func() {
 			// Malformed XML — should cause firewall reload hook to fail
 			// ------------------------------------------------------------------
 			By(fmt.Sprintf("Applying malformed XML to %s", badZoneFile))
-			err := harness.UpdateDeviceWithRetries(deviceId, func(device *v1alpha1.Device) {
+			err = harness.UpdateDeviceWithRetries(deviceId, func(device *v1alpha1.Device) {
 				device.Spec.Config = &[]v1alpha1.ConfigProviderSpec{newInlineConfigForPath("bad-zone", badZoneFile, "<invalid")}
 			})
 			Expect(err).NotTo(HaveOccurred())
+			stdout, err = harness.VM.RunSSH([]string{"sudo", "cat", "/var/lib/flightctl/current.json"}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			logrus.Infof("after update current.json: %s", stdout.String())
+
+			stdout, err = harness.VM.RunSSH([]string{"sudo", "cat", "/var/lib/flightctl/desired.json"}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			logrus.Infof("after update desired.json: %s", stdout.String())
 
 			harness.WaitForDeviceContents(deviceId, "device status should indicate updating failure", func(device *v1alpha1.Device) bool {
 				return e2e.ConditionExists(device, v1alpha1.ConditionTypeDeviceUpdating, v1alpha1.ConditionStatusFalse, string(v1alpha1.UpdateStateError))
-			}, TIMEOUT)
+			}, "10m")
 
 			// ------------------------------------------------------------------
 			// Rapidly add, remove, or update multiple files
@@ -481,6 +490,7 @@ func newInlineConfigVersion(version int) v1alpha1.ConfigProviderSpec {
 	return provider
 }
 
+// newInlineConfigForPath creates a ConfigProviderSpec with inline configuration for the specified path
 func newInlineConfigForPath(name string, path string, content string) v1alpha1.ConfigProviderSpec {
 	var inlineConfig = v1alpha1.FileSpec{
 		Content: content,

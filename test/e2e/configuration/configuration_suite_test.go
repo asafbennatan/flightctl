@@ -1,4 +1,4 @@
-package hooks
+package configuration_test
 
 import (
 	"context"
@@ -21,9 +21,9 @@ var (
 	harness  *e2e.Harness
 )
 
-func TestHooks(t *testing.T) {
+func TestConfiguration(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Hooks E2E Suite")
+	RunSpecs(t, "Configuration E2E Suite")
 }
 
 // AfterSuite is no longer needed as cleanup is handled by SynchronizedAfterSuite
