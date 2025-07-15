@@ -89,7 +89,14 @@ func getTlsConfig(cfg *config.Config) *tls.Config {
 		InsecureSkipVerify: cfg.Auth.InsecureSkipTlsVerify, //nolint:gosec
 	}
 	if cfg.Auth.CACert != "" {
-		caCertPool := x509.NewCertPool()
+		// Start with system CAs to ensure compatibility with standard server certificates
+		caCertPool, err := x509.SystemCertPool()
+		if err != nil {
+			// If system cert pool is not available, create a new one
+			caCertPool = x509.NewCertPool()
+		}
+		
+		// Add custom CAs to the existing pool
 		caCertPool.AppendCertsFromPEM([]byte(cfg.Auth.CACert))
 		tlsConfig.RootCAs = caCertPool
 	}
