@@ -64,6 +64,8 @@ import (
 	"sync"
 	"time"
 
+	"math/rand"
+
 	"github.com/creack/pty"
 	"github.com/flightctl/flightctl/api/v1alpha1"
 	apiclient "github.com/flightctl/flightctl/internal/api/client"
@@ -84,6 +86,11 @@ const POLLING = "250ms"
 const POLLINGLONG = "1s"
 const TIMEOUT = "60s"
 const LONGTIMEOUT = "10m"
+
+// TestIDKey is the context key used to store the test ID
+type TestIDKeyType struct{}
+
+var TestIDKey = TestIDKeyType{}
 
 type Harness struct {
 	VMs       []vm.TestVMInterface
@@ -293,6 +300,7 @@ func (h *Harness) ApproveEnrollment(id string, approval *v1alpha1.EnrollmentRequ
 	Expect(approval).NotTo(BeNil())
 
 	logrus.Infof("Approving device enrollment: %s", id)
+	h.addTestLabelToEnrollmentApprovalRequest(approval)
 	apr, err := h.Client.ApproveEnrollmentRequestWithResponse(h.Context, id, *approval)
 	Expect(err).ToNot(HaveOccurred())
 	Expect(apr.JSON200).NotTo(BeNil())
@@ -479,6 +487,9 @@ func (h *Harness) EnrollAndWaitForOnlineStatus() (string, *v1alpha1.Device) {
 		deviceId).ShouldNot(BeNil())
 	logrus.Infof("The device %s is reporting its status", deviceId)
 
+	// Add test label to the device
+	h.addTestLabelToDevice(deviceId)
+
 	// Check the device status.
 	response, err := h.GetDeviceWithStatusSystem(deviceId)
 	Expect(err).NotTo(HaveOccurred())
@@ -533,6 +544,58 @@ func (h *Harness) CleanUpAllResources() error {
 
 	}
 	logrus.Infof("All the resource instances are deleted successfully")
+	return nil
+}
+
+// CleanUpTestResources deletes only resources that have the test label for the current test
+func (h *Harness) CleanUpTestResources() error {
+	testID := h.getTestIDFromContext()
+	logrus.Infof("Cleaning up resources with test-id: %s", testID)
+
+	for _, resourceType := range util.ResourceTypes {
+		// Get resources with the test label
+		resources, err := h.CLI("get", resourceType, "-l", fmt.Sprintf("test-id=%s", testID), "-o", "name")
+		if err != nil {
+			// If no resources found, that's fine
+			logrus.Debugf("No %s resources found with test-id %s", resourceType, testID)
+			continue
+		}
+
+		resources = strings.TrimSpace(resources)
+		if resources == "" {
+			logrus.Debugf("No %s resources found with test-id %s", resourceType, testID)
+			continue
+		}
+
+		// Parse resource names from the output
+		// Output format: "resourcetype/name1\nresourcetype/name2\n..."
+		resourceNames := []string{}
+		lines := strings.Split(resources, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			resourceNames = append(resourceNames, line)
+		}
+
+		if len(resourceNames) == 0 {
+			logrus.Debugf("No %s resource names found with test-id %s", resourceType, testID)
+			continue
+		}
+
+		// Delete the resources by name
+		deleteArgs := append([]string{"delete", resourceType}, resourceNames...)
+		_, err = h.CLI(deleteArgs...)
+		if err != nil {
+			logrus.Infof("Error deleting %s resources with test-id %s: %v", resourceType, testID, err)
+			return err
+		}
+
+		logrus.Infof("Successfully deleted %d %s resources with test-id %s: %v", len(resourceNames), resourceType, testID, resourceNames)
+	}
+
+	logrus.Infof("Successfully cleaned up all test resources with test-id %s", testID)
 	return nil
 }
 
@@ -597,6 +660,9 @@ func (h *Harness) GetCertificateSigningRequestByYaml(csrYaml string) v1alpha1.Ce
 
 // Create a repository resource
 func (h *Harness) CreateRepository(repositorySpec v1alpha1.RepositorySpec, metadata v1alpha1.ObjectMeta) error {
+	// Add test label to metadata
+	h.addTestLabelToResource(&metadata)
+
 	var repository = v1alpha1.Repository{
 		ApiVersion: v1alpha1.RepositoryAPIVersion,
 		Kind:       v1alpha1.RepositoryKind,
@@ -855,7 +921,7 @@ func (h *Harness) RunGetEvents(args ...string) (string, error) {
 func (h *Harness) ManageResource(operation, resource string, args ...string) (string, error) {
 	switch operation {
 	case "apply":
-		return h.CLI("apply", "-f", util.GetTestExamplesYamlPath(resource))
+		return h.applyResourceWithTestLabels(resource)
 	case "delete":
 		if len(args) > 0 {
 			deleteArgs := append([]string{"delete", resource}, args...)
@@ -868,6 +934,69 @@ func (h *Harness) ManageResource(operation, resource string, args ...string) (st
 	default:
 		return "", fmt.Errorf("unsupported operation: %s", operation)
 	}
+}
+
+// applyResourceWithTestLabels reads a YAML file, adds test labels to the resource, and applies it
+func (h *Harness) applyResourceWithTestLabels(resource string) (string, error) {
+	yamlPath := util.GetTestExamplesYamlPath(resource)
+
+	// Read the YAML file
+	fileBytes, err := os.ReadFile(yamlPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read yaml file %s: %w", yamlPath, err)
+	}
+
+	// Parse the YAML to add test labels
+	modifiedYAML, err := h.addTestLabelsToYAML(string(fileBytes))
+	if err != nil {
+		return "", fmt.Errorf("failed to add test labels to yaml: %w", err)
+	}
+
+	// Apply the modified YAML
+	return h.CLIWithStdin(modifiedYAML, "apply", "-f", "-")
+}
+
+// addTestLabelsToYAML adds test labels to all resources in the YAML content
+func (h *Harness) addTestLabelsToYAML(yamlContent string) (string, error) {
+	testID := h.getTestIDFromContext()
+
+	// Split the YAML into individual documents
+	documents := strings.Split(yamlContent, "---")
+	var modifiedDocuments []string
+
+	for _, doc := range documents {
+		doc = strings.TrimSpace(doc)
+		if doc == "" {
+			continue
+		}
+
+		// Parse the document
+		var resource map[string]interface{}
+		if err := yaml.Unmarshal([]byte(doc), &resource); err != nil {
+			return "", fmt.Errorf("failed to parse yaml document: %w", err)
+		}
+
+		// Add test label to metadata
+		if metadata, ok := resource["metadata"].(map[string]interface{}); ok {
+			if labels, ok := metadata["labels"].(map[string]interface{}); ok {
+				labels["test-id"] = testID
+			} else {
+				metadata["labels"] = map[string]interface{}{"test-id": testID}
+			}
+		} else {
+			resource["metadata"] = map[string]interface{}{"labels": map[string]interface{}{"test-id": testID}}
+		}
+
+		// Marshal back to YAML
+		modifiedDoc, err := yaml.Marshal(resource)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal modified yaml: %w", err)
+		}
+
+		modifiedDocuments = append(modifiedDocuments, string(modifiedDoc))
+	}
+
+	return strings.Join(modifiedDocuments, "\n---\n"), nil
 }
 
 func conditionExists(conditions []v1alpha1.Condition, predicate func(condition *v1alpha1.Condition) bool) bool {
@@ -1153,4 +1282,63 @@ func (h *Harness) SetTestContext(ctx context.Context) {
 // If no test context has been set, it returns the suite context.
 func (h *Harness) GetTestContext() context.Context {
 	return h.Context
+}
+
+// generateTestID generates a unique test identifier
+func generateTestID() string {
+	// Generate a random 8-character string
+	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, 8)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return fmt.Sprintf("test-%d-%s", time.Now().UnixNano(), string(b))
+}
+
+// getTestIDFromContext retrieves the test ID from the context
+// If no test ID is found, it generates a new one and stores it in the context
+func (h *Harness) getTestIDFromContext() string {
+	if testID, ok := h.Context.Value(TestIDKey).(string); ok && testID != "" {
+		return testID
+	}
+
+	// Generate a new test ID and store it in the context
+	testID := generateTestID()
+	h.Context = context.WithValue(h.Context, TestIDKey, testID)
+	logrus.Debugf("Generated new test ID: %s", testID)
+	return testID
+}
+
+// addTestLabelToResource adds the test ID as a label to the resource metadata
+func (h *Harness) addTestLabelToResource(metadata *v1alpha1.ObjectMeta) {
+	testID := h.getTestIDFromContext()
+
+	if metadata.Labels == nil {
+		metadata.Labels = &map[string]string{}
+	}
+
+	(*metadata.Labels)["test-id"] = testID
+}
+
+func (h *Harness) addTestLabelToEnrollmentApprovalRequest(approval *v1alpha1.EnrollmentRequestApproval) {
+	testID := h.getTestIDFromContext()
+
+	if approval.Labels == nil {
+		approval.Labels = &map[string]string{}
+	}
+
+	(*approval.Labels)["test-id"] = testID
+}
+
+// addTestLabelToDevice adds test label to a device using CLI
+func (h *Harness) addTestLabelToDevice(id string) {
+	testID := h.getTestIDFromContext()
+
+	// Add test label to device using CLI
+	_, err := h.CLI("label", "device", id, fmt.Sprintf("test-id=%s", testID))
+	if err != nil {
+		logrus.Warnf("Failed to add test label to device %s: %v", id, err)
+	} else {
+		logrus.Debugf("Added test label to device %s", id)
+	}
 }

@@ -99,7 +99,7 @@ var _ = AfterEach(func() {
 	// Restore suite context for cleanup operations
 	harness.SetTestContext(suiteCtx)
 
-	err := harness.CleanUpAllResources()
+	err := harness.CleanUpTestResources()
 	Expect(err).ToNot(HaveOccurred())
 
 	fmt.Printf("✅ [AfterEach] Worker %d: Test cleanup completed\n", workerID)
