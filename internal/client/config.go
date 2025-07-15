@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"maps"
@@ -267,11 +268,22 @@ func CreateTLSConfigFromConfig(config *Config) (*tls.Config, error) {
 
 func addServiceCAToTLSConfig(tlsConfig *tls.Config, config *Config) error {
 	if len(config.Service.CertificateAuthorityData) > 0 {
-		caPool, err := certutil.NewPoolFromBytes(config.Service.CertificateAuthorityData)
-		if err != nil {
-			return err
+		// Start with system certificate pool if not already set
+		if tlsConfig.RootCAs == nil {
+			systemPool, err := x509.SystemCertPool()
+			if err != nil {
+				return err
+			}
+			if systemPool == nil {
+				systemPool = x509.NewCertPool()
+			}
+			tlsConfig.RootCAs = systemPool
 		}
-		tlsConfig.RootCAs = caPool
+		
+		// Add service CA to the existing pool
+		if !tlsConfig.RootCAs.AppendCertsFromPEM(config.Service.CertificateAuthorityData) {
+			return fmt.Errorf("failed to add service CA to certificate pool")
+		}
 	}
 	return nil
 }
