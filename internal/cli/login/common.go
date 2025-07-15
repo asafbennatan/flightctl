@@ -2,11 +2,10 @@ package login
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"os"
 	"strings"
-
-	certutil "k8s.io/client-go/util/cert"
 )
 
 type OauthServerResponse struct {
@@ -24,9 +23,17 @@ func getAuthClientTlsConfig(authCAFile string, insecureSkipVerify bool) (*tls.Co
 		if err != nil {
 			return nil, fmt.Errorf("failed to read Auth CA file: %w", err)
 		}
-		caPool, err := certutil.NewPoolFromBytes(caData)
+		
+		// Start with system CAs to ensure compatibility with standard server certificates
+		caPool, err := x509.SystemCertPool()
 		if err != nil {
-			return nil, fmt.Errorf("failed parsing Auth CA certs: %w", err)
+			// If system cert pool is not available, create a new one
+			caPool = x509.NewCertPool()
+		}
+		
+		// Add custom CAs to the existing pool
+		if !caPool.AppendCertsFromPEM(caData) {
+			return nil, fmt.Errorf("failed to add custom CA certificates to pool")
 		}
 
 		tlsConfig.RootCAs = caPool

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"maps"
@@ -24,7 +25,6 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	certutil "k8s.io/client-go/util/cert"
 	"sigs.k8s.io/yaml"
 )
 
@@ -267,10 +267,18 @@ func CreateTLSConfigFromConfig(config *Config) (*tls.Config, error) {
 
 func addServiceCAToTLSConfig(tlsConfig *tls.Config, config *Config) error {
 	if len(config.Service.CertificateAuthorityData) > 0 {
-		caPool, err := certutil.NewPoolFromBytes(config.Service.CertificateAuthorityData)
+		// Start with system CAs to ensure compatibility with standard server certificates
+		caPool, err := x509.SystemCertPool()
 		if err != nil {
-			return err
+			// If system cert pool is not available, create a new one
+			caPool = x509.NewCertPool()
 		}
+		
+		// Add custom CAs to the existing pool
+		if !caPool.AppendCertsFromPEM(config.Service.CertificateAuthorityData) {
+			return fmt.Errorf("failed to add custom CA certificates to pool")
+		}
+		
 		tlsConfig.RootCAs = caPool
 	}
 	return nil
@@ -305,10 +313,18 @@ func NewGRPCClientFromConfig(config *Config, endpoint string) (grpc_v1.RouterSer
 	}
 
 	if string(config.Service.CertificateAuthorityData) != "" {
-		caPool, err := certutil.NewPoolFromBytes(config.Service.CertificateAuthorityData)
+		// Start with system CAs to ensure compatibility with standard server certificates
+		caPool, err := x509.SystemCertPool()
 		if err != nil {
-			return nil, fmt.Errorf("NewHTTPClientFromConfig: parsing CA certs: %w", err)
+			// If system cert pool is not available, create a new one
+			caPool = x509.NewCertPool()
 		}
+		
+		// Add custom CAs to the existing pool
+		if !caPool.AppendCertsFromPEM(config.Service.CertificateAuthorityData) {
+			return nil, fmt.Errorf("failed to add custom CA certificates to pool")
+		}
+		
 		tlsConfig.RootCAs = caPool
 	}
 

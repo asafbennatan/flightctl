@@ -46,10 +46,18 @@ func TLSConfigForServer(caBundlex509 []*x509.Certificate, serverConfig *TLSCerti
 }
 
 func TLSConfigForClient(caBundleX509 []*x509.Certificate, clientConfig *TLSCertificateConfig) (*tls.Config, error) {
-	caPool := x509.NewCertPool()
+	// Start with system CAs to ensure compatibility with standard server certificates
+	caPool, err := x509.SystemCertPool()
+	if err != nil {
+		// If system cert pool is not available, create a new one
+		caPool = x509.NewCertPool()
+	}
+	
+	// Add custom CAs to the pool
 	for _, caCert := range caBundleX509 {
 		caPool.AddCert(caCert)
 	}
+	
 	tlsConfig := &tls.Config{
 		RootCAs:    caPool,
 		MinVersion: tls.VersionTLS13,
