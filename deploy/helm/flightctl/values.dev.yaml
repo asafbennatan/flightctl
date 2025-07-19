@@ -19,6 +19,7 @@ global:
     alertmanagerProxy: 8443
     keycloak: 8081
     prometheus: 9090
+    otelCollector: 9464
     gitserver: 3222
     registry: 5000
 
@@ -60,7 +61,7 @@ alertmanagerProxy:
   image:
     image: localhost/flightctl-alertmanager-proxy
     tag: latest
-prometheus:
+certManager:
   enabled: true
 ui:
   enabled: false
@@ -69,6 +70,49 @@ dbSetup:
   image:
     image: localhost/flightctl-db-setup
     tag: latest
+
+otelCollector:
+  enabled: true
+  image:
+    image: localhost/flightctl-otel-collector
+    tag: latest
+  service:
+    logLevel: info
+  config:
+    otlp:
+      endpoint: "0.0.0.0:4317"
+      tls:
+        certFile: "/etc/otel-collector/certs/server.crt"
+        keyFile: "/etc/otel-collector/certs/server.key"
+        clientCAFile: "/etc/otel-collector/certs/ca.crt"
+      auth:
+        authenticator: "cnauthenticator"
+    prometheus:
+      endpoint: "0.0.0.0:9464"
+    extensions:
+      cnauthenticator:
+        printCN: true
+        logLevel: "info"
+    pipelines:
+      metrics:
+        receivers: ["otlp"]
+        processors: ["deviceid", "transform"]
+        exporters: ["prometheus"]
+  prometheus:
+    enabled: true
+    image:
+      image: quay.io/prometheus/prometheus
+      tag: "v2.54.1"
+    config:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
 
 keycloak:
   realm:
