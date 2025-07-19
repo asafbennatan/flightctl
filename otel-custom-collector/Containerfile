@@ -1,0 +1,23 @@
+FROM alpine:latest
+
+# Install glibc and ca-certificates for TLS
+RUN apk add --no-cache ca-certificates libc6-compat
+
+# Copy the custom otel collector binary
+COPY dist/otelcol-custom /otelcol-custom
+
+# Copy certificates
+COPY certs/ /certs/
+
+# Copy configuration
+COPY config.yaml /config.yaml
+
+# Make the binary executable
+RUN chmod +x /otelcol-custom
+
+# Expose ports
+EXPOSE 4317 8889
+
+# Run the collector
+ENTRYPOINT ["/otelcol-custom"]
+CMD ["--config", "/config.yaml"] 

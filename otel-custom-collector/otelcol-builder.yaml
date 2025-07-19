@@ -3,6 +3,14 @@ dist:
   description: Custom OpenTelemetry Collector with CN Authenticator
   output_path: ./dist
   otelcol_version: 0.110.0
+  build_env:
+    - CGO_ENABLED=0
+    - GOOS=linux
+    - GOARCH=amd64
+  ldflags:
+    - -s
+    - -w
+    - -extldflags "-static"
 
 extensions:
   - import: github.com/example/cnauthenticator
@@ -14,9 +22,14 @@ receivers:
 
 processors:
   - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.110.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.110.0
+  - import: github.com/example/deviceidprocessor
+    gomod: github.com/example/deviceidprocessor v0.0.0
+    path: ./deviceidprocessor
 
 exporters:
   - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.110.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter v0.110.0
 
 providers:
   - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v0.111.0

@@ -1,0 +1,55 @@
+# Example OpenTelemetry Collector Configuration for FlightCtl
+# Copy this file to /root/.flightctl/config.yaml and modify as needed
+
+service:
+  logLevel: info
+
+otelCollector:
+  # OTLP Receiver Configuration
+  otlp:
+    endpoint: "0.0.0.0:4317"
+    tls:
+      # Certificate paths - for Podman deployment, all certificates are in one file
+      certFile: "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"
+      keyFile: "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"
+      clientCAFile: "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"
+    auth:
+      authenticator: "cnauthenticator"
+  
+  # Prometheus Exporter Configuration
+  prometheus:
+    endpoint: "0.0.0.0:9464"
+  
+  # Extensions Configuration
+  extensions:
+    cnauthenticator:
+      printCN: true
+      logLevel: "info"
+  
+  # Pipeline Configuration
+  pipelines:
+    metrics:
+      receivers: ["otlp"]
+      processors: ["deviceid", "transform"]
+      exporters: ["prometheus"]
+
+# Optional: Additional service configuration
+# service:
+#   address: "0.0.0.0:8080"
+#   baseUrl: "https://your-flightctl-server.com"
+#   logLevel: "info"
+
+# Optional: Database configuration (if using external database)
+# database:
+#   type: "postgres"
+#   hostname: "localhost"
+#   port: 5432
+#   name: "flightctl"
+#   user: "flightctl"
+#   password: "password"
+
+# Optional: KV store configuration (if using external KV store)
+# kv:
+#   hostname: "localhost"
+#   port: 6379
+#   password: "password" 

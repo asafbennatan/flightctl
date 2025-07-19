@@ -1,0 +1,17 @@
+collector:
+  endpoint: "localhost:4317"
+  # Connection mode: "insecure", "tls", or "mtls"
+  mode: "insecure"
+  tls:
+    ca_file: "/etc/otel-sample/certs/ca.crt"
+  mtls:
+    cert_file: "/etc/otel-sample/certs/otel.crt"
+    key_file: "/etc/otel-sample/certs/otel.key"
+    ca_file: "/etc/flightctl/certs/ca.crt"
+
+service:
+  name: "otel-sample-app"
+  version: "1.0.0"
+
+telemetry:
+  interval: "5s" 
