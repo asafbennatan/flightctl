@@ -19,6 +19,45 @@ spec:
         flightctl.service: flightctl-api
     spec:
       serviceAccountName: flightctl-api
+      {{- if .Values.certManager.enabled }}
+      initContainers:
+        - name: wait-for-certificates
+          image: busybox:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for CA certificate to be ready..."
+              while [ ! -f /root/.flightctl/certs/ca.crt ] || [ ! -f /root/.flightctl/certs/ca.key ]; do
+                echo "CA certificate files not ready yet, waiting..."
+                sleep 2
+              done
+              
+              echo "Waiting for API certificate to be ready..."
+              while [ ! -f /root/.flightctl/certs/server.crt ] || [ ! -f /root/.flightctl/certs/server.key ]; do
+                echo "API certificate files not ready yet, waiting..."
+                sleep 2
+              done
+              
+              echo "All certificates are ready!"
+          volumeMounts:
+            - mountPath: /root/.flightctl/certs/ca.crt
+              name: flightctl-ca-secret
+              subPath: tls.crt
+              readOnly: true
+            - mountPath: /root/.flightctl/certs/ca.key
+              name: flightctl-ca-secret
+              subPath: tls.key
+              readOnly: true
+            - mountPath: /root/.flightctl/certs/server.crt
+              name: flightctl-api-tls
+              subPath: tls.crt
+              readOnly: true
+            - mountPath: /root/.flightctl/certs/server.key
+              name: flightctl-api-tls
+              subPath: tls.key
+              readOnly: true
+      {{- end }}
       containers:
         - name: flightctl-api
           image: {{ .Values.api.image.image }}:{{ default .Chart.AppVersion .Values.api.image.tag }}
@@ -66,8 +105,29 @@ spec:
               protocol: TCP
 
           volumeMounts:
+            {{- if .Values.certManager.enabled }}
+            # Use cert-manager certificates
+            - mountPath: /root/.flightctl/certs/ca.crt
+              name: flightctl-ca-secret
+              subPath: tls.crt
+              readOnly: true
+            - mountPath: /root/.flightctl/certs/ca.key
+              name: flightctl-ca-secret
+              subPath: tls.key
+              readOnly: true
+            - mountPath: /root/.flightctl/certs/server.crt
+              name: flightctl-api-tls
+              subPath: tls.crt
+              readOnly: true
+            - mountPath: /root/.flightctl/certs/server.key
+              name: flightctl-api-tls
+              subPath: tls.key
+              readOnly: true
+            {{- else }}
+            # Use persistent volume for certificates (legacy)
             - mountPath: /root/.flightctl/
               name: flightctl-api-certs
+            {{- end }}
             - mountPath: /root/.flightctl/config.yaml
               name: flightctl-api-config
               subPath: config.yaml
@@ -80,9 +140,20 @@ spec:
 
       restartPolicy: Always
       volumes:
+        {{- if .Values.certManager.enabled }}
+        # cert-manager certificate secrets
+        - name: flightctl-ca-secret
+          secret:
+            secretName: flightctl-ca-secret
+        - name: flightctl-api-tls
+          secret:
+            secretName: flightctl-api-tls
+        {{- else }}
+        # Legacy persistent volume for certificates
         - name: flightctl-api-certs
           persistentVolumeClaim:
             claimName: flightctl-api-certs
+        {{- end }}
         - name: flightctl-api-config
           configMap:
             name: flightctl-api-config

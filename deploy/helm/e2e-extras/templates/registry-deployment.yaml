@@ -34,11 +34,11 @@ spec:
               readOnly: true
           env:
             - name: REGISTRY_HTTP_TLS_CERTIFICATE
-              value: /certs/registry.crt
+              value: /certs/tls.crt
             - name: REGISTRY_HTTP_TLS_KEY
-              value: /certs/registry.key
+              value: /certs/tls.key
       volumes:
         - name: certs
           secret:
-            secretName: e2e-registry-keys
+            secretName: e2e-registry-tls
       restartPolicy: Always

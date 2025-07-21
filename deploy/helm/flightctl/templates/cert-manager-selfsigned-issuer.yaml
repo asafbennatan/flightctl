@@ -1,0 +1,11 @@
+{{- if .Values.certManager.enabled }}
+# This self-signed issuer is used to bootstrap the CA certificate creation
+# It creates the initial flightctl-ca certificate, which then becomes the CA
+# for all other certificates in the system
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+{{- end }} 

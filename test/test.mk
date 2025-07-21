@@ -81,8 +81,11 @@ test: unit-test integration-test e2e-test
 
 run-test: unit-test run-intesgration-test
 
-bin/e2e-certs/ca.pem bin/.ssh/id_rsa.pub:
+bin/.ssh/id_rsa.pub:
 	test/scripts/create_e2e_certs.sh
+
+bin/e2e-certs/ca.pem:
+	test/scripts/extract_ca_cert.sh
 
 git-server-container: bin/.ssh/id_rsa.pub
 	test/scripts/prepare_git_server.sh

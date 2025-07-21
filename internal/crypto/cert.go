@@ -59,6 +59,11 @@ func (caClient *CAClient) GetSigner(name string) signer.Signer {
 	return caClient.signers.GetSigner(name)
 }
 
+// ReinitializeSigners re-initializes the signers with the current configuration
+func (caClient *CAClient) ReinitializeSigners() {
+	caClient.signers = signer.NewCASigners(caClient)
+}
+
 func (caClient *CAClient) PeerCertificateFromCtx(ctx context.Context) (*x509.Certificate, error) {
 	return signer.PeerCertificateFromCtx(ctx)
 }
@@ -330,4 +335,32 @@ func isFileReadable(path string) bool {
 	}
 	defer f.Close()
 	return true
+}
+
+// LoadExternalCA loads a CA from external certificate files (e.g., from cert-manager)
+func LoadExternalCA(caCertFile, caKeyFile string) (*CAClient, error) {
+	// Load the CA certificate and key
+	caConfig, err := GetCA(caCertFile, caKeyFile, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to load external CA: %w", err)
+	}
+
+	ca := &CAClient{
+		caBackend: caConfig,
+		Cfg: &ca.Config{
+			CAType: ca.InternalCA,
+			InternalConfig: &ca.InternalCfg{
+				CertFile: caCertFile,
+				KeyFile:  caKeyFile,
+			},
+		},
+	}
+
+	ca.signers = signer.NewCASigners(ca)
+	return ca, nil
+}
+
+// LoadExternalServerCertificate loads a server certificate from external files
+func LoadExternalServerCertificate(certFile, keyFile string) (*TLSCertificateConfig, error) {
+	return GetTLSCertificateConfig(certFile, keyFile)
 }

@@ -1,0 +1,8 @@
+apiVersion: flightctl.io/v1alpha1
+kind: Device
+metadata:
+  name: 2291o9vfaq5dppuhhs17sv9e3no8jrakqjq18mtmb474f3g5khvg
+  labels: 
+    fleet: otel-sample-2
+
+

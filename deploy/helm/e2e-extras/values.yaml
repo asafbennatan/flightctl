@@ -7,6 +7,7 @@ global:
   imagePullPolicy: IfNotPresent
   imagePullSecretName: ""
   internalNamespace: ""
+  registryIP: ""  # IP address for registry certificate
 registry:
   image: quay.io/flightctl/e2eregistry:2
   route: true
@@ -32,3 +33,10 @@ jaeger:
     limits:
       memory: "512Mi"
       cpu: "200m"
+
+## @section Certificate Management
+## @description Certificate management using cert-manager (required)
+## @descriptionEnd
+
+certManager:
+  enabled: true

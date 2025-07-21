@@ -69,6 +69,7 @@ render_files() {
     render_service "periodic" "${SOURCE_DIR}"
     render_service "worker" "${SOURCE_DIR}"
     render_service "alert-exporter" "${SOURCE_DIR}"
+    render_service "otel-collector" "${SOURCE_DIR}"
     render_service "db" "${SOURCE_DIR}"
     render_service "kv" "${SOURCE_DIR}"
     render_service "alertmanager" "${SOURCE_DIR}"
@@ -84,6 +85,7 @@ render_files() {
     mkdir -p "${CONFIG_WRITEABLE_DIR}/flightctl-ui"
     mkdir -p "${CONFIG_WRITEABLE_DIR}/flightctl-cli-artifacts"
     mkdir -p "${CONFIG_WRITEABLE_DIR}/flightctl-alertmanager-proxy"
+    mkdir -p "${CONFIG_WRITEABLE_DIR}/flightctl-otel-collector"
 
     move_shared_files "${SOURCE_DIR}"
 }

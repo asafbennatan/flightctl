@@ -7,12 +7,23 @@ source "${SCRIPT_DIR}"/functions
 # make sure we have helm installed
 "${SCRIPT_DIR}"/install_helm.sh
 
+# Verify cert-manager is available (for main deployment)
+if ! kubectl get clusterissuer selfsigned-issuer >/dev/null 2>&1; then
+    echo "ERROR: cert-manager is required but not found"
+    echo "Please ensure cert-manager is installed and flightctl is deployed with cert-manager enabled"
+    exit 1
+fi
+
+echo "cert-manager found, proceeding with deployment"
+
 if in_kind; then
     ARGS="--values ./deploy/helm/e2e-extras/values.dev.yaml"
     # in github CI load docker-image does not seem to work for our images
     kind_load_image localhost/git-server:latest
     kind_load_image quay.io/flightctl/e2eregistry:2
 fi
+
+# cert-manager is disabled for e2e extras since main deployment handles certificates
 
 REPOADDR=$(registry_address)
 

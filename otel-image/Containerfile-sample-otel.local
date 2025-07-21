@@ -1,0 +1,80 @@
+# Build stage for Go application
+FROM docker.io/golang:1.23-alpine AS builder
+
+# Add the sample Go application source code and go.mod
+COPY otel-sample-app/main.go /otel-sample-app/main.go
+COPY otel-sample-app/go.mod /otel-sample-app/go.mod
+
+# Build the Go application
+WORKDIR /otel-sample-app
+RUN go mod tidy && \
+    CGO_ENABLED=0 go build -a -installsuffix cgo -o otel-sample-app main.go
+
+# Final stage
+FROM localhost:5000/flightctl-device:base
+
+RUN mkdir -p /otel-sample-app
+
+# Copy the built application from builder stage
+COPY --from=builder /otel-sample-app/otel-sample-app /usr/local/bin/otel-sample-app
+
+# Set executable permissions and SELinux context
+RUN chmod +x /usr/local/bin/otel-sample-app
+
+
+# Create otel-sample config and certs directories
+RUN mkdir -p /etc/otel-sample/certs
+
+# Set ownership for user (not root)
+RUN chown -R user:user /etc/otel-sample
+
+RUN cat <<'EOF' >> /etc/flightctl/config.yaml
+certificates:
+  - name: otel
+    provisioner:
+      type: csr
+      config:
+        signer: "flightctl.io/device-svc-client"
+        common-name: "otel-${DEVICE_ID}"
+        key-usage:
+          - clientAuth
+          - CA:false
+        expiration-seconds: 604800  # Example: 7 days (7 * 24 * 3600)
+    storage:
+      type: filesystem
+      config:
+        cert-path: "/etc/otel-sample/certs/otel.crt"
+        key-path: "/etc/otel-sample/certs/otel.key"
+        permissions: 384  # 0600 in decimal
+    #renewal-threshold: 72h
+
+  - name: otel-collector
+    provisioner:
+      type: csr
+      config:
+        signer: "flightctl.io/device-svc-client"
+        common-name: "otel-collector-${DEVICE_ID}"
+        key-usage:
+          - clientAuth
+          - CA:false
+        expiration-seconds: 604800  # Example: 7 days (7 * 24 * 3600)
+    storage:
+      type: filesystem
+      config:
+        cert-path: "/etc/otel-sample/certs/otel-collector.crt"
+        key-path: "/etc/otel-sample/certs/otel-collector.key"
+        permissions: 384  # 0600 in decimal
+    #renewal-threshold: 72h
+EOF
+
+
+# Copy systemd service file
+COPY otel-sample-app.service /etc/systemd/system/
+
+# Enable the service
+RUN systemctl enable otel-sample-app.service
+
+
+# set the working directory to /
+WORKDIR /
+

@@ -1,0 +1,49 @@
+apiVersion: flightctl.io/v1alpha1
+kind: Fleet
+metadata:
+  name: otel-sample-2
+spec:
+  selector:
+    matchLabels:
+      fleet: otel-sample-2
+  template:
+    metadata:
+      labels:
+        fleet: otel-sample-2
+    spec:
+      os:
+        image: 10.100.102.70:5000/otel-sample-app:v10
+      config:
+        - name: otel-sample-config
+          inline:
+            - path: "/etc/otel-sample/config.yaml"
+              content: |
+                collector:
+                  endpoint: "10.100.102.70:4317"
+                  # Connection mode: "insecure", "tls", or "mtls"
+                  mode: "mtls"
+                  tls:
+                    ca_file: "/etc/otel-sample/certs/ca.crt"
+                  mtls:
+                    cert_file: "/etc/otel-sample/certs/otel.crt"
+                    key_file: "/etc/otel-sample/certs/otel.key"
+                    ca_file: "/etc/flightctl/certs/ca.crt"
+
+                service:
+                  name: "otel-sample-app"
+                  version: "1.0.0"
+
+                telemetry:
+                  interval: "5s"
+              mode: 0644
+      resources:
+        - monitorType: CPU
+          alertRules:
+            - severity: Warning
+              duration: 10m
+              percentage: 50
+              description: 'CPU load is above 50% for more than 10 minutes'
+          samplingInterval: 30s
+      systemd:
+        matchPatterns:
+          - otel-sample-app.service 

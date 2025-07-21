@@ -83,7 +83,8 @@ build: bin build-cli
 		./cmd/flightctl-worker \
 		./cmd/flightctl-alert-exporter \
 		./cmd/flightctl-alertmanager-proxy \
-		./cmd/flightctl-userinfo-proxy
+		./cmd/flightctl-userinfo-proxy \
+		./cmd/flightctl-otel-collector
 
 bin/flightctl-agent: bin $(GO_FILES)
 	CGO_CFLAGS='-flto' GOOS=$(GOOS) GOARCH=$(GOARCH) go build -buildvcs=false $(GO_BUILD_FLAGS) -o $(GOBIN) \
@@ -115,6 +116,9 @@ build-alertmanager-proxy: bin
 
 build-userinfo-proxy: bin
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -buildvcs=false $(GO_BUILD_FLAGS) -o $(GOBIN) ./cmd/flightctl-userinfo-proxy
+
+build-otel-collector: bin
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -buildvcs=false $(GO_BUILD_FLAGS) -o $(GOBIN) ./cmd/flightctl-otel-collector
 
 # rebuild container only on source changes
 bin/.flightctl-api-container: bin Containerfile.api go.mod go.sum $(GO_FILES)
@@ -156,6 +160,11 @@ bin/.flightctl-userinfo-proxy-container: bin Containerfile.userinfo-proxy go.mod
 	podman build -f Containerfile.userinfo-proxy $(GO_CACHE) -t flightctl-userinfo-proxy:latest
 	touch bin/.flightctl-userinfo-proxy-container
 
+bin/.flightctl-otel-collector-container: bin Containerfile.otel-collector go.mod go.sum $(GO_FILES)
+	mkdir -p $${HOME}/go/flightctl-go-cache/.cache
+	podman build -f Containerfile.otel-collector $(GO_CACHE) -t flightctl-otel-collector:latest
+	touch bin/.flightctl-otel-collector-container
+
 flightctl-api-container: bin/.flightctl-api-container
 
 flightctl-worker-container: bin/.flightctl-worker-container
@@ -170,7 +179,9 @@ flightctl-multiarch-cli-container: bin/.flightctl-multiarch-cli-container
 
 flightctl-userinfo-proxy-container: bin/.flightctl-userinfo-proxy-container
 
-build-containers: flightctl-api-container flightctl-worker-container flightctl-periodic-container flightctl-alert-exporter-container flightctl-alertmanager-proxy-container flightctl-multiarch-cli-container flightctl-userinfo-proxy-container
+flightctl-otel-collector-container: bin/.flightctl-otel-collector-container
+
+build-containers: flightctl-api-container flightctl-worker-container flightctl-periodic-container flightctl-alert-exporter-container flightctl-alertmanager-proxy-container flightctl-multiarch-cli-container flightctl-userinfo-proxy-container flightctl-otel-collector-container
 
 .PHONY: build-containers build-cli build-multiarch-clis
 
@@ -185,7 +196,7 @@ bin/.rpm: bin $(shell find ./ -name "*.go" -not -path "./packaging/*") packaging
 
 rpm: bin/.rpm
 
-.PHONY: rpm build build-api build-periodic build-worker build-alert-exporter build-alertmanager-proxy build-userinfo-proxy
+.PHONY: rpm build build-api build-periodic build-worker build-alert-exporter build-alertmanager-proxy build-userinfo-proxy build-otel-collector
 
 # cross-building for deb pkg
 bin/amd64:
@@ -224,7 +235,7 @@ clean: clean-agent-vm clean-e2e-agent-images clean-quadlets
 clean-quadlets:
 	sudo deploy/scripts/clean_quadlets.sh
 
-.PHONY: tools flightctl-api-container flightctl-worker-container flightctl-periodic-container flightctl-alert-exporter-container flightctl-userinfo-proxy-container
+.PHONY: tools flightctl-api-container flightctl-worker-container flightctl-periodic-container flightctl-alert-exporter-container flightctl-userinfo-proxy-container flightctl-otel-collector-container
 
 tools: $(GOBIN)/golangci-lint
 

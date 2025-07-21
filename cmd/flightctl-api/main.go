@@ -40,10 +40,25 @@ func main() {
 	}
 	log.SetLevel(logLvl)
 
-	ca, _, err := crypto.EnsureCA(cfg.CA)
-	if err != nil {
-		log.Fatalf("ensuring CA cert: %v", err)
+	// Load CA certificate and key - exit if they don't exist
+	caCertFile := crypto.CertStorePath(cfg.CA.InternalConfig.CertFile, cfg.CA.InternalConfig.CertStore)
+	caKeyFile := crypto.CertStorePath(cfg.CA.InternalConfig.KeyFile, cfg.CA.InternalConfig.CertStore)
+
+	if canReadCertAndKey, err := crypto.CanReadCertAndKey(caCertFile, caKeyFile); !canReadCertAndKey {
+		log.Fatalf("CA certificate files not found. Expected: %s and %s. Error: %v", caCertFile, caKeyFile, err)
 	}
+
+	// Load the existing cert-manager-generated CA certificates
+	ca, err := crypto.LoadExternalCA(caCertFile, caKeyFile)
+	if err != nil {
+		log.Fatalf("failed to load CA certificate: %v", err)
+	}
+
+	// Set the full configuration with signer names from the config
+	ca.Cfg = cfg.CA
+
+	// Re-initialize signers with the full configuration
+	ca.ReinitializeSigners()
 
 	var serverCerts *crypto.TLSCertificateConfig
 
@@ -61,22 +76,14 @@ func main() {
 		srvCertFile := crypto.CertStorePath(cfg.Service.ServerCertName+".crt", cfg.Service.CertStore)
 		srvKeyFile := crypto.CertStorePath(cfg.Service.ServerCertName+".key", cfg.Service.CertStore)
 
-		// check if existing self-signed certificate is available
-		if canReadCertAndKey, _ := crypto.CanReadCertAndKey(srvCertFile, srvKeyFile); canReadCertAndKey {
-			serverCerts, err = crypto.GetTLSCertificateConfig(srvCertFile, srvKeyFile)
-			if err != nil {
-				log.Fatalf("failed to load existing self-signed certificate: %v", err)
-			}
-		} else {
-			// default to localhost if no alternative names are set
-			if len(cfg.Service.AltNames) == 0 {
-				cfg.Service.AltNames = []string{"localhost"}
-			}
+		// check if server certificate files exist
+		if canReadCertAndKey, err := crypto.CanReadCertAndKey(srvCertFile, srvKeyFile); !canReadCertAndKey {
+			log.Fatalf("Server certificate files not found. Expected: %s and %s. Error: %v", srvCertFile, srvKeyFile, err)
+		}
 
-			serverCerts, err = ca.MakeAndWriteServerCertificate(ctx, srvCertFile, srvKeyFile, cfg.Service.AltNames, cfg.CA.ServerCertValidityDays)
-			if err != nil {
-				log.Fatalf("failed to create self-signed certificate: %v", err)
-			}
+		serverCerts, err = crypto.GetTLSCertificateConfig(srvCertFile, srvKeyFile)
+		if err != nil {
+			log.Fatalf("failed to load server certificate: %v", err)
 		}
 	}
 

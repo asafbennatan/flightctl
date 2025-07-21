@@ -73,6 +73,7 @@ global:
     ui: 9000
     keycloak: 8081
     alertmanagerProxy: 8443
+    otelCollector: 9464
   gatewayPorts:
     tls: 443
     http: 80
@@ -157,6 +158,34 @@ alertmanagerProxy:
     image: quay.io/flightctl/flightctl-alertmanager-proxy
     tag: ""
     pullPolicy: ""
+otelCollector:
+  enabled: true
+  image:
+    image: quay.io/flightctl/flightctl-otel-collector
+    tag: ""
+    pullPolicy: ""
+  service:
+    logLevel: info
+  config:
+    otlp:
+      endpoint: "0.0.0.0:4317"
+      tls:
+        certFile: "/etc/otel-collector/certs/server.crt"
+        keyFile: "/etc/otel-collector/certs/server.key"
+        clientCAFile: "/etc/otel-collector/certs/ca.crt"
+      auth:
+        authenticator: "cnauthenticator"
+    prometheus:
+      endpoint: "0.0.0.0:9464"
+    extensions:
+      cnauthenticator:
+        printCN: true
+        logLevel: "info"
+    pipelines:
+      metrics:
+        receivers: ["otlp"]
+        processors: ["deviceid", "transform"]
+        exporters: ["prometheus"]
 prometheus:
   enabled: false
 ui:
@@ -168,3 +197,10 @@ secretsJob:
     image: quay.io/openshift/origin-cli
     tag: "4.20.0"
     pullPolicy: ""
+
+## @section Certificate Management
+## @description Certificate management using cert-manager
+## @descriptionEnd
+
+certManager:
+  enabled: false

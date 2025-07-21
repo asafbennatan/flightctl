@@ -4,6 +4,7 @@ global:
     gitserver: 3222
     prometheus: 9090
     jaegerUi: 16686
+  registryIP: "127.0.0.1"  # Local IP for registry certificate
 registry:
   image: quay.io/flightctl/e2eregistry:2
   route: false
@@ -16,3 +17,6 @@ jaeger:
   maxTraces: 50000
   otlpEnabled: true
   logLevel: info
+
+certManager:
+  enabled: true

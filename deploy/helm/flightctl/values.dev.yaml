@@ -19,6 +19,7 @@ global:
     alertmanagerProxy: 8443
     keycloak: 8081
     prometheus: 9090
+    otelCollector: 9464
     gitserver: 3222
     registry: 5000
 
@@ -60,7 +61,15 @@ alertmanagerProxy:
   image:
     image: localhost/flightctl-alertmanager-proxy
     tag: latest
+otelCollector:
+  enabled: true
+  image:
+    image: localhost/flightctl-otel-collector
+    tag: latest
 prometheus:
+  enabled: true
+
+certManager:
   enabled: true
 ui:
   enabled: false

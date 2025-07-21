@@ -1,0 +1,10 @@
+certManager:
+  enabled: true
+  startupapicheck:
+    enabled: true
+    timeout: 30s
+    backoffLimit: 2
+
+global:
+  baseDomain: "flightctl.local"
+  exposeServicesMethod: "nodePort" 

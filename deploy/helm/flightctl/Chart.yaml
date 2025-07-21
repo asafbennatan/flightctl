@@ -8,6 +8,10 @@ appVersion: "latest" # this is replaced at packaging with the hash of the image 
 dependencies:
   - name: keycloak
     version: "0.0.1"
+    condition: keycloak.enabled
   - name: ui
     condition: ui.enabled
     version: "0.0.1"
+  - name: cert-manager
+    version: "v1.15.1"
+    condition: certManager.enabled

@@ -10,14 +10,14 @@ ifeq ($(SPEC_FETCH_INTERVAL),)
 	SPEC_FETCH_INTERVAL := 0m2s
 endif
 
-cluster: bin/e2e-certs/ca.pem
+cluster:
 	test/scripts/install_kind.sh
 	kind get clusters | grep kind || test/scripts/create_cluster.sh
 
 clean-cluster:
 	kind delete cluster
 
-deploy: cluster build deploy-helm deploy-e2e-extras prepare-agent-config
+deploy: cluster build deploy-helm deploy-e2e-extras extract-ca-cert prepare-agent-config
 
 redeploy-api: flightctl-api-container
 	test/scripts/redeploy.sh api
@@ -34,10 +34,16 @@ redeploy-alert-exporter: flightctl-alert-exporter-container
 redeploy-alertmanager-proxy: flightctl-alertmanager-proxy-container
 	test/scripts/redeploy.sh alertmanager-proxy
 
-deploy-helm: git-server-container flightctl-api-container flightctl-worker-container flightctl-periodic-container flightctl-alert-exporter-container flightctl-alertmanager-proxy-container flightctl-multiarch-cli-container
+redeploy-otel-collector: flightctl-otel-collector-container
+	test/scripts/redeploy.sh otel-collector
+
+deploy-helm: git-server-container flightctl-api-container flightctl-worker-container flightctl-periodic-container flightctl-alert-exporter-container flightctl-alertmanager-proxy-container flightctl-otel-collector-container flightctl-multiarch-cli-container
 	kubectl config set-context kind-kind
 	test/scripts/install_helm.sh
 	test/scripts/deploy_with_helm.sh --db-size $(DB_SIZE)
+
+extract-ca-cert:
+	test/scripts/extract_ca_cert.sh
 
 prepare-agent-config:
 	test/scripts/agent-images/prepare_agent_config.sh --status-update-interval $(STATUS_UPDATE_INTERVAL) --spec-fetch-interval $(SPEC_FETCH_INTERVAL)
@@ -57,6 +63,9 @@ deploy-alertmanager:
 deploy-alertmanager-proxy:
 	sudo -E deploy/scripts/deploy_quadlet_service.sh alertmanager-proxy
 
+deploy-otel-collector:
+	sudo -E deploy/scripts/deploy_quadlet_service.sh otel-collector
+
 deploy-quadlets:
 	sudo -E deploy/scripts/deploy_quadlets.sh
 
@@ -72,7 +81,10 @@ kill-alertmanager:
 kill-alertmanager-proxy:
 	sudo systemctl stop flightctl-alertmanager-proxy.service
 
+kill-otel-collector:
+	sudo systemctl stop flightctl-otel-collector.service
+
 show-podman-secret:
 	sudo podman secret inspect $(SECRET_NAME) --showsecret | jq '.[] | .SecretData'
 
-.PHONY: deploy-db deploy cluster
+.PHONY: deploy-db deploy cluster deploy-otel-collector kill-otel-collector redeploy-otel-collector

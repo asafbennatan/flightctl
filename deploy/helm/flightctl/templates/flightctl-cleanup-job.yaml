@@ -31,6 +31,8 @@ spec:
               oc delete secret flightctl-db-secret -n {{ $ns }} --ignore-not-found
               oc delete secret flightctl-kv-secret -n {{ $ns }} --ignore-not-found
               {{- end }}
+              echo "Deleting copied CA secret from cert-manager namespace..."
+              oc delete secret flightctl-ca-secret -n cert-manager --ignore-not-found
               echo "Deleting orphaned PVCs..."
               {{- range $ns := $namespaces }}
               oc delete pvc -l flightctl.service=flightctl-kv -n {{ $ns }} --ignore-not-found

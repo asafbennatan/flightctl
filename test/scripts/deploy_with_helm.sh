@@ -121,6 +121,10 @@ fi
 
 kubectl rollout status deployment flightctl-api -n flightctl-external -w --timeout=300s
 
+# Extract CA certificate for client authentication
+echo "Extracting CA certificate from flightctl-ca-secret..."
+"${SCRIPT_DIR}"/extract_ca_cert.sh
+
 LOGGED_IN=false
 # attempt to login, it could take some time for API to be stable
 for i in {1..60}; do

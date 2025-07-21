@@ -1,0 +1,234 @@
+{{- if .Values.otelCollector.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flightctl-otel-collector-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    flightctl.service: flightctl-otel-collector
+data:
+  config.yaml: |
+    service:
+      logLevel: {{ .Values.otelCollector.service.logLevel | quote }}
+
+    otelCollector:
+      otlp:
+        endpoint: {{ .Values.otelCollector.config.otlp.endpoint | quote }}
+        tls:
+          certFile: {{ .Values.otelCollector.config.otlp.tls.certFile | quote }}
+          keyFile: {{ .Values.otelCollector.config.otlp.tls.keyFile | quote }}
+          clientCAFile: {{ .Values.otelCollector.config.otlp.tls.clientCAFile | quote }}
+        auth:
+          authenticator: {{ .Values.otelCollector.config.otlp.auth.authenticator | quote }}
+      
+      prometheus:
+        endpoint: {{ .Values.otelCollector.config.prometheus.endpoint | quote }}
+      
+      extensions:
+        cnauthenticator:
+          printCN: {{ .Values.otelCollector.config.extensions.cnauthenticator.printCN }}
+          logLevel: {{ .Values.otelCollector.config.extensions.cnauthenticator.logLevel | quote }}
+      
+      pipelines:
+        metrics:
+          receivers: {{ .Values.otelCollector.config.pipelines.metrics.receivers | toJson }}
+          processors: {{ .Values.otelCollector.config.pipelines.metrics.processors | toJson }}
+          exporters: {{ .Values.otelCollector.config.pipelines.metrics.exporters | toJson }}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flightctl-otel-collector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    flightctl.service: flightctl-otel-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      flightctl.service: flightctl-otel-collector
+  template:
+    metadata:
+      labels:
+        flightctl.service: flightctl-otel-collector
+    spec:
+      serviceAccountName: flightctl-otel-collector
+      {{- if .Values.global.imagePullSecretName }}
+      imagePullSecrets:
+        - name: {{ .Values.global.imagePullSecretName }}
+      {{- end }}
+      {{- if .Values.certManager.enabled }}
+      initContainers:
+        - name: wait-for-certificates
+          image: busybox:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for CA certificate to be ready..."
+              while [ ! -f /etc/otel-collector/certs/ca.crt ]; do
+                echo "CA certificate file not ready yet, waiting..."
+                sleep 2
+              done
+              
+              echo "Waiting for otel-collector certificate to be ready..."
+              while [ ! -f /etc/otel-collector/certs/server.crt ] || [ ! -f /etc/otel-collector/certs/server.key ]; do
+                echo "Otel-collector certificate files not ready yet, waiting..."
+                sleep 2
+              done
+              
+              echo "All certificates are ready!"
+          volumeMounts:
+            - name: ca-secret
+              mountPath: /etc/otel-collector/certs/ca.crt
+              subPath: tls.crt
+              readOnly: true
+            - name: otel-collector-tls
+              mountPath: /etc/otel-collector/certs/server.crt
+              subPath: tls.crt
+              readOnly: true
+            - name: otel-collector-tls
+              mountPath: /etc/otel-collector/certs/server.key
+              subPath: tls.key
+              readOnly: true
+      {{- end }}
+      containers:
+        - name: otel-collector
+          image: {{ .Values.otelCollector.image.image }}:{{ .Values.otelCollector.image.tag | default "latest" }}
+          imagePullPolicy: {{ .Values.otelCollector.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          env:
+            - name: HOME
+              value: "/root"
+          ports:
+            - name: otlp
+              containerPort: 4317
+              protocol: TCP
+            - name: prometheus
+              containerPort: 9464
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /root/.flightctl/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            {{- if .Values.certManager.enabled }}
+            - name: ca-secret
+              mountPath: /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+              subPath: tls.crt
+              readOnly: true
+            - name: otel-collector-tls
+              mountPath: /etc/otel-collector/certs/server.crt
+              subPath: tls.crt
+              readOnly: true
+            - name: otel-collector-tls
+              mountPath: /etc/otel-collector/certs/server.key
+              subPath: tls.key
+              readOnly: true
+            - name: ca-secret
+              mountPath: /etc/otel-collector/certs/ca.crt
+              subPath: tls.crt
+              readOnly: true
+            {{- end }}
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: prometheus
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: prometheus
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: flightctl-otel-collector-config
+        {{- if .Values.certManager.enabled }}
+        - name: ca-secret
+          secret:
+            secretName: flightctl-ca-secret
+        - name: otel-collector-tls
+          secret:
+            secretName: otel-collector-tls
+        {{- end }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flightctl-otel-collector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    flightctl.service: flightctl-otel-collector
+spec:
+  type: ClusterIP
+  ports:
+    - name: otlp
+      port: 4317
+      targetPort: otlp
+      protocol: TCP
+    - name: prometheus
+      port: 9464
+      targetPort: prometheus
+      protocol: TCP
+  selector:
+    flightctl.service: flightctl-otel-collector
+
+{{- if eq .Values.global.exposeServicesMethod "route" }}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: flightctl-otel-collector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    flightctl.service: flightctl-otel-collector
+spec:
+  host: otel-collector{{ if .Values.global.baseDomain }}.{{ .Values.global.baseDomain }}{{ end }}
+  port:
+    targetPort: prometheus
+  to:
+    kind: Service
+    name: flightctl-otel-collector
+    weight: 100
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+{{- end }}
+
+{{- if eq .Values.global.exposeServicesMethod "gateway" }}
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: flightctl-otel-collector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    flightctl.service: flightctl-otel-collector
+spec:
+  parentRefs:
+    - name: flightctl-gateway
+      namespace: {{ .Release.Namespace }}
+  hostnames:
+    - "otel-collector{{ if .Values.global.baseDomain }}.{{ .Values.global.baseDomain }}{{ end }}"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: flightctl-otel-collector
+          port: 9464
+{{- end }}
+{{- end }} 
