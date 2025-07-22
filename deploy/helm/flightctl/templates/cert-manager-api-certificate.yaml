@@ -12,9 +12,11 @@ spec:
   commonName: flightctl-api
   dnsNames:
     - flightctl-api
-    - flightctl-api.$(NAMESPACE)
-    - flightctl-api.$(NAMESPACE).svc
-    - flightctl-api.$(NAMESPACE).svc.cluster.local
+    - flightctl-api.{{ .Release.Namespace }}
+    - flightctl-api.{{ .Release.Namespace }}.svc
+    - flightctl-api.{{ .Release.Namespace }}.svc.cluster.local
+    - api.{{ include "flightctl.getBaseDomain" . }}
+    - agent-api.{{ include "flightctl.getBaseDomain" . }}
   duration: 2160h # 90 days
   renewBefore: 360h # 15 days
 {{- end }} 

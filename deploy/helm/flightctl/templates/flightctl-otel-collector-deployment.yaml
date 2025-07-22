@@ -98,6 +98,9 @@ spec:
         - name: otel-collector
           image: {{ .Values.otelCollector.image.image }}:{{ .Values.otelCollector.image.tag | default "latest" }}
           imagePullPolicy: {{ .Values.otelCollector.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          args:
+            - "--config"
+            - "/root/.flightctl/config.yaml"
           env:
             - name: HOME
               value: "/root"

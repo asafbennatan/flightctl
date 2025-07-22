@@ -18,6 +18,12 @@ render_service() {
     local source_dir="$2/podman"
     local standalone="$3"
 
+    # Skip otel-collector service for agent builds
+    if [[ "$service_name" == "otel-collector" ]]; then
+        echo "Skipping otel-collector service for agent build"
+        return 0
+    fi
+
     # Process container files
     if [[ "$standalone" == "standalone" ]]; then
         # Standalone mode - use only the standalone container file

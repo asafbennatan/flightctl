@@ -66,8 +66,8 @@ otelCollector:
   image:
     image: localhost/flightctl-otel-collector
     tag: latest
-prometheus:
-  enabled: true
+  prometheus:
+    enabled: true
 
 certManager:
   enabled: true

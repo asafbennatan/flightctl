@@ -2,7 +2,6 @@ global:
   nodePorts:
     registry: 5000
     gitserver: 3222
-    prometheus: 9090
     jaegerUi: 16686
   registryIP: "127.0.0.1"  # Local IP for registry certificate
 registry:

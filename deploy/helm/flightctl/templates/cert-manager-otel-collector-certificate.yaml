@@ -12,9 +12,9 @@ spec:
   commonName: otel-collector
   dnsNames:
     - otel-collector
-    - otel-collector.$(NAMESPACE)
-    - otel-collector.$(NAMESPACE).svc
-    - otel-collector.$(NAMESPACE).svc.cluster.local
+    - otel-collector.{{ .Release.Namespace }}
+    - otel-collector.{{ .Release.Namespace }}.svc
+    - otel-collector.{{ .Release.Namespace }}.svc.cluster.local
   duration: 2160h # 90 days
   renewBefore: 360h # 15 days
 {{- end }} 

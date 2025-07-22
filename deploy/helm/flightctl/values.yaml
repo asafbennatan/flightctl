@@ -74,6 +74,7 @@ global:
     keycloak: 8081
     alertmanagerProxy: 8443
     otelCollector: 9464
+    prometheus: 9090
   gatewayPorts:
     tls: 443
     http: 80
@@ -186,8 +187,23 @@ otelCollector:
         receivers: ["otlp"]
         processors: ["deviceid", "transform"]
         exporters: ["prometheus"]
-prometheus:
-  enabled: false
+  # Add Prometheus deployment as part of otel-collector
+  prometheus:
+    enabled: false  # Disabled by default, enabled in non-e2e environments
+    image:
+      image: quay.io/prometheus/prometheus
+      tag: "v2.54.1"
+      pullPolicy: ""
+    config:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
 ui:
   enabled: true
   api:
