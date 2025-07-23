@@ -282,6 +282,7 @@ func (caClient *CAClient) IssueRequestedClientCertificate(ctx context.Context, c
 func (caClient *CAClient) IssueRequestedServerCertificateAsX509(ctx context.Context, csr *x509.CertificateRequest, expirySeconds int, opts ...CertOption) (*x509.Certificate, error) {
 	return caClient.caBackend.IssueRequestedCertificateAsX509(ctx, csr, expirySeconds, []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}, opts...)
 }
+
 func (caClient *CAClient) IssueRequestedServerCertificate(ctx context.Context, csr *x509.CertificateRequest, expirySeconds int, opts ...CertOption) ([]byte, error) {
 	cert, err := caClient.IssueRequestedServerCertificateAsX509(ctx, csr, expirySeconds, opts...)
 	if err != nil {
