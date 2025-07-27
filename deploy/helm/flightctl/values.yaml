@@ -73,6 +73,7 @@ global:
     keycloak: 8081
     alertmanagerProxy: 8443
     otelCollector: 9464
+    otelCollectorOtlp: 4317
     prometheus: 9090
   gatewayPorts:
     tls: 443
@@ -191,6 +192,8 @@ otelCollector:
       cnauthenticator:
         printCN: true
         logLevel: "info"
+    processors:
+      deviceid: {}
     pipelines:
       metrics:
         receivers: ["otlp"]

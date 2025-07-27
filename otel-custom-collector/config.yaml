@@ -17,6 +17,7 @@ processors:
       - context: datapoint
         statements:
           - set(attributes["device_id"], resource.attributes["device_id"])
+          - set(attributes["org_id"], resource.attributes["org_id"])
 
 exporters:
   prometheus:

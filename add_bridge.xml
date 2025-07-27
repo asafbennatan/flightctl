@@ -1,0 +1,4 @@
+<interface type='bridge'>
+  <source bridge='virbr0'/>
+  <model type='virtio'/>
+</interface> 

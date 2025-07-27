@@ -114,7 +114,7 @@ func main() {
 				},
 				Processors: map[component.Type]processor.Factory{
 					component.MustNewType("transform"): transformprocessor.NewFactory(),
-					component.MustNewType("deviceid"):  deviceidprocessor.NewFactory(cfg),
+					component.MustNewType("deviceid"):  deviceidprocessor.NewFactory(),
 				},
 				Exporters: map[component.Type]exporter.Factory{
 					component.MustNewType("prometheus"): prometheusexporter.NewFactory(),

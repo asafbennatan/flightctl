@@ -52,6 +52,7 @@ func ToOTelYAMLConfig(cfg *config.Config) map[string]interface{} {
 					"context": "datapoint",
 					"statements": []string{
 						"set(attributes[\"device_id\"], resource.attributes[\"device_id\"])",
+						"set(attributes[\"org_id\"], resource.attributes[\"org_id\"])",
 					},
 				},
 			},

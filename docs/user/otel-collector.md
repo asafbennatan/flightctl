@@ -78,58 +78,9 @@ otelCollector:
 
 **Note**: The script automatically places certificates in `/etc/otel-collector/certs/` with the correct filenames and permissions.
 
-### 2. Manual Certificate Creation
+### 2. Certificate Creation
 
-Since the OpenTelemetry collector is a service component, you need to manually create a Certificate Signing Request (CSR) using the FlightCtl CLI.
-
-#### Step 1: Generate Private Key and CSR
-
-Use the FlightCtl CLI to create a CSR for the OpenTelemetry collector:
-
-```bash
-# Create a CSR for the OpenTelemetry collector
-./bin/flightctl certificate request \
-  -n svc-otel-collector \
-  -s flightctl.io/server-svc \
-  -x 100d \
-  -o "" \
-  -d ~/test-certs
-```
-
-**Important Notes:**
-- The `-n` parameter must start with `svc-` prefix as required by the server service signer
-- Use `flightctl.io/server-svc` as the signer name (`-s` parameter)
-- The certificate will be valid for 100 days by default (`-x` parameter)
-- The `-o` parameter is empty for no organization
-- The `-d` parameter specifies the output directory
-
-#### Step 2: Check and Approve the CSR
-
-The CSR will be created with a random suffix. You need to approve it:
-
-```bash
-# List CSRs to find the one you just created
-./bin/flightctl get csr
-
-# Approve the CSR (replace with the actual CSR name from the list)
-./bin/flightctl approve csr/svc-otel-collector-<random-suffix>
-```
-
-#### Step 3: Extract the CA Certificate
-
-Get the CA certificate from the enrollment configuration:
-
-```bash
-# Get the enrollment config and extract CA certificate
-./bin/flightctl enrollmentconfig > enrollment-config.yaml
-
-# Extract the CA certificate data (base64 decoded)
-yq '.clusters[0].cluster.certificate-authority-data' enrollment-config.yaml | base64 -d > ca.crt
-```
-
-#### Step 4: Deploy Certificates
-
-After creating the certificates, you need to deploy them according to your deployment type:
+Since the OpenTelemetry collector is a service component, you need to manually create a Certificate Signing Request (CSR) using OpenSSL and flightctl.
 
 ### 3. Deployment-Specific Certificate Handling
 
@@ -141,22 +92,43 @@ For Podman/Systemd deployments using quadlets:
 
 1. **Generate certificates** (if not already done):
    ```bash
-   ./bin/flightctl certificate request \
-     -n svc-otel-collector \
-     -s flightctl.io/server-svc \
-     -x 100d \
-     -o "" \
-     -d ./certs
+   # Create directory for certificates
+   mkdir -p ./certs
+   
+   # Generate ECDSA private key (PEM format - matches flightctl default)
+   openssl ecparam -genkey -name prime256v1 -out ./certs/svc-otel-collector.key
+   
+   # Create CSR using OpenSSL with DNS names and IP addresses
+   openssl req -new -key ./certs/svc-otel-collector.key \
+     -subj "/CN=svc-otel-collector" \
+     -addext "subjectAltName=DNS:localhost,DNS:svc-otel-collector,DNS:otel-collector,DNS:flightctl-otel-collector,IP:127.0.0.1,IP:0.0.0.0" \
+     -out ./certs/svc-otel-collector.csr
+   
+   # Create CSR YAML file for flightctl
+   cat > ./certs/csr.yaml << EOF
+   apiVersion: flightctl.io/v1alpha1
+   kind: CertificateSigningRequest
+   metadata:
+     name: svc-otel-collector
+   spec:
+     request: $(base64 -w 0 ./certs/svc-otel-collector.csr)
+     signerName: flightctl.io/server-svc
+     usages: ["clientAuth", "serverAuth"]
+     expirationSeconds: 8640000
+   EOF
+   
+   # Apply the CSR to flightctl
+   ./bin/flightctl apply -f ./certs/csr.yaml
    ```
 
 2. **Approve the CSR and extract certificates**:
    ```bash
    # Find and approve the CSR
    ./bin/flightctl get csr
-   ./bin/flightctl approve csr/svc-otel-collector-<random-suffix>
+   ./bin/flightctl approve csr/svc-otel-collector
    
    # Extract the issued certificate from the approved CSR
-   ./bin/flightctl get csr/svc-otel-collector-<random-suffix> -o yaml | yq '.status.certificate' | base64 -d > ./certs/svc-otel-collector.crt
+   ./bin/flightctl get csr/svc-otel-collector -o yaml | yq '.status.certificate' | base64 -d > ./certs/svc-otel-collector.crt
    
    # Extract CA certificate
    ./bin/flightctl enrollmentconfig |  yq '.enrollment-service.service.certificate-authority-data' | base64 -d > ./certs/ca.crt

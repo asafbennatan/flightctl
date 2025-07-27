@@ -128,6 +128,20 @@ type otelCollectorConfig struct {
 
 	// Pipeline configuration
 	Pipelines *otelPipelinesConfig `json:"pipelines,omitempty"`
+
+	// Processors configuration
+	Processors *otelProcessorsConfig `json:"processors,omitempty"`
+}
+
+// Processors configuration for OpenTelemetry collector
+type otelProcessorsConfig struct {
+	// Device ID processor configuration
+	DeviceID *otelProcessorConfig `json:"deviceid,omitempty"`
+}
+
+// Device ID processor configuration
+type otelProcessorConfig struct {
+	// Whether to enable the processor
 }
 
 // OTLP receiver configuration
@@ -294,6 +308,9 @@ func NewDefault(opts ...ConfigOption) *Config {
 					PrintCN:  true,
 					LogLevel: "info",
 				},
+			},
+			Processors: &otelProcessorsConfig{
+				DeviceID: &otelProcessorConfig{},
 			},
 			Pipelines: &otelPipelinesConfig{
 				Metrics: &otelPipelineConfig{

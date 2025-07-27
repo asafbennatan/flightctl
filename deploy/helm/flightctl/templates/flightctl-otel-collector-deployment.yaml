@@ -39,6 +39,15 @@ data:
           printCN: {{ .Values.otelCollector.config.extensions.cnauthenticator.printCN }}
           logLevel: {{ .Values.otelCollector.config.extensions.cnauthenticator.logLevel | quote }}
       
+      processors:
+        deviceid: {}
+        transform:
+          metric_statements:
+            - context: datapoint
+              statements:
+                - set(attributes["device_id"], resource.attributes["device_id"])
+                - set(attributes["org_id"], resource.attributes["org_id"])
+
       pipelines:
         metrics:
           receivers: {{ .Values.otelCollector.config.pipelines.metrics.receivers | toJson }}
@@ -148,16 +157,24 @@ metadata:
   labels:
     flightctl.service: flightctl-otel-collector
 spec:
-  type: ClusterIP
+  {{- if and .Values.global.nodePorts.otelCollector (eq (include "flightctl.getServiceExposeMethod" .) "nodePort") }}
+  type: NodePort
+  {{- end }}
   ports:
     - name: otlp
       port: 4317
       targetPort: otlp
       protocol: TCP
+      {{- if and .Values.global.nodePorts.otelCollectorOtlp (eq (include "flightctl.getServiceExposeMethod" .) "nodePort") }}
+      nodePort: {{ .Values.global.nodePorts.otelCollectorOtlp }}
+      {{- end }}
     - name: prometheus
       port: 9464
       targetPort: {{ $prometheusPort | int }}
       protocol: TCP
+      {{- if and .Values.global.nodePorts.otelCollector (eq (include "flightctl.getServiceExposeMethod" .) "nodePort") }}
+      nodePort: {{ .Values.global.nodePorts.otelCollector }}
+      {{- end }}
   selector:
     flightctl.service: flightctl-otel-collector
 
@@ -205,6 +222,6 @@ spec:
             value: /
       backendRefs:
         - name: flightctl-otel-collector
-          port: 9464
+          port: {{ $prometheusPort | int }}
 {{- end }}
 {{- end }} 
