@@ -34,6 +34,7 @@ Welcome to the Flight Control user documentation.
 * **[Alerts and Monitoring](alerts-monitoring.md)** - How to monitor device health and manage alerts.
 * **[OpenTelemetry Collector Setup](otel-collector.md)** - Setup guide for the OpenTelemetry collector with TLS certificates.
 * **[Managing Device Fleets](managing-fleets.md)** - How to manage fleets of devices.
+* **[OpenTelemetry Collector Setup](otel-collector-certificates.md)** - Setup guide for the OpenTelemetry collector with TLS certificates.
   * [Understanding Fleets](managing-fleets.md#understanding-fleets)
   * [Selecting Devices into a Fleet](managing-fleets.md#selecting-devices-into-a-fleet)
   * [Defining Device Templates](managing-fleets.md#defining-device-templates)
