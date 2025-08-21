@@ -131,12 +131,14 @@ const (
 
 // Defines values for DeviceSummaryStatusType.
 const (
-	DeviceSummaryStatusDegraded   DeviceSummaryStatusType = "Degraded"
-	DeviceSummaryStatusError      DeviceSummaryStatusType = "Error"
-	DeviceSummaryStatusOnline     DeviceSummaryStatusType = "Online"
-	DeviceSummaryStatusPoweredOff DeviceSummaryStatusType = "PoweredOff"
-	DeviceSummaryStatusRebooting  DeviceSummaryStatusType = "Rebooting"
-	DeviceSummaryStatusUnknown    DeviceSummaryStatusType = "Unknown"
+	DeviceSummaryStatusDegraded                         DeviceSummaryStatusType = "Degraded"
+	DeviceSummaryStatusError                            DeviceSummaryStatusType = "Error"
+	DeviceSummaryStatusOnline                           DeviceSummaryStatusType = "Online"
+	DeviceSummaryStatusPaused                           DeviceSummaryStatusType = "Paused"
+	DeviceSummaryStatusPoweredOff                       DeviceSummaryStatusType = "PoweredOff"
+	DeviceSummaryStatusRebooting                        DeviceSummaryStatusType = "Rebooting"
+	DeviceSummaryStatusUnknown                          DeviceSummaryStatusType = "Unknown"
+	DeviceSummaryStatusWaitingForConnectionAfterRestore DeviceSummaryStatusType = "WaitingForConnectionAfterRestore"
 )
 
 // Defines values for DeviceUpdatedStatusType.
@@ -177,6 +179,7 @@ const (
 	EventReasonDeviceMemoryWarning             EventReason = "DeviceMemoryWarning"
 	EventReasonDeviceMultipleOwnersDetected    EventReason = "DeviceMultipleOwnersDetected"
 	EventReasonDeviceMultipleOwnersResolved    EventReason = "DeviceMultipleOwnersResolved"
+	EventReasonDevicePaused                    EventReason = "DevicePaused"
 	EventReasonDeviceSpecInvalid               EventReason = "DeviceSpecInvalid"
 	EventReasonDeviceSpecValid                 EventReason = "DeviceSpecValid"
 	EventReasonDeviceUpdateFailed              EventReason = "DeviceUpdateFailed"
