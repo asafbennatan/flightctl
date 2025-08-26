@@ -22,22 +22,27 @@ func NewSubscription() Subscription {
 	return ring_buffer.NewRingBuffer[*v1alpha1.Device](3)
 }
 
+// ReEnrollmentCallback defines the callback function signature for re-enrollment
+type ReEnrollmentCallback func(ctx context.Context) error
+
 type Publisher interface {
 	Run(ctx context.Context, wg *sync.WaitGroup)
 	Subscribe() Subscription
 	SetClient(client.Management)
+	SetReEnrollmentCallback(ReEnrollmentCallback)
 }
 
 type publisher struct {
-	managementClient client.Management
-	deviceName       string
-	subscribers      []Subscription
-	lastKnownVersion string
-	interval         time.Duration
-	stopped          atomic.Bool
-	log              *log.PrefixLogger
-	backoff          wait.Backoff
-	mu               sync.Mutex
+	managementClient     client.Management
+	deviceName           string
+	subscribers          []Subscription
+	lastKnownVersion     string
+	interval             time.Duration
+	stopped              atomic.Bool
+	log                  *log.PrefixLogger
+	backoff              wait.Backoff
+	mu                   sync.Mutex
+	reEnrollmentCallback ReEnrollmentCallback
 }
 
 func New(deviceName string,
@@ -81,7 +86,12 @@ func (n *publisher) getRenderedFromManagementAPIWithRetry(
 		return true, errors.ErrNoContent
 
 	default:
-		// unexpected status codes
+		// For 5xx errors, the management client will already handle infinite retry
+		// For other unexpected status codes, return error
+		if statusCode >= 500 && statusCode < 600 {
+			// This should not happen as the management client handles 5xx retries
+			return false, fmt.Errorf("%w: unexpected 5xx status code %d (should be handled by retry logic)", errors.ErrGettingDeviceSpec, statusCode)
+		}
 		return false, fmt.Errorf("%w: unexpected status code %d", errors.ErrGettingDeviceSpec, statusCode)
 	}
 }
@@ -99,6 +109,31 @@ func (n *publisher) Subscribe() Subscription {
 
 func (n *publisher) SetClient(client client.Management) {
 	n.managementClient = client
+}
+
+func (n *publisher) SetReEnrollmentCallback(callback ReEnrollmentCallback) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.reEnrollmentCallback = callback
+}
+
+func (n *publisher) handleDeviceNotFound(ctx context.Context) {
+	n.mu.Lock()
+	callback := n.reEnrollmentCallback
+	n.mu.Unlock()
+
+	if callback == nil {
+		n.log.Error("Device not found but no re-enrollment callback is set")
+		return
+	}
+
+	n.log.Info("Initiating device re-enrollment due to 404 error")
+	if err := callback(ctx); err != nil {
+		n.log.Errorf("Re-enrollment failed: %v", err)
+		return
+	}
+
+	n.log.Info("Re-enrollment completed successfully, resuming normal operation")
 }
 
 func (n *publisher) pollAndPublish(ctx context.Context) {
@@ -124,6 +159,14 @@ func (n *publisher) pollAndPublish(ctx context.Context) {
 			n.log.Debug("No new template version from management service")
 			return
 		}
+
+		// Check for device not found error and trigger re-enrollment
+		if errors.Is(err, errors.ErrDeviceNotFound) {
+			n.log.Warn("Device not found on server, triggering re-enrollment")
+			n.handleDeviceNotFound(ctx)
+			return
+		}
+
 		n.log.Errorf("Received non-retryable error from management service: %v", err)
 		return
 	}

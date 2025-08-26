@@ -51,6 +51,9 @@ type LifecycleManager struct {
 	log     *log.PrefixLogger
 }
 
+// ReEnrollmentCallback defines the callback function signature for re-enrollment
+type ReEnrollmentCallback func(ctx context.Context) error
+
 // Manager is responsible for managing the device lifecycle.
 func NewManager(
 	deviceName string,
@@ -223,6 +226,51 @@ func (m *LifecycleManager) wipeAndReboot(ctx context.Context) error {
 func (m *LifecycleManager) IsInitialized() bool {
 	// check if the identity provider has a certificate
 	return m.identityProvider.HasCertificate()
+}
+
+// ReEnroll clears certificates, resets enrollment state, and restarts the enrollment workflow
+func (m *LifecycleManager) ReEnroll(ctx context.Context, status *v1alpha1.DeviceStatus) error {
+	m.log.Warn("Device not found on server - starting re-enrollment process")
+
+	// Step 1: Clear certificates and reset enrollment state
+	if err := m.identityProvider.WipeCredentials(); err != nil {
+		m.log.Errorf("Failed to wipe credentials during re-enrollment: %v", err)
+		return fmt.Errorf("failed to wipe credentials during re-enrollment: %w", err)
+	}
+
+	m.log.Info("Cleared device certificates and credentials")
+
+	// Step 2: Write enrollment banner to indicate re-enrollment is in progress
+	if err := m.writeEnrollmentBanner(); err != nil {
+		m.log.Errorf("Failed to write enrollment banner during re-enrollment: %v", err)
+		return fmt.Errorf("failed to write enrollment banner during re-enrollment: %w", err)
+	}
+
+	// Step 3: Restart the enrollment workflow
+	if err := m.enrollmentRequest(ctx, status); err != nil {
+		m.log.Errorf("Failed to create enrollment request during re-enrollment: %v", err)
+		return fmt.Errorf("failed to create enrollment request during re-enrollment: %w", err)
+	}
+
+	m.log.Info("Re-enrollment request submitted, waiting for approval")
+
+	// Step 4: Wait for enrollment to be approved
+	err := wait.ExponentialBackoffWithContext(ctx, m.backoff, func(ctx context.Context) (bool, error) {
+		return m.verifyEnrollment(ctx)
+	})
+	if err != nil {
+		m.log.Errorf("Re-enrollment verification failed: %v", err)
+		return fmt.Errorf("re-enrollment verification failed: %w", err)
+	}
+
+	// Step 5: Write management banner to indicate successful re-enrollment
+	if err := m.writeManagementBanner(); err != nil {
+		m.log.Errorf("Failed to write management banner after re-enrollment: %v", err)
+		return fmt.Errorf("failed to write management banner after re-enrollment: %w", err)
+	}
+
+	m.log.Info("Re-enrollment completed successfully")
+	return nil
 }
 
 func (m *LifecycleManager) verifyEnrollment(ctx context.Context) (bool, error) {

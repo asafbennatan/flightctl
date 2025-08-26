@@ -94,7 +94,16 @@ func (f *fileProvider) CreateManagementClient(config *baseclient.Config, metrics
 		return nil, fmt.Errorf("management client certificate does not exist at %q - device needs re-enrollment", config.GetClientCertificatePath())
 	}
 
-	httpClient, err := client.NewFromConfig(config)
+	// Create re-enrollment callback that will be triggered on device 404 errors
+	reEnrollmentCallback := func(ctx context.Context) error {
+		// For file-based identity, we need to clear certificates and restart enrollment
+		// This is a simplified implementation - in practice, you might want to
+		// coordinate with the lifecycle manager for proper re-enrollment
+		f.log.Warn("Device not found - clearing certificates for re-enrollment")
+		return f.WipeCredentials()
+	}
+
+	httpClient, err := client.NewFromConfig(config, reEnrollmentCallback)
 	if err != nil {
 		return nil, fmt.Errorf("create management client: %w", err)
 	}

@@ -51,7 +51,10 @@ var (
 	ErrParseRenderedVersion = errors.New("failed to convert version to integer")
 	ErrUnmarshalSpec        = errors.New("unmarshalling spec")
 	ErrInvalidSpecType      = errors.New("invalid spec type")
-	ErrInvalidSpec          = errors.New("invalid spec")
+
+	// device not found
+	ErrDeviceNotFound = errors.New("device not found - re-enrollment required")
+	ErrInvalidSpec    = errors.New("invalid spec")
 
 	// hooks
 	ErrInvalidTokenFormat             = errors.New("invalid token: formatting")

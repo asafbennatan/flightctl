@@ -224,6 +224,13 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.log,
 	)
 
+	// Set up re-enrollment callback for device publisher
+	devicePublisher.SetReEnrollmentCallback(func(ctx context.Context) error {
+		// Get current device status for re-enrollment
+		currentStatus := statusManager.Get(ctx)
+		return lifecycleManager.ReEnroll(ctx, currentStatus)
+	})
+
 	// register status exporters
 	statusManager.RegisterStatusExporter(applicationManager)
 	statusManager.RegisterStatusExporter(systemdManager)
@@ -350,7 +357,9 @@ func (a *Agent) Run(ctx context.Context) error {
 }
 
 func newEnrollmentClient(cfg *agent_config.Config) (client.Enrollment, error) {
-	httpClient, err := client.NewFromConfig(&cfg.EnrollmentService.Config)
+	// For enrollment client, we don't need device 404 handling since enrollment
+	// is for creating new devices, not managing existing ones
+	httpClient, err := client.NewFromConfig(&cfg.EnrollmentService.Config, nil)
 	if err != nil {
 		return nil, err
 	}

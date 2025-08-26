@@ -13,7 +13,6 @@ import (
 
 	grpc_v1 "github.com/flightctl/flightctl/api/grpc/v1"
 	"github.com/flightctl/flightctl/internal/agent/client"
-	agent_client "github.com/flightctl/flightctl/internal/api/client/agent"
 	base_client "github.com/flightctl/flightctl/internal/client"
 	"github.com/flightctl/flightctl/internal/tpm"
 	"github.com/flightctl/flightctl/pkg/log"
@@ -142,7 +141,17 @@ func (t *tpmProvider) CreateManagementClient(config *base_client.Config, metrics
 		},
 	}
 
-	clientWithResponses, err := agent_client.NewClientWithResponses(configCopy.Service.Server, agent_client.WithHTTPClient(httpClient))
+	// Create re-enrollment callback that will be triggered on device 404 errors
+	reEnrollmentCallback := func(ctx context.Context) error {
+		// For TPM-based identity, we need to clear certificates and restart enrollment
+		// This is a simplified implementation - in practice, you might want to
+		// coordinate with the lifecycle manager for proper re-enrollment
+		t.log.Warn("Device not found - clearing TPM credentials for re-enrollment")
+		return t.WipeCredentials()
+	}
+
+	// Use the same consistent approach as file provider
+	clientWithResponses, err := client.NewFromConfigWithHTTPClient(configCopy, httpClient, reEnrollmentCallback)
 	if err != nil {
 		return nil, fmt.Errorf("creating client: %w", err)
 	}

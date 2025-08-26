@@ -17,6 +17,8 @@ var (
 	ErrEmptyResponse = errors.New("empty response")
 )
 
+// Note: 5xx retry logic and device 404 detection have been moved to HTTP client middleware
+
 func NewManagement(
 	client *client.ClientWithResponses, cb RPCMetricsCallback,
 ) Management {
@@ -41,46 +43,58 @@ func (m *management) SetRPCMetricsCallback(cb RPCMetricsCallback) {
 // UpdateDeviceStatus updates the status of the device with the given name.
 func (m *management) UpdateDeviceStatus(ctx context.Context, name string, device v1alpha1.Device, rcb ...client.RequestEditorFn) error {
 	start := time.Now()
+	
 	resp, err := m.client.ReplaceDeviceStatusWithResponse(ctx, name, device, rcb...)
-
-	if m.rpcMetricsCallbackFunc != nil {
-		m.rpcMetricsCallbackFunc("update_device_status_duration", time.Since(start).Seconds(), err)
-	}
-
 	if err != nil {
+		if m.rpcMetricsCallbackFunc != nil {
+			m.rpcMetricsCallbackFunc("update_device_status_duration", time.Since(start).Seconds(), err)
+		}
 		return err
 	}
+
 	if resp.HTTPResponse != nil {
 		defer func() { _ = resp.HTTPResponse.Body.Close() }()
 	}
 
-	if resp.StatusCode() != http.StatusOK {
-		return fmt.Errorf("update device status failed: %s", resp.Status())
+	var finalErr error
+	statusCode := resp.StatusCode()
+	if statusCode != http.StatusOK {
+		finalErr = fmt.Errorf("update device status failed: %s", resp.Status())
 	}
 
-	return nil
+	if m.rpcMetricsCallbackFunc != nil {
+		m.rpcMetricsCallbackFunc("update_device_status_duration", time.Since(start).Seconds(), finalErr)
+	}
+
+	return finalErr
 }
 
 func (m *management) PatchDeviceStatus(ctx context.Context, name string, patch v1alpha1.PatchRequest, rcb ...client.RequestEditorFn) error {
 	start := time.Now()
+
 	resp, err := m.client.PatchDeviceStatusWithApplicationJSONPatchPlusJSONBodyWithResponse(ctx, name, patch, rcb...)
-
-	if m.rpcMetricsCallbackFunc != nil {
-		m.rpcMetricsCallbackFunc("patch_device_status_duration", time.Since(start).Seconds(), err)
-	}
-
 	if err != nil {
+		if m.rpcMetricsCallbackFunc != nil {
+			m.rpcMetricsCallbackFunc("patch_device_status_duration", time.Since(start).Seconds(), err)
+		}
 		return err
 	}
+
 	if resp.HTTPResponse != nil {
 		defer resp.HTTPResponse.Body.Close()
 	}
 
-	if resp.StatusCode() < 200 || resp.StatusCode() >= 300 {
-		return fmt.Errorf("patch device status failed: %s", resp.Status())
+	var finalErr error
+	statusCode := resp.StatusCode()
+	if statusCode < 200 || statusCode >= 300 {
+		finalErr = fmt.Errorf("patch device status failed: %s", resp.Status())
 	}
 
-	return nil
+	if m.rpcMetricsCallbackFunc != nil {
+		m.rpcMetricsCallbackFunc("patch_device_status_duration", time.Since(start).Seconds(), finalErr)
+	}
+
+	return finalErr
 }
 
 // GetRenderedDevice returns the rendered device spec for the given device
@@ -89,27 +103,32 @@ func (m *management) PatchDeviceStatus(ctx context.Context, name string, patch v
 // and the response code is returned which should be evaluated but the caller.
 func (m *management) GetRenderedDevice(ctx context.Context, name string, params *v1alpha1.GetRenderedDeviceParams, rcb ...client.RequestEditorFn) (*v1alpha1.Device, int, error) {
 	start := time.Now()
+
 	resp, err := m.client.GetRenderedDeviceWithResponse(ctx, name, params, rcb...)
-
-	if m.rpcMetricsCallbackFunc != nil {
-		m.rpcMetricsCallbackFunc("get_rendered_device_spec_duration", time.Since(start).Seconds(), err)
-	}
-
 	if err != nil {
+		if m.rpcMetricsCallbackFunc != nil {
+			m.rpcMetricsCallbackFunc("get_rendered_device_spec_duration", time.Since(start).Seconds(), err)
+		}
 		return nil, http.StatusInternalServerError, err
 	}
+
 	if resp.HTTPResponse != nil {
 		defer func() { _ = resp.HTTPResponse.Body.Close() }()
 	}
 
+	statusCode := resp.StatusCode()
+	var result *v1alpha1.Device
+
+	// For successful responses, extract the result
 	if resp.JSON200 != nil {
-		return resp.JSON200, resp.StatusCode(), nil
+		result = resp.JSON200
 	}
 
-	// since there is no JSON204 to return, we have to let the caller evaluate
-	// the status code
+	if m.rpcMetricsCallbackFunc != nil {
+		m.rpcMetricsCallbackFunc("get_rendered_device_spec_duration", time.Since(start).Seconds(), nil)
+	}
 
-	return nil, resp.StatusCode(), nil
+	return result, statusCode, nil
 }
 
 // CreateCertificateSigningRequest submits a new CSR to the management server for certificate approval.
