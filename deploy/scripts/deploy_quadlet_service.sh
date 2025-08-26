@@ -10,6 +10,59 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 source "${SCRIPT_DIR}"/shared.sh
 source "${SCRIPT_DIR}"/secrets.sh
 
+setup_network_route() {
+    # Wait a moment for the network to be fully established
+    sleep 3
+    
+    echo "Setting up network route for podman networks..."
+    
+    # For standalone services, we typically use the default podman network
+    # Check if flightctl network exists first, otherwise use default podman network
+    local target_network="podman"
+    if sudo podman network exists flightctl; then
+        target_network="flightctl"
+        echo "  Using flightctl network"
+    else
+        echo "  Using default podman network"
+    fi
+    
+    # Get the subnet of the target network
+    local network_subnet=$(sudo podman network inspect "$target_network" --format '{{range .Subnets}}{{.Subnet}}{{end}}' 2>/dev/null)
+    
+    if [[ -n "$network_subnet" ]]; then
+        # Get the bridge interface name for the network
+        local bridge_name=$(sudo podman network inspect "$target_network" --format '{{.NetworkInterface}}' 2>/dev/null)
+        
+        # If bridge name is empty, try to find it by looking for cni- prefixed interfaces
+        if [[ -z "$bridge_name" ]]; then
+            bridge_name=$(ip link show | grep -o 'cni-podman[0-9]*' | head -n1)
+        fi
+        
+        # If still empty, fall back to podman0 (default)
+        if [[ -z "$bridge_name" ]]; then
+            bridge_name="podman0"
+        fi
+        
+        echo "  Network: $target_network"
+        echo "  Network subnet: $network_subnet"
+        echo "  Bridge interface: $bridge_name"
+        
+        # Check if route already exists
+        if ip route show table 75 | grep -q "$network_subnet"; then
+            echo "  Route already exists, removing old route first..."
+            sudo ip route del "$network_subnet" dev "$bridge_name" table 75 2>/dev/null || true
+        fi
+        
+        if sudo ip route add "$network_subnet" dev "$bridge_name" table 75 metric 10; then
+            echo "  ✓ Successfully added route: $network_subnet dev $bridge_name table 75 metric 10"
+        else
+            echo "  ✗ Warning: Failed to add network route for $network_subnet"
+        fi
+    else
+        echo "  ✗ Warning: Could not determine network subnet for $target_network"
+    fi
+}
+
 deploy_service() {
     local service_name=$1
     local service_full_name="flightctl-${service_name}.service"
@@ -35,6 +88,9 @@ deploy_service() {
 
     render_service "$service_name" "${SOURCE_DIR}" "standalone"
     start_service "$service_full_name"
+    
+    # Add network route for flightctl network after service starts
+    setup_network_route
 
     echo "Deployment completed for $service_full_name"
 }

@@ -6,6 +6,47 @@ set -eo pipefail
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 source "${SCRIPT_DIR}"/shared.sh
 
+setup_network_route() {
+    # Check if flightctl network exists and get its subnet
+    if podman network exists flightctl; then
+        echo "Configuring network route for flightctl network..."
+        
+        # Get the subnet of the flightctl network
+        local network_subnet=$(podman network inspect flightctl --format '{{range .Subnets}}{{.Subnet}}{{end}}' 2>/dev/null)
+        
+        if [[ -n "$network_subnet" ]]; then
+            # Get the bridge interface name for the flightctl network
+            local bridge_name=$(podman network inspect flightctl --format '{{.NetworkInterface}}' 2>/dev/null)
+            
+            # If bridge name is empty, try to find it by looking for cni- prefixed interfaces
+            if [[ -z "$bridge_name" ]]; then
+                bridge_name=$(ip link show | grep -o 'cni-podman[0-9]*' | head -n1)
+            fi
+            
+            # If still empty, fall back to podman0 (default)
+            if [[ -z "$bridge_name" ]]; then
+                bridge_name="podman0"
+            fi
+            
+            echo "  Network subnet: $network_subnet"
+            echo "  Bridge interface: $bridge_name"
+            
+            # Add the route (remove existing route first if it exists)
+            ip route del "$network_subnet" dev "$bridge_name" table 75 2>/dev/null || true
+            
+            if ip route add "$network_subnet" dev "$bridge_name" table 75 metric 10; then
+                echo "  ✓ Successfully added route: $network_subnet dev $bridge_name table 75 metric 10"
+            else
+                echo "  ✗ Warning: Failed to add network route for $network_subnet"
+            fi
+        else
+            echo "  ✗ Warning: Could not determine flightctl network subnet"
+        fi
+    else
+        echo "  ✗ Warning: flightctl network does not exist"
+    fi
+}
+
 # Function to switch container images from quay.io to locally built ones for development
 switch_to_local_images() {
     echo "Switching container images to locally built ones for development..."
@@ -155,6 +196,10 @@ for service in ${ALL_SERVICES}; do
         echo "  ✗ $service_name ($service) - not active"
     fi
 done
+
+echo ""
+echo "Setting up network route for flightctl network..."
+setup_network_route
 
 echo ""
 echo "You can check status with: sudo systemctl status flightctl.target"

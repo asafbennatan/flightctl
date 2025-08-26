@@ -42,12 +42,21 @@ ensure_secret() {
         if [ -z "${!env_var_name}" ]; then
             echo "Generating password for $env_var_name"
             export "$env_var_name"="$(generate_password)"
+            echo "DEBUG: Generated password for $env_var_name: ${!env_var_name}"
         else
             echo "Using existing environment variable $env_var_name"
+            echo "DEBUG: Using password for $env_var_name: ${!env_var_name}"
         fi
         if ! sudo -E podman secret create --env "$secret_name" "$env_var_name"; then
             echo "Error creating secret $secret_name"
             return 1
+        fi
+    else
+        echo "Secret $secret_name already exists"
+        if [ -n "${!env_var_name}" ]; then
+            echo "DEBUG: Environment variable $env_var_name is set to: ${!env_var_name}"
+        else
+            echo "DEBUG: Environment variable $env_var_name is not set"
         fi
     fi
     return 0
