@@ -128,7 +128,22 @@ build_qcow2_image() {
 
     mkdir -p bin/output
 
-    # Check if qcow2 is already up to date
+    # Try to get cached QCOW2 first
+    if "${SCRIPT_DIR}/qcow2_cache_manager.sh" get; then
+        echo -e "\033[32mUsing cached QCOW2 from registry\033[m"
+        
+        # Still need to check if we need to resize for ACM
+        if is_acm_installed; then
+            echo -e "\033[33mResizing QCOW2 for ACM test (+5G)\033[m"
+            sudo qemu-img resize "$(pwd)"/bin/output/qcow2/disk.qcow2 +5G
+        fi
+        
+        # Reset the owner to the user running make
+        sudo chown -R "${USER}:$(id -gn ${USER})" "$(pwd)"/bin/output
+        return
+    fi
+
+    # Check if qcow2 is already up to date locally
     # Also check if the touch file is newer than the qcow2 (indicating a forced rebuild)
     if [[ -f bin/output/qcow2/disk.qcow2 ]] && [[ -f bin/.e2e-agent-images ]]; then
         TOUCH_FILE_DATE=$(date -u -r bin/.e2e-agent-images "+%Y-%m-%d %H:%M:%S")
@@ -202,6 +217,9 @@ build_qcow2_image() {
     fi
     # Reset the owner to the user running make
     sudo chown -R "${USER}:$(id -gn ${USER})" "$(pwd)"/bin/output
+    
+    # Note: QCOW2 caching to registry is manual - use 'make cache-qcow2' to push
+    echo -e "\033[33mQCOW2 built locally. To cache to registry, run: make cache-qcow2\033[m"
 }
 
 case "$BUILD_TYPE" in

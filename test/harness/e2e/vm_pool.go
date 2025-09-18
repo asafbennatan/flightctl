@@ -139,6 +139,17 @@ func (p *VMPool) createVMForWorker(workerID int) (vm.TestVMInterface, error) {
 
 	fmt.Printf("✅ [VMPool] Worker %d: Overlay disk created successfully\n", workerID)
 
+	// Check if cloud-init configuration is available
+	cloudInitDir := ""
+	if cloudInitPath := os.Getenv("CLOUD_INIT_DIR"); cloudInitPath != "" {
+		if _, err := os.Stat(cloudInitPath); err == nil {
+			cloudInitDir = cloudInitPath
+			fmt.Printf("🔄 [VMPool] Worker %d: Using cloud-init configuration from %s\n", workerID, cloudInitDir)
+		} else {
+			fmt.Printf("⚠️  [VMPool] Worker %d: Cloud-init directory not found: %s\n", workerID, cloudInitPath)
+		}
+	}
+
 	// Create VM using the worker-specific overlay disk
 	newVM, err := vm.NewVM(vm.TestVM{
 		TestDir:       workerDir,
@@ -147,6 +158,8 @@ func (p *VMPool) createVMForWorker(workerID int) (vm.TestVMInterface, error) {
 		VMUser:        "user",
 		SSHPassword:   "user",
 		SSHPort:       p.config.SSHPortBase + workerID,
+		CloudInitDir:  cloudInitDir,
+		CloudInitData: cloudInitDir != "",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create VM: %w", err)

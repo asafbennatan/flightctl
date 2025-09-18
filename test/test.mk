@@ -119,7 +119,7 @@ deploy-e2e-extras: bin/.ssh/id_rsa.pub bin/e2e-certs/ca.pem
 deploy-e2e-ocp-test-vm:
 	sudo --preserve-env=VM_DISK_SIZE_INC test/scripts/create_vm_libvirt.sh ${KUBECONFIG_PATH}
 
-prepare-e2e-test: deploy-e2e-extras bin/output/qcow2/disk.qcow2 build-e2e-containers
+prepare-e2e-test: deploy-e2e-extras get-or-build-qcow2 build-e2e-containers prepare-vm-config prepare-cloud-init-config
 	./test/scripts/prepare_cli.sh
 
 # Build E2E containers with Docker caching
@@ -187,4 +187,51 @@ $(REPORTS)/unit-coverage.out:
 $(REPORTS)/integration-coverage.out:
 	$(MAKE) integration-test || true
 
-.PHONY: unit-test prepare-integration-test integration-test run-integration-test view-coverage prepare-e2e-test deploy-e2e-ocp-test-vm _wait_for_db _run_template_migration _ensure_db_setup_image prepare-swtpm-certs clean-swtpm-certs
+# VM Configuration targets
+prepare-vm-config:
+	@echo "Preparing VM configuration for run-specific data injection..."
+	test/scripts/agent-images/prepare_vm_config.sh
+
+prepare-cloud-init-config: prepare-vm-config
+	@echo "Preparing cloud-init configuration..."
+	test/scripts/agent-images/prepare_cloud_init_config.sh
+
+# QCOW2 caching targets
+get-or-build-qcow2:
+	@echo "Getting or building QCOW2 with caching..."
+	@if ! test/scripts/agent-images/qcow2_cache_manager.sh get; then \
+		echo "No cached QCOW2 found, building new one..."; \
+		$(MAKE) build-generic-qcow2; \
+	fi
+
+build-generic-base:
+	@echo "Building generic base image for QCOW2 caching..."
+	test/scripts/agent-images/build_generic_base.sh container
+
+build-generic-qcow2:
+	@echo "Building QCOW2 from generic base image..."
+	test/scripts/agent-images/build_generic_base.sh qcow2
+
+build-generic-all:
+	@echo "Building generic base image and QCOW2..."
+	test/scripts/agent-images/build_generic_base.sh all
+
+cache-qcow2:
+	@echo "Manually caching QCOW2 to registry..."
+	@echo "⚠️  This will push the QCOW2 to the public registry - ensure this is intended"
+	test/scripts/agent-images/qcow2_cache_manager.sh cache
+
+# Clean targets
+clean-vm-config:
+	@echo "Cleaning VM configuration..."
+	test/scripts/agent-images/prepare_vm_config.sh clean
+
+clean-cloud-init-config:
+	@echo "Cleaning cloud-init configuration..."
+	test/scripts/agent-images/prepare_cloud_init_config.sh clean
+
+clean-qcow2-cache:
+	@echo "Cleaning QCOW2 cache..."
+	rm -rf bin/dnf-cache bin/osbuild-cache
+
+.PHONY: unit-test prepare-integration-test integration-test run-integration-test view-coverage prepare-e2e-test deploy-e2e-ocp-test-vm _wait_for_db _run_template_migration _ensure_db_setup_image prepare-swtpm-certs clean-swtpm-certs prepare-vm-config prepare-cloud-init-config build-generic-base build-generic-qcow2 build-generic-all cache-qcow2 clean-vm-config clean-cloud-init-config clean-qcow2-cache

@@ -1,0 +1,14 @@
+# Containerfile for packaging QCOW2 images as container images for registry caching
+# This allows us to cache the generic QCOW2 template in Quay.io registry
+
+FROM scratch
+
+# Add the QCOW2 file to the image
+ARG QCOW2_FILE=bin/output/qcow2/disk.qcow2
+ARG QCOW2_CREATED_DATE
+
+ADD ${QCOW2_FILE} /qcow2/disk.qcow2
+
+# Add labels for metadata
+LABEL org.flightctl.qcow2.created-date="${QCOW2_CREATED_DATE}" \
+      org.flightctl.qcow2.description="Cached QCOW2 image for E2E tests"
