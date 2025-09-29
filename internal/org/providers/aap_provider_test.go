@@ -26,7 +26,11 @@ func (m *mockAAPIdentity) GetUID() string {
 	return m.userID
 }
 
-func (m *mockAAPIdentity) GetGroups() []string {
+func (m *mockAAPIdentity) GetOrganizations() []string {
+	return []string{}
+}
+
+func (m *mockAAPIdentity) GetRoles() []string {
 	return []string{}
 }
 

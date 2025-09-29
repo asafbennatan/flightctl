@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/flightctl/flightctl/internal/auth/common"
 	"github.com/lestrrat-go/jwx/v2/jwk"
@@ -14,8 +15,7 @@ import (
 )
 
 const (
-	subClaim               = "sub"
-	preferredUsernameClaim = "preferred_username"
+	subClaim = "sub"
 )
 
 type TokenIdentity interface {
@@ -36,6 +36,37 @@ func (i *JWTIdentity) GetClaim(claim string) (interface{}, bool) {
 	return i.parsedToken.Get(claim)
 }
 
+// getValueByPath extracts a value from a JWT token using dot notation path
+func getValueByPath(token jwt.Token, path string) (interface{}, bool) {
+	if path == "" {
+		return nil, false
+	}
+
+	// Split the path by dots
+	parts := strings.Split(path, ".")
+	current := interface{}(token)
+
+	// Navigate through the nested structure
+	for _, part := range parts {
+		if current == nil {
+			return nil, false
+		}
+
+		// Handle map[string]interface{} case
+		if m, ok := current.(map[string]interface{}); ok {
+			if val, exists := m[part]; exists {
+				current = val
+			} else {
+				return nil, false
+			}
+		} else {
+			return nil, false
+		}
+	}
+
+	return current, true
+}
+
 type JWTAuth struct {
 	oidcAuthority         string
 	externalOIDCAuthority string
@@ -43,6 +74,8 @@ type JWTAuth struct {
 	clientTlsConfig       *tls.Config
 	client                *http.Client
 	orgConfig             *common.AuthOrganizationsConfig
+	usernameClaim         string
+	groupsClaim           string
 }
 
 type OIDCServerResponse struct {
@@ -50,7 +83,7 @@ type OIDCServerResponse struct {
 	JwksUri       string `json:"jwks_uri"`
 }
 
-func NewJWTAuth(oidcAuthority string, externalOIDCAuthority string, clientTlsConfig *tls.Config, orgConfig *common.AuthOrganizationsConfig) (JWTAuth, error) {
+func NewJWTAuth(oidcAuthority string, externalOIDCAuthority string, clientTlsConfig *tls.Config, orgConfig *common.AuthOrganizationsConfig, usernameClaim string, groupsClaim string) (JWTAuth, error) {
 	jwtAuth := JWTAuth{
 		oidcAuthority:         oidcAuthority,
 		externalOIDCAuthority: externalOIDCAuthority,
@@ -60,7 +93,9 @@ func NewJWTAuth(oidcAuthority string, externalOIDCAuthority string, clientTlsCon
 				TLSClientConfig: clientTlsConfig,
 			},
 		},
-		orgConfig: orgConfig,
+		orgConfig:     orgConfig,
+		usernameClaim: usernameClaim,
+		groupsClaim:   groupsClaim,
 	}
 
 	res, err := jwtAuth.client.Get(fmt.Sprintf("%s/.well-known/openid-configuration", oidcAuthority))
@@ -105,11 +140,17 @@ func (j JWTAuth) parseAndCreateIdentity(ctx context.Context, token string) (*JWT
 		}
 	}
 
-	if preferredUsername, exists := parsedToken.Get(preferredUsernameClaim); exists {
-		if username, ok := preferredUsername.(string); ok {
-			identity.SetUsername(username)
+	if j.usernameClaim != "" {
+		if username, exists := getValueByPath(parsedToken, j.usernameClaim); exists {
+			if usernameStr, ok := username.(string); ok {
+				identity.SetUsername(usernameStr)
+			}
 		}
 	}
+
+	// Extract roles from JWT
+	roles := j.extractRoles(parsedToken)
+	identity.SetRoles(roles)
 
 	return identity, nil
 }
@@ -138,4 +179,24 @@ func (j JWTAuth) GetAuthConfig() common.AuthConfig {
 
 func (j JWTAuth) GetAuthToken(r *http.Request) (string, error) {
 	return common.ExtractBearerToken(r)
+}
+
+// extractRoles extracts roles from multiple possible JWT claims
+func (j JWTAuth) extractRoles(token jwt.Token) []string {
+	var roles []string
+
+	// 1. Try configured groups claim first
+	if j.groupsClaim != "" {
+		if groupsClaim, exists := getValueByPath(token, j.groupsClaim); exists {
+			if groupsList, ok := groupsClaim.([]interface{}); ok {
+				for _, group := range groupsList {
+					if groupStr, ok := group.(string); ok {
+						roles = append(roles, groupStr)
+					}
+				}
+			}
+		}
+	}
+
+	return roles
 }

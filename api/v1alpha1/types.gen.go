@@ -12,6 +12,10 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+const (
+	BearerAuthScopes = "bearerAuth.Scopes"
+)
+
 // Defines values for AppType.
 const (
 	AppTypeCompose AppType = "compose"
@@ -351,6 +355,23 @@ const (
 // Defines values for RolloutStrategy.
 const (
 	RolloutStrategyBatchSequence RolloutStrategy = "BatchSequence"
+)
+
+// Defines values for TokenRequestGrantType.
+const (
+	Password     TokenRequestGrantType = "password"
+	RefreshToken TokenRequestGrantType = "refresh_token"
+)
+
+// Defines values for TokenResponseTokenType.
+const (
+	Bearer TokenResponseTokenType = "Bearer"
+)
+
+// Defines values for AuthAuthorizeParamsResponseType.
+const (
+	Code  AuthAuthorizeParamsResponseType = "code"
+	Token AuthAuthorizeParamsResponseType = "token"
 )
 
 // Defines values for ListEventsParamsOrder.
@@ -1613,6 +1634,29 @@ type InternalTaskPermanentlyFailedDetails struct {
 // InternalTaskPermanentlyFailedDetailsDetailType The type of detail for discriminator purposes.
 type InternalTaskPermanentlyFailedDetailsDetailType string
 
+// JWKSResponse JSON Web Key Set
+type JWKSResponse struct {
+	Keys *[]struct {
+		// Alg Algorithm
+		Alg *string `json:"alg,omitempty"`
+
+		// E RSA exponent
+		E *string `json:"e,omitempty"`
+
+		// Kid Key ID
+		Kid *string `json:"kid,omitempty"`
+
+		// Kty Key type
+		Kty *string `json:"kty,omitempty"`
+
+		// N RSA modulus
+		N *string `json:"n,omitempty"`
+
+		// Use Key use
+		Use *string `json:"use,omitempty"`
+	} `json:"keys,omitempty"`
+}
+
 // KubernetesSecretProviderSpec defines model for KubernetesSecretProviderSpec.
 type KubernetesSecretProviderSpec struct {
 	// Name The name of the config provider.
@@ -1716,6 +1760,42 @@ type ObjectReference struct {
 
 	// Name The name of the referenced object.
 	Name string `json:"name"`
+}
+
+// OpenIDConfiguration OpenID Connect configuration
+type OpenIDConfiguration struct {
+	// AuthorizationEndpoint Authorization endpoint
+	AuthorizationEndpoint *string `json:"authorization_endpoint,omitempty"`
+
+	// ClaimsSupported Supported claims
+	ClaimsSupported *[]string `json:"claims_supported,omitempty"`
+
+	// GrantTypesSupported Supported grant types
+	GrantTypesSupported *[]string `json:"grant_types_supported,omitempty"`
+
+	// IdTokenSigningAlgValuesSupported Supported signing algorithms
+	IdTokenSigningAlgValuesSupported *[]string `json:"id_token_signing_alg_values_supported,omitempty"`
+
+	// Issuer OIDC issuer
+	Issuer *string `json:"issuer,omitempty"`
+
+	// JwksUri JWKS endpoint
+	JwksUri *string `json:"jwks_uri,omitempty"`
+
+	// ResponseTypesSupported Supported response types
+	ResponseTypesSupported *[]string `json:"response_types_supported,omitempty"`
+
+	// ScopesSupported Supported scopes
+	ScopesSupported *[]string `json:"scopes_supported,omitempty"`
+
+	// TokenEndpoint Token endpoint
+	TokenEndpoint *string `json:"token_endpoint,omitempty"`
+
+	// TokenEndpointAuthMethodsSupported Supported authentication methods
+	TokenEndpointAuthMethodsSupported *[]string `json:"token_endpoint_auth_methods_supported,omitempty"`
+
+	// UserinfoEndpoint UserInfo endpoint
+	UserinfoEndpoint *string `json:"userinfo_endpoint,omitempty"`
 }
 
 // Organization defines model for Organization.
@@ -2117,6 +2197,57 @@ type TemplateVersionStatus struct {
 // TimeZone Time zone identifiers follow the IANA format AREA/LOCATION, where AREA represents a continent or ocean, and LOCATION specifies a particular site within that area, for example America/New_York, Europe/Paris. Only unambiguous 3-character time zones are supported ("GMT", "UTC").
 type TimeZone = string
 
+// TokenRequest OAuth2 token request
+type TokenRequest struct {
+	// ClientId OAuth2 client ID
+	ClientId *string `json:"client_id,omitempty"`
+
+	// ClientSecret OAuth2 client secret
+	ClientSecret *string `json:"client_secret,omitempty"`
+
+	// GrantType OAuth2 grant type
+	GrantType TokenRequestGrantType `json:"grant_type"`
+
+	// Password Password for password grant
+	Password *string `json:"password,omitempty"`
+
+	// RefreshToken Refresh token for refresh_token grant
+	RefreshToken *string `json:"refresh_token,omitempty"`
+
+	// Scope OAuth2 scope
+	Scope *string `json:"scope,omitempty"`
+
+	// Username Username for password grant
+	Username *string `json:"username,omitempty"`
+}
+
+// TokenRequestGrantType OAuth2 grant type
+type TokenRequestGrantType string
+
+// TokenResponse OAuth2 token response
+type TokenResponse struct {
+	// AccessToken OAuth2 access token
+	AccessToken *string `json:"access_token,omitempty"`
+
+	// Error OAuth2 error code
+	Error *string `json:"error,omitempty"`
+
+	// ErrorDescription OAuth2 error description
+	ErrorDescription *string `json:"error_description,omitempty"`
+
+	// ExpiresIn Token expiration time in seconds
+	ExpiresIn *int `json:"expires_in,omitempty"`
+
+	// RefreshToken OAuth2 refresh token
+	RefreshToken *string `json:"refresh_token,omitempty"`
+
+	// TokenType Token type
+	TokenType *TokenResponseTokenType `json:"token_type,omitempty"`
+}
+
+// TokenResponseTokenType Token type
+type TokenResponseTokenType string
+
 // UpdateSchedule Defines the schedule for automatic downloading and updates, including timing and optional timeout.
 type UpdateSchedule struct {
 	// At Cron expression format for scheduling times.
@@ -2132,11 +2263,59 @@ type UpdateSchedule struct {
 	TimeZone *TimeZone `json:"timeZone,omitempty"`
 }
 
+// UserInfoResponse OIDC UserInfo response
+type UserInfoResponse struct {
+	// Email Email address
+	Email *string `json:"email,omitempty"`
+
+	// EmailVerified Email verification status
+	EmailVerified *bool `json:"email_verified,omitempty"`
+
+	// Error Error code
+	Error *string `json:"error,omitempty"`
+
+	// Name Full name
+	Name *string `json:"name,omitempty"`
+
+	// Organizations User organizations
+	Organizations *[]string `json:"organizations,omitempty"`
+
+	// PreferredUsername Preferred username
+	PreferredUsername *string `json:"preferred_username,omitempty"`
+
+	// Roles User roles
+	Roles *[]string `json:"roles,omitempty"`
+
+	// Sub Subject identifier
+	Sub *string `json:"sub,omitempty"`
+}
+
 // Version defines model for Version.
 type Version struct {
 	// Version Git version of the service.
 	Version string `json:"version"`
 }
+
+// AuthAuthorizeParams defines parameters for AuthAuthorize.
+type AuthAuthorizeParams struct {
+	// ResponseType OAuth2 response type
+	ResponseType AuthAuthorizeParamsResponseType `form:"response_type" json:"response_type"`
+
+	// ClientId OAuth2 client ID
+	ClientId string `form:"client_id" json:"client_id"`
+
+	// RedirectUri OAuth2 redirect URI
+	RedirectUri string `form:"redirect_uri" json:"redirect_uri"`
+
+	// Scope OAuth2 scope
+	Scope *string `form:"scope,omitempty" json:"scope,omitempty"`
+
+	// State OAuth2 state parameter
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+}
+
+// AuthAuthorizeParamsResponseType defines parameters for AuthAuthorize.
+type AuthAuthorizeParamsResponseType string
 
 // AuthValidateParams defines parameters for AuthValidate.
 type AuthValidateParams struct {
@@ -2308,6 +2487,9 @@ type ListResourceSyncsParams struct {
 	// Limit The maximum number of results returned in the list response. The server will set the 'continue' field in the list response if more results exist. The continue value may then be specified as parameter in a subsequent query.
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// AuthTokenJSONRequestBody defines body for AuthToken for application/json ContentType.
+type AuthTokenJSONRequestBody = TokenRequest
 
 // CreateCertificateSigningRequestJSONRequestBody defines body for CreateCertificateSigningRequest for application/json ContentType.
 type CreateCertificateSigningRequestJSONRequestBody = CertificateSigningRequest

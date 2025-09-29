@@ -75,7 +75,10 @@ func (o K8sAuthN) GetIdentity(ctx context.Context, token string) (common.Identit
 	if err != nil {
 		return nil, err
 	}
-	return common.NewBaseIdentity(review.Status.User.Username, review.Status.User.UID, review.Status.User.Groups), nil
+	// In K8s, groups represent roles/permissions (system:admin, system:authenticated, custom RBAC roles)
+	// Organizations are handled separately via the organization resolver
+	roles := review.Status.User.Groups
+	return common.NewBaseIdentity(review.Status.User.Username, review.Status.User.UID, []string{}, roles), nil
 }
 
 func (o K8sAuthN) GetAuthConfig() common.AuthConfig {

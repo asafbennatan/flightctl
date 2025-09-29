@@ -44,6 +44,10 @@ func CreateAuthProvider(authInfo AuthInfo, insecure bool) (login.AuthProvider, e
 		return login.NewOIDCConfig(c[AuthCAFileKey], c[AuthClientIdKey], c[AuthUrlKey], authInfo.OrganizationsEnabled, insecure), nil
 	case common.AuthTypeAAP:
 		return login.NewAAPOAuth2Config(c[AuthCAFileKey], c[AuthClientIdKey], c[AuthUrlKey], insecure), nil
+	case common.AuthTypeLinux:
+		// Linux auth uses PAM backend but exposes OIDC interface
+		// Use OIDC authentication flow with the server's OIDC endpoints
+		return login.NewOIDCConfig(c[AuthCAFileKey], c[AuthClientIdKey], c[AuthUrlKey], authInfo.OrganizationsEnabled, insecure), nil
 	default:
 		return nil, fmt.Errorf("unsupported auth provider: %s", authInfo.AuthProvider.Name)
 	}

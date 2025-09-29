@@ -14,6 +14,7 @@ import (
 	"github.com/flightctl/flightctl/internal/api/server"
 	fcmiddleware "github.com/flightctl/flightctl/internal/api_server/middleware"
 	"github.com/flightctl/flightctl/internal/auth"
+	"github.com/flightctl/flightctl/internal/auth/issuer"
 	"github.com/flightctl/flightctl/internal/config"
 	"github.com/flightctl/flightctl/internal/console"
 	"github.com/flightctl/flightctl/internal/crypto"
@@ -194,8 +195,22 @@ func (s *Server) Run(ctx context.Context) error {
 		middleware.Recoverer,
 	)
 
+	// Create OIDC issuer if configured
+	var oidcIssuer issuer.OIDCIssuer
+	if s.cfg.Auth != nil && s.cfg.Auth.OIDCIssuer != nil {
+		// For now, we only support PAM-based OIDC issuer
+		// This could be extended to support other issuer types in the future
+		// Create PAM OIDC provider (PAMService has default value "flightctl")
+		pamOIDCProvider, err := issuer.NewPAMOIDCProvider(s.ca, s.cfg.Auth.OIDCIssuer)
+		if err != nil {
+			s.log.WithError(err).Warn("Failed to create PAM OIDC provider, OIDC endpoints will not be available")
+		} else {
+			oidcIssuer = pamOIDCProvider
+		}
+	}
+
 	serviceHandler := service.WrapWithTracing(service.NewServiceHandler(
-		s.store, workerClient, kvStore, s.ca, s.log, s.cfg.Service.BaseAgentEndpointUrl, s.cfg.Service.BaseUIUrl, s.cfg.Service.TPMCAPaths, s.orgResolver))
+		s.store, workerClient, kvStore, s.ca, s.log, s.cfg.Service.BaseAgentEndpointUrl, s.cfg.Service.BaseUIUrl, s.cfg.Service.TPMCAPaths, s.orgResolver, oidcIssuer))
 
 	// a group is a new mux copy, with its own copy of the middleware stack
 	// this one handles the OpenAPI handling of the service (excluding auth validate endpoint)

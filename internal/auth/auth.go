@@ -103,7 +103,7 @@ func initOIDCAuth(cfg *config.Config, log logrus.FieldLogger, orgResolver resolv
 	externalOidcUrl := strings.TrimSuffix(cfg.Auth.OIDC.ExternalOIDCAuthority, "/")
 	log.Infof("OIDC auth enabled: %s", oidcUrl)
 	authZProvider := authz.NewOrgMembershipAuthZ(orgResolver)
-	authNProvider, err := authn.NewJWTAuth(oidcUrl, externalOidcUrl, getTlsConfig(cfg), getOrgConfig(cfg))
+	authNProvider, err := authn.NewJWTAuth(oidcUrl, externalOidcUrl, getTlsConfig(cfg), getOrgConfig(cfg), cfg.Auth.OIDC.UsernameClaim, cfg.Auth.OIDC.GroupsClaim)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create OIDC AuthN: %w", err)
 	}
@@ -144,7 +144,6 @@ func InitAuth(cfg *config.Config, log logrus.FieldLogger, orgResolver resolvers.
 			configuredAuthType = AuthTypeAAP
 			authNProvider, authZProvider, err = initAAPAuth(cfg, log, orgResolver)
 		}
-
 		if err != nil {
 			return nil, nil, err
 		}
