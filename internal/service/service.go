@@ -5,6 +5,7 @@ import (
 	"time"
 
 	api "github.com/flightctl/flightctl/api/v1alpha1"
+	authcommon "github.com/flightctl/flightctl/internal/auth/common"
 	"github.com/flightctl/flightctl/internal/store"
 	"github.com/flightctl/flightctl/internal/store/selector"
 )
@@ -95,6 +96,17 @@ type Service interface {
 	GetRepositoryFleetReferences(ctx context.Context, name string) (*api.FleetList, api.Status)
 	GetRepositoryDeviceReferences(ctx context.Context, name string) (*api.DeviceList, api.Status)
 
+	// OIDCProvider
+	CreateOIDCProvider(ctx context.Context, oidcProvider api.OIDCProvider) (*api.OIDCProvider, api.Status)
+	ListOIDCProviders(ctx context.Context, params api.ListOIDCProvidersParams) (*api.OIDCProviderList, api.Status)
+	GetOIDCProvider(ctx context.Context, name string) (*api.OIDCProvider, api.Status)
+	GetOIDCProviderByIssuer(ctx context.Context, issuer string) (*api.OIDCProvider, api.Status)
+	ReplaceOIDCProvider(ctx context.Context, name string, oidcProvider api.OIDCProvider) (*api.OIDCProvider, api.Status)
+	DeleteOIDCProvider(ctx context.Context, name string) api.Status
+
+	// Auth
+	GetAuthConfig(ctx context.Context, authConfig authcommon.AuthConfig) (*api.AuthConfig, api.Status)
+
 	// ResourceSync
 	CreateResourceSync(ctx context.Context, rs api.ResourceSync) (*api.ResourceSync, api.Status)
 	ListResourceSyncs(ctx context.Context, params api.ListResourceSyncsParams) (*api.ResourceSyncList, api.Status)
@@ -123,4 +135,11 @@ type Service interface {
 
 	// Organization
 	ListOrganizations(ctx context.Context) (*api.OrganizationList, api.Status)
+
+	// OAuth2/OIDC Authentication
+	AuthToken(ctx context.Context, req api.TokenRequest) (*api.TokenResponse, api.Status)
+	AuthUserInfo(ctx context.Context, accessToken string) (*api.UserInfoResponse, api.Status)
+	AuthJWKS(ctx context.Context) (*api.JWKSResponse, api.Status)
+	AuthOpenIDConfiguration(ctx context.Context) (*api.OpenIDConfiguration, api.Status)
+	AuthAuthorize(ctx context.Context, params api.AuthAuthorizeParams) (*api.Status, api.Status)
 }

@@ -132,6 +132,124 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Status'
+  /api/v1/auth/authorize:
+    get:
+      tags:
+        - authentication
+      description: OAuth2 authorization endpoint for authorization code flow.
+      operationId: authAuthorize
+      parameters:
+        - name: response_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [code, token]
+          description: OAuth2 response type
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: OAuth2 client ID
+        - name: redirect_uri
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+          description: OAuth2 redirect URI
+        - name: scope
+          in: query
+          schema:
+            type: string
+          description: OAuth2 scope
+        - name: state
+          in: query
+          schema:
+            type: string
+          description: OAuth2 state parameter
+      responses:
+        "302":
+          description: Redirect to authorization page or back to client
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+  /api/v1/auth/token:
+    post:
+      tags:
+        - authentication
+      description: OAuth2 token endpoint for authentication and token refresh.
+      operationId: authToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        "200":
+          description: Token response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+  /api/v1/auth/userinfo:
+    get:
+      tags:
+        - authentication
+      description: OIDC UserInfo endpoint for retrieving user information.
+      operationId: authUserInfo
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfoResponse'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfoResponse'
+  /api/v1/auth/jwks:
+    get:
+      tags:
+        - authentication
+      description: JSON Web Key Set (JWKS) endpoint for token validation.
+      operationId: authJWKS
+      responses:
+        "200":
+          description: JSON Web Key Set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JWKSResponse'
+  /api/v1/auth/.well-known/openid_configuration:
+    get:
+      tags:
+        - authentication
+      description: OpenID Connect discovery endpoint.
+      operationId: authOpenIDConfiguration
+      responses:
+        "200":
+          description: OpenID Connect configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenIDConfiguration'
   /api/v1/resourcesyncs:
     get:
       tags:
@@ -3627,12 +3745,316 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Status'
+  /api/v1/oidcproviders:
+    get:
+      tags:
+        - oidcprovider
+      description: List OIDCProvider resources.
+      operationId: listOIDCProviders
+      parameters:
+        - name: continue
+          in: query
+          description: An optional parameter to query more results from the server. The value of the paramter must match the value of the 'continue' field in the previous list response.
+          required: false
+          schema:
+            type: string
+        - name: labelSelector
+          in: query
+          description: A selector to restrict the list of returned objects by their labels. Defaults to everything.
+          schema:
+            type: string
+        - name: fieldSelector
+          in: query
+          description: A selector to restrict the list of returned objects by their fields, supporting operators like '=', '==', and '!=' (e.g., "key1=value1,key2!=value2").
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: The maximum number of results returned in the list response. The server will set the 'continue' field in the list response if more results exist. The continue value may then be specified as parameter in a subsequent query.
+          required: false
+          schema:
+            type: integer
+            format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OIDCProviderList'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "429":
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "503":
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+    post:
+      tags:
+        - oidcprovider
+      description: Create an OIDCProvider resource.
+      operationId: createOIDCProvider
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OIDCProvider'
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OIDCProvider'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "429":
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "503":
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+  /api/v1/oidcproviders/{name}:
+    get:
+      tags:
+        - oidcprovider
+      description: Get an OIDCProvider resource.
+      operationId: getOIDCProvider
+      parameters:
+        - name: name
+          in: path
+          description: The name of the OIDCProvider resource to get.
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OIDCProvider'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "429":
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "503":
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+    put:
+      tags:
+        - oidcprovider
+      description: Update an OIDCProvider resource.
+      operationId: replaceOIDCProvider
+      parameters:
+        - name: name
+          in: path
+          description: The name of the OIDCProvider resource to update.
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OIDCProvider'
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OIDCProvider'
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OIDCProvider'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "429":
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "503":
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+    delete:
+      tags:
+        - oidcprovider
+      description: Delete an OIDCProvider resource.
+      operationId: deleteOIDCProvider
+      parameters:
+        - name: name
+          in: path
+          description: The name of the OIDCProvider resource to delete.
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "429":
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "503":
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    oauth2:
+      type: oauth2
+      description: OAuth2 authentication with password and refresh token grants
+      flows:
+        password:
+          tokenUrl: /api/v1/auth/token
+          scopes:
+            openid: OpenID Connect scope
+            profile: Access to user profile information
+            email: Access to user email
+            roles: Access to user roles
+        refreshToken:
+          tokenUrl: /api/v1/auth/token
+          refreshUrl: /api/v1/auth/token
+          scopes:
+            openid: OpenID Connect scope
+            profile: Access to user profile information
+            email: Access to user email
+            roles: Access to user roles
+    openIdConnect:
+      type: openIdConnect
+      openIdConnectUrl: /api/v1/auth/.well-known/openid_configuration
+      description: OpenID Connect authentication
     orgId:
       type: apiKey
       in: query
@@ -3641,7 +4063,7 @@ components:
   schemas:
     ResourceKind:
       type: string
-      enum: [CertificateSigningRequest, EnrollmentRequest, Device, Fleet, Repository, ResourceSync, TemplateVersion]
+      enum: [CertificateSigningRequest, EnrollmentRequest, Device, Fleet, Repository, ResourceSync, TemplateVersion, OIDCProvider]
       description: Resource types exposed via the API.
     DeviceDecommissionTargetType:
       type: string
@@ -5334,29 +5756,52 @@ components:
     AuthConfig:
       type: object
       properties:
-        authType:
+        providers:
+          type: array
+          description: List of all available authentication providers
+          items:
+            $ref: '#/components/schemas/AuthProviderInfo'
+        defaultProvider:
           type: string
-          description: Auth type.
-        authURL:
+          description: Name of the default authentication provider
+        organizationsEnabled:
+          type: boolean
+          description: Whether organizations are enabled for authentication
+    AuthProviderInfo:
+      type: object
+      properties:
+        name:
           type: string
-          description: Auth URL.
-        authOrganizationsConfig:
-          $ref: '#/components/schemas/AuthOrganizationsConfig'
+          description: Unique identifier for the provider
+        displayName:
+          type: string
+          description: Human-readable display name
+        type:
+          type: string
+          enum: [oidc, k8s, aap]
+          description: Type of authentication provider
+        issuer:
+          type: string
+          description: OIDC issuer URL (for OIDC providers)
+        clientId:
+          type: string
+          description: Default client ID for OIDC providers
+        authUrl:
+          type: string
+          description: Authentication URL for the provider
+        isDefault:
+          type: boolean
+          description: Whether this is the default provider
+          default: false
+        isStatic:
+          type: boolean
+          description: Whether this is a static provider (from config) or dynamic (from database)
+          default: false
       required:
         - authType
         - authURL
         - authOrganizationsConfig
       description: Auth config.
-    AuthOrganizationsConfig:
-      type: object
-      description: Auth related organizations configuration.
-      properties:
-        enabled:
-          type: boolean
-          description: If true, support for IdP provided organizations is enabled.
-          default: false
-      required:
-        - enabled
     ListMeta:
       type: object
       properties:
@@ -6161,3 +6606,324 @@ components:
           items:
             $ref: '#/components/schemas/Organization'
       description: OrganizationList is a list of Organizations.
+    TokenRequest:
+      type: object
+      required:
+        - grant_type
+      properties:
+        grant_type:
+          type: string
+          enum: [password, refresh_token]
+          description: OAuth2 grant type
+        username:
+          type: string
+          description: Username for password grant
+        password:
+          type: string
+          description: Password for password grant
+        refresh_token:
+          type: string
+          description: Refresh token for refresh_token grant
+        client_id:
+          type: string
+          description: OAuth2 client ID
+        client_secret:
+          type: string
+          description: OAuth2 client secret
+        scope:
+          type: string
+          description: OAuth2 scope
+      description: OAuth2 token request
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: OAuth2 access token
+        token_type:
+          type: string
+          enum: [Bearer]
+          description: Token type
+        refresh_token:
+          type: string
+          description: OAuth2 refresh token
+        expires_in:
+          type: integer
+          description: Token expiration time in seconds
+        error:
+          type: string
+          description: OAuth2 error code
+        error_description:
+          type: string
+          description: OAuth2 error description
+      description: OAuth2 token response
+    UserInfoResponse:
+      type: object
+      properties:
+        sub:
+          type: string
+          description: Subject identifier
+        preferred_username:
+          type: string
+          description: Preferred username
+        name:
+          type: string
+          description: Full name
+        email:
+          type: string
+          description: Email address
+        email_verified:
+          type: boolean
+          description: Email verification status
+        roles:
+          type: array
+          items:
+            type: string
+          description: User roles
+        organizations:
+          type: array
+          items:
+            type: string
+          description: User organizations
+        error:
+          type: string
+          description: Error code
+      description: OIDC UserInfo response
+    JWKSResponse:
+      type: object
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            properties:
+              kty:
+                type: string
+                description: Key type
+              use:
+                type: string
+                description: Key use
+              kid:
+                type: string
+                description: Key ID
+              alg:
+                type: string
+                description: Algorithm
+              n:
+                type: string
+                description: RSA modulus
+              e:
+                type: string
+                description: RSA exponent
+      description: JSON Web Key Set
+    OpenIDConfiguration:
+      type: object
+      properties:
+        issuer:
+          type: string
+          description: OIDC issuer
+        authorization_endpoint:
+          type: string
+          description: Authorization endpoint
+        token_endpoint:
+          type: string
+          description: Token endpoint
+        userinfo_endpoint:
+          type: string
+          description: UserInfo endpoint
+        jwks_uri:
+          type: string
+          description: JWKS endpoint
+        response_types_supported:
+          type: array
+          items:
+            type: string
+          description: Supported response types
+        grant_types_supported:
+          type: array
+          items:
+            type: string
+          description: Supported grant types
+        scopes_supported:
+          type: array
+          items:
+            type: string
+          description: Supported scopes
+        claims_supported:
+          type: array
+          items:
+            type: string
+          description: Supported claims
+        id_token_signing_alg_values_supported:
+          type: array
+          items:
+            type: string
+          description: Supported signing algorithms
+        token_endpoint_auth_methods_supported:
+          type: array
+          items:
+            type: string
+          description: Supported authentication methods
+      description: OpenID Connect configuration
+    OIDCProvider:
+      type: object
+      properties:
+        apiVersion:
+          type: string
+          description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources.'
+        kind:
+          type: string
+          description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds.'
+        metadata:
+          $ref: '#/components/schemas/ObjectMeta'
+        spec:
+          $ref: '#/components/schemas/OIDCProviderSpec'
+        status:
+          $ref: '#/components/schemas/OIDCProviderStatus'
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+      description: OIDCProvider represents an OpenID Connect provider configuration.
+    OIDCProviderSpec:
+      type: object
+      description: OIDCProviderSpec describes an OIDC provider configuration.
+      properties:
+        issuer:
+          type: string
+          description: The OIDC issuer URL (e.g., https://accounts.google.com)
+        clientId:
+          type: string
+          description: The OIDC client ID
+        clientSecret:
+          type: string
+          description: The OIDC client secret
+        scopes:
+          type: array
+          items:
+            type: string
+          description: List of OIDC scopes to request
+        redirectUri:
+          type: string
+          description: The redirect URI for OIDC authentication
+        enabled:
+          type: boolean
+          description: Whether this OIDC provider is enabled
+          default: true
+        organizationAssignment:
+          $ref: '#/components/schemas/OIDCOrganizationAssignment'
+        usernameClaim:
+          type: string
+          description: JSON path to the username claim in the JWT token (e.g., "preferred_username", "email", "sub")
+          default: "preferred_username"
+        roleClaim:
+          type: string
+          description: JSON path to the role/group claim in the JWT token (e.g., "groups", "roles", "realm_access.roles")
+          default: "groups"
+      required:
+        - issuer
+        - clientId
+        - clientSecret
+        - redirectUri
+        - organizationAssignment
+    OIDCOrganizationAssignment:
+      type: object
+      description: OIDCOrganizationAssignment defines how users from this OIDC provider are assigned to organizations.
+      oneOf:
+        - $ref: '#/components/schemas/OIDCStaticOrganizationAssignment'
+        - $ref: '#/components/schemas/OIDCDynamicOrganizationAssignment'
+        - $ref: '#/components/schemas/OIDCPerUserOrganizationAssignment'
+      discriminator:
+        propertyName: type
+        mapping:
+          static: '#/components/schemas/OIDCStaticOrganizationAssignment'
+          dynamic: '#/components/schemas/OIDCDynamicOrganizationAssignment'
+          perUser: '#/components/schemas/OIDCPerUserOrganizationAssignment'
+    OIDCStaticOrganizationAssignment:
+      type: object
+      description: OIDCStaticOrganizationAssignment assigns all users from this OIDC provider to a single static organization.
+      properties:
+        type:
+          type: string
+          enum: [static]
+          description: The type of organization assignment
+        organizationName:
+          type: string
+          description: The name of the organization where all users will be assigned
+      required:
+        - type
+        - organizationName
+    OIDCDynamicOrganizationAssignment:
+      type: object
+      description: OIDCDynamicOrganizationAssignment assigns users to organizations based on OIDC JWT claims.
+      properties:
+        type:
+          type: string
+          enum: [dynamic]
+          description: The type of organization assignment
+        claimPath:
+          type: string
+          description: The JSON path to the claim in the OIDC JWT that contains the organization identifier (e.g., "groups.0" or "custom.org")
+        organizationNameMapping:
+          type: string
+          description: The mapping pattern to convert the claim value to organization name (e.g., "org-{value}" or just "{value}")
+      required:
+        - type
+        - claimPath
+        - organizationNameMapping
+    OIDCPerUserOrganizationAssignment:
+      type: object
+      description: OIDCPerUserOrganizationAssignment creates a separate organization for each user.
+      properties:
+        type:
+          type: string
+          enum: [perUser]
+          description: The type of organization assignment
+        organizationNamePrefix:
+          type: string
+          description: The prefix for the user-specific organization name (e.g., "user-org-")
+          default: "user-org-"
+        organizationNameSuffix:
+          type: string
+          description: The suffix for the user-specific organization name (e.g., "-org")
+          default: ""
+      required:
+        - type
+    OIDCProviderStatus:
+      type: object
+      description: OIDCProviderStatus represents information about the status of an OIDC provider.
+      properties:
+        conditions:
+          type: array
+          description: 'Current state of the OIDC provider.'
+          items:
+            $ref: '#/components/schemas/Condition'
+        lastChecked:
+          type: string
+          format: date-time
+          description: Last time the OIDC provider configuration was validated
+      required:
+        - conditions
+    OIDCProviderList:
+      type: object
+      properties:
+        apiVersion:
+          type: string
+          description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources.'
+        kind:
+          type: string
+          description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds.'
+        metadata:
+          $ref: '#/components/schemas/ListMeta'
+        items:
+          type: array
+          description: 'List of OIDC providers.'
+          items:
+            $ref: '#/components/schemas/OIDCProvider'
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - items
+      description: OIDCProviderList is a list of OIDC providers.

@@ -30,6 +30,7 @@ type Store interface {
 	Event() Event
 	Checkpoint() Checkpoint
 	Organization() Organization
+	OIDCProvider() OIDCProvider
 	RunMigrations(context.Context) error
 	CheckHealth(context.Context) error
 	Close() error
@@ -46,6 +47,7 @@ type DataStore struct {
 	event                     Event
 	checkpoint                Checkpoint
 	organization              Organization
+	oidcProvider              OIDCProvider
 
 	db *gorm.DB
 }
@@ -62,6 +64,7 @@ func NewStore(db *gorm.DB, log logrus.FieldLogger) Store {
 		event:                     NewEvent(db, log),
 		checkpoint:                NewCheckpoint(db, log),
 		organization:              NewOrganization(db),
+		oidcProvider:              NewOIDCProvider(db, log),
 		db:                        db,
 	}
 }
@@ -104,6 +107,10 @@ func (s *DataStore) Checkpoint() Checkpoint {
 
 func (s *DataStore) Organization() Organization {
 	return s.organization
+}
+
+func (s *DataStore) OIDCProvider() OIDCProvider {
+	return s.oidcProvider
 }
 
 // CheckHealth verifies database connectivity and ensures the instance is not in recovery.
@@ -179,6 +186,9 @@ func (s *DataStore) RunMigrations(ctx context.Context) error {
 		return err
 	}
 	if err := s.Organization().InitialMigration(ctx); err != nil {
+		return err
+	}
+	if err := s.OIDCProvider().InitialMigration(ctx); err != nil {
 		return err
 	}
 	return s.customizeMigration(ctx)

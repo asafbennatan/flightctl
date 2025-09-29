@@ -72,6 +72,10 @@ const (
 	RepositoryKind       = "Repository"
 	RepositoryListKind   = "RepositoryList"
 
+	OIDCProviderAPIVersion = "v1alpha1"
+	OIDCProviderKind       = "OIDCProvider"
+	OIDCProviderListKind   = "OIDCProviderList"
+
 	ResourceSyncAPIVersion = "v1alpha1"
 	ResourceSyncKind       = "ResourceSync"
 	ResourceSyncListKind   = "ResourceSyncList"

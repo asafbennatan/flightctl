@@ -111,11 +111,12 @@ type alertmanagerConfig struct {
 }
 
 type authConfig struct {
-	K8s                   *k8sAuth  `json:"k8s,omitempty"`
-	OIDC                  *oidcAuth `json:"oidc,omitempty"`
-	AAP                   *aapAuth  `json:"aap,omitempty"`
-	CACert                string    `json:"caCert,omitempty"`
-	InsecureSkipTlsVerify bool      `json:"insecureSkipTlsVerify,omitempty"`
+	K8s                   *k8sAuth         `json:"k8s,omitempty"`
+	OIDC                  *oidcAuth        `json:"oidc,omitempty"`
+	OIDCIssuer            *LinuxIssuerAuth `json:"oidcIssuer,omitempty"`
+	AAP                   *aapAuth         `json:"aap,omitempty"`
+	CACert                string           `json:"caCert,omitempty"`
+	InsecureSkipTlsVerify bool             `json:"insecureSkipTlsVerify,omitempty"`
 }
 
 type k8sAuth struct {
@@ -125,13 +126,41 @@ type k8sAuth struct {
 }
 
 type oidcAuth struct {
+	// OIDC Authority/Issuer URL (e.g., "https://auth.company.com")
 	OIDCAuthority         string `json:"oidcAuthority,omitempty"`
 	ExternalOIDCAuthority string `json:"externalOidcAuthority,omitempty"`
+	// Custom claims mapping
+	UsernameClaim string `json:"usernameClaim,omitempty"` // e.g., "preferred_username", "email"
+	GroupsClaim   string `json:"groupsClaim,omitempty"`   // e.g., "groups", "roles"
 }
 
 type aapAuth struct {
 	ApiUrl         string `json:"apiUrl,omitempty"`
 	ExternalApiUrl string `json:"externalApiUrl,omitempty"`
+}
+
+type OIDCIssuerAuth struct {
+	// Issuer is the base URL for the OIDC issuer (e.g., "https://flightctl.example.com")
+	Issuer string `json:"issuer,omitempty"`
+	// ClientID is the OAuth2 client ID for this issuer
+	ClientID string `json:"clientId,omitempty"`
+	// ClientSecret is the OAuth2 client secret for this issuer
+	ClientSecret string `json:"clientSecret,omitempty"`
+	// Scopes are the supported OAuth2 scopes
+	Scopes []string `json:"scopes,omitempty"`
+	// RedirectURIs are the allowed redirect URIs for OAuth2 flows
+	RedirectURIs []string `json:"redirectUris,omitempty"`
+	// ResponseTypes are the supported OAuth2 response types
+	ResponseTypes []string `json:"responseTypes,omitempty"`
+	// GrantTypes are the supported OAuth2 grant types
+	GrantTypes []string `json:"grantTypes,omitempty"`
+}
+
+// LinuxIssuerAuth represents an OIDC issuer that uses Linux SSSD for authentication
+type LinuxIssuerAuth struct {
+	OIDCIssuerAuth
+	// SSSDService is the SSSD service name to use for authentication (default: "flightctl")
+	SSSDService string `json:"sssdService" validate:"required"`
 }
 
 type metricsConfig struct {
@@ -470,6 +499,35 @@ func Load(cfgFile string) (*Config, error) {
 				proxies[i] = strings.TrimSpace(proxy)
 			}
 			c.Service.RateLimit.TrustedProxies = proxies
+		}
+	}
+
+	// Set up default OIDC issuer and client configuration
+	if c.Auth != nil {
+		// Set up default OIDC issuer (we are the issuer)
+		if c.Auth.OIDCIssuer == nil {
+			c.Auth.OIDCIssuer = &LinuxIssuerAuth{
+				OIDCIssuerAuth: OIDCIssuerAuth{
+					Issuer:        c.Service.BaseUrl,
+					ClientID:      "flightctl-client",
+					Scopes:        []string{"openid", "profile", "email", "roles"},
+					RedirectURIs:  []string{c.Service.BaseUrl + "/auth/callback"},
+					ResponseTypes: []string{"code", "token"},
+					GrantTypes:    []string{"authorization_code", "password", "refresh_token"},
+				},
+				SSSDService: "flightctl",
+			}
+		} else if c.Auth.OIDCIssuer.SSSDService == "" {
+			c.Auth.OIDCIssuer.SSSDService = "flightctl"
+		}
+
+		// Set up default OIDC client (pointing to ourselves as issuer)
+		if c.Auth.OIDC == nil {
+			c.Auth.OIDC = &oidcAuth{
+				OIDCAuthority: c.Service.BaseUrl,
+				UsernameClaim: "preferred_username",
+				GroupsClaim:   "groups",
+			}
 		}
 	}
 

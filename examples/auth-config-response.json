@@ -1,0 +1,34 @@
+{
+  "providers": [
+    {
+      "name": "oidc",
+      "displayName": "OIDC Provider",
+      "type": "oidc",
+      "issuer": "https://your-issuer.com",
+      "clientId": "flightctl-client",
+      "authUrl": "https://your-issuer.com/auth",
+      "isDefault": true,
+      "isStatic": true
+    },
+    {
+      "name": "google-oidc",
+      "displayName": "Google OIDC",
+      "type": "oidc", 
+      "issuer": "https://accounts.google.com",
+      "clientId": "your-google-client-id",
+      "authUrl": "https://accounts.google.com/oauth2/auth",
+      "isDefault": false,
+      "isStatic": false
+    },
+    {
+      "name": "k8s",
+      "displayName": "Kubernetes",
+      "type": "k8s",
+      "authUrl": "https://your-k8s-cluster.com",
+      "isDefault": false,
+      "isStatic": true
+    }
+  ],
+  "defaultProvider": "oidc",
+  "organizationsEnabled": true
+}

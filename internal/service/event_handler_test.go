@@ -599,7 +599,7 @@ func TestEventEnrollmentRequestApproved(t *testing.T) {
 	_, err = serviceHandler.store.EnrollmentRequest().Create(ctx, store.NullOrgId, &er, eventCallback)
 	require.NoError(err)
 
-	identity := authcommon.NewBaseIdentity("bar", "", []string{})
+	identity := authcommon.NewBaseIdentity("bar", "", []string{}, []string{})
 	ctx = context.WithValue(ctx, consts.IdentityCtxKey, identity)
 	_, stat := serviceHandler.ApproveEnrollmentRequest(ctx, name, approval)
 	require.Equal(statusSuccessCode, stat.Code)

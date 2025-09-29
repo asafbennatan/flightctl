@@ -22,7 +22,7 @@ func (m *mockMembershipChecker) IsMemberOf(ctx context.Context, identity common.
 func TestOrgMembershipAuthZ_CheckPermission(t *testing.T) {
 	backgroundCtx := context.Background()
 
-	identity := common.NewBaseIdentity("test-username", "test-uid", []string{})
+	identity := common.NewBaseIdentity("test-username", "test-uid", []string{}, []string{})
 	ctxWithIdentity := context.WithValue(backgroundCtx, consts.IdentityCtxKey, identity)
 
 	orgID := uuid.New()

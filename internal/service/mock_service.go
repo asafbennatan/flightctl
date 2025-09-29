@@ -15,6 +15,7 @@ import (
 	time "time"
 
 	v1alpha1 "github.com/flightctl/flightctl/api/v1alpha1"
+	common "github.com/flightctl/flightctl/internal/auth/common"
 	store "github.com/flightctl/flightctl/internal/store"
 	selector "github.com/flightctl/flightctl/internal/store/selector"
 	gomock "go.uber.org/mock/gomock"
@@ -56,6 +57,81 @@ func (m *MockService) ApproveEnrollmentRequest(ctx context.Context, name string,
 func (mr *MockServiceMockRecorder) ApproveEnrollmentRequest(ctx, name, approval any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApproveEnrollmentRequest", reflect.TypeOf((*MockService)(nil).ApproveEnrollmentRequest), ctx, name, approval)
+}
+
+// AuthAuthorize mocks base method.
+func (m *MockService) AuthAuthorize(ctx context.Context, params v1alpha1.AuthAuthorizeParams) (*v1alpha1.Status, v1alpha1.Status) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AuthAuthorize", ctx, params)
+	ret0, _ := ret[0].(*v1alpha1.Status)
+	ret1, _ := ret[1].(v1alpha1.Status)
+	return ret0, ret1
+}
+
+// AuthAuthorize indicates an expected call of AuthAuthorize.
+func (mr *MockServiceMockRecorder) AuthAuthorize(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthAuthorize", reflect.TypeOf((*MockService)(nil).AuthAuthorize), ctx, params)
+}
+
+// AuthJWKS mocks base method.
+func (m *MockService) AuthJWKS(ctx context.Context) (*v1alpha1.JWKSResponse, v1alpha1.Status) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AuthJWKS", ctx)
+	ret0, _ := ret[0].(*v1alpha1.JWKSResponse)
+	ret1, _ := ret[1].(v1alpha1.Status)
+	return ret0, ret1
+}
+
+// AuthJWKS indicates an expected call of AuthJWKS.
+func (mr *MockServiceMockRecorder) AuthJWKS(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthJWKS", reflect.TypeOf((*MockService)(nil).AuthJWKS), ctx)
+}
+
+// AuthOpenIDConfiguration mocks base method.
+func (m *MockService) AuthOpenIDConfiguration(ctx context.Context) (*v1alpha1.OpenIDConfiguration, v1alpha1.Status) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AuthOpenIDConfiguration", ctx)
+	ret0, _ := ret[0].(*v1alpha1.OpenIDConfiguration)
+	ret1, _ := ret[1].(v1alpha1.Status)
+	return ret0, ret1
+}
+
+// AuthOpenIDConfiguration indicates an expected call of AuthOpenIDConfiguration.
+func (mr *MockServiceMockRecorder) AuthOpenIDConfiguration(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthOpenIDConfiguration", reflect.TypeOf((*MockService)(nil).AuthOpenIDConfiguration), ctx)
+}
+
+// AuthToken mocks base method.
+func (m *MockService) AuthToken(ctx context.Context, req v1alpha1.TokenRequest) (*v1alpha1.TokenResponse, v1alpha1.Status) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AuthToken", ctx, req)
+	ret0, _ := ret[0].(*v1alpha1.TokenResponse)
+	ret1, _ := ret[1].(v1alpha1.Status)
+	return ret0, ret1
+}
+
+// AuthToken indicates an expected call of AuthToken.
+func (mr *MockServiceMockRecorder) AuthToken(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthToken", reflect.TypeOf((*MockService)(nil).AuthToken), ctx, req)
+}
+
+// AuthUserInfo mocks base method.
+func (m *MockService) AuthUserInfo(ctx context.Context, accessToken string) (*v1alpha1.UserInfoResponse, v1alpha1.Status) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AuthUserInfo", ctx, accessToken)
+	ret0, _ := ret[0].(*v1alpha1.UserInfoResponse)
+	ret1, _ := ret[1].(v1alpha1.Status)
+	return ret0, ret1
+}
+
+// AuthUserInfo indicates an expected call of AuthUserInfo.
+func (mr *MockServiceMockRecorder) AuthUserInfo(ctx, accessToken any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthUserInfo", reflect.TypeOf((*MockService)(nil).AuthUserInfo), ctx, accessToken)
 }
 
 // CountDevices mocks base method.
@@ -158,6 +234,21 @@ func (m *MockService) CreateFleet(ctx context.Context, fleet v1alpha1.Fleet) (*v
 func (mr *MockServiceMockRecorder) CreateFleet(ctx, fleet any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateFleet", reflect.TypeOf((*MockService)(nil).CreateFleet), ctx, fleet)
+}
+
+// CreateOIDCProvider mocks base method.
+func (m *MockService) CreateOIDCProvider(ctx context.Context, oidcProvider v1alpha1.OIDCProvider) (*v1alpha1.OIDCProvider, v1alpha1.Status) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateOIDCProvider", ctx, oidcProvider)
+	ret0, _ := ret[0].(*v1alpha1.OIDCProvider)
+	ret1, _ := ret[1].(v1alpha1.Status)
+	return ret0, ret1
+}
+
+// CreateOIDCProvider indicates an expected call of CreateOIDCProvider.
+func (mr *MockServiceMockRecorder) CreateOIDCProvider(ctx, oidcProvider any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateOIDCProvider", reflect.TypeOf((*MockService)(nil).CreateOIDCProvider), ctx, oidcProvider)
 }
 
 // CreateRepository mocks base method.
@@ -291,6 +382,20 @@ func (mr *MockServiceMockRecorder) DeleteFleet(ctx, name any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteFleet", reflect.TypeOf((*MockService)(nil).DeleteFleet), ctx, name)
 }
 
+// DeleteOIDCProvider mocks base method.
+func (m *MockService) DeleteOIDCProvider(ctx context.Context, name string) v1alpha1.Status {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteOIDCProvider", ctx, name)
+	ret0, _ := ret[0].(v1alpha1.Status)
+	return ret0
+}
+
+// DeleteOIDCProvider indicates an expected call of DeleteOIDCProvider.
+func (mr *MockServiceMockRecorder) DeleteOIDCProvider(ctx, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteOIDCProvider", reflect.TypeOf((*MockService)(nil).DeleteOIDCProvider), ctx, name)
+}
+
 // DeleteRepository mocks base method.
 func (m *MockService) DeleteRepository(ctx context.Context, name string) v1alpha1.Status {
 	m.ctrl.T.Helper()
@@ -331,6 +436,21 @@ func (m *MockService) DeleteTemplateVersion(ctx context.Context, fleet, name str
 func (mr *MockServiceMockRecorder) DeleteTemplateVersion(ctx, fleet, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteTemplateVersion", reflect.TypeOf((*MockService)(nil).DeleteTemplateVersion), ctx, fleet, name)
+}
+
+// GetAuthConfig mocks base method.
+func (m *MockService) GetAuthConfig(ctx context.Context, authConfig common.AuthConfig) (*v1alpha1.AuthConfig, v1alpha1.Status) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAuthConfig", ctx, authConfig)
+	ret0, _ := ret[0].(*v1alpha1.AuthConfig)
+	ret1, _ := ret[1].(v1alpha1.Status)
+	return ret0, ret1
+}
+
+// GetAuthConfig indicates an expected call of GetAuthConfig.
+func (mr *MockServiceMockRecorder) GetAuthConfig(ctx, authConfig any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAuthConfig", reflect.TypeOf((*MockService)(nil).GetAuthConfig), ctx, authConfig)
 }
 
 // GetCertificateSigningRequest mocks base method.
@@ -573,6 +693,21 @@ func (mr *MockServiceMockRecorder) GetLatestTemplateVersion(ctx, fleet any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestTemplateVersion", reflect.TypeOf((*MockService)(nil).GetLatestTemplateVersion), ctx, fleet)
 }
 
+// GetOIDCProvider mocks base method.
+func (m *MockService) GetOIDCProvider(ctx context.Context, name string) (*v1alpha1.OIDCProvider, v1alpha1.Status) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetOIDCProvider", ctx, name)
+	ret0, _ := ret[0].(*v1alpha1.OIDCProvider)
+	ret1, _ := ret[1].(v1alpha1.Status)
+	return ret0, ret1
+}
+
+// GetOIDCProvider indicates an expected call of GetOIDCProvider.
+func (mr *MockServiceMockRecorder) GetOIDCProvider(ctx, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOIDCProvider", reflect.TypeOf((*MockService)(nil).GetOIDCProvider), ctx, name)
+}
+
 // GetRenderedDevice mocks base method.
 func (m *MockService) GetRenderedDevice(ctx context.Context, name string, params v1alpha1.GetRenderedDeviceParams) (*v1alpha1.Device, v1alpha1.Status) {
 	m.ctrl.T.Helper()
@@ -796,6 +931,21 @@ func (m *MockService) ListLabels(ctx context.Context, params v1alpha1.ListLabels
 func (mr *MockServiceMockRecorder) ListLabels(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLabels", reflect.TypeOf((*MockService)(nil).ListLabels), ctx, params)
+}
+
+// ListOIDCProviders mocks base method.
+func (m *MockService) ListOIDCProviders(ctx context.Context, params v1alpha1.ListOIDCProvidersParams) (*v1alpha1.OIDCProviderList, v1alpha1.Status) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListOIDCProviders", ctx, params)
+	ret0, _ := ret[0].(*v1alpha1.OIDCProviderList)
+	ret1, _ := ret[1].(v1alpha1.Status)
+	return ret0, ret1
+}
+
+// ListOIDCProviders indicates an expected call of ListOIDCProviders.
+func (mr *MockServiceMockRecorder) ListOIDCProviders(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListOIDCProviders", reflect.TypeOf((*MockService)(nil).ListOIDCProviders), ctx, params)
 }
 
 // ListOrganizations mocks base method.
@@ -1118,6 +1268,21 @@ func (m *MockService) ReplaceFleetStatus(ctx context.Context, name string, fleet
 func (mr *MockServiceMockRecorder) ReplaceFleetStatus(ctx, name, fleet any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReplaceFleetStatus", reflect.TypeOf((*MockService)(nil).ReplaceFleetStatus), ctx, name, fleet)
+}
+
+// ReplaceOIDCProvider mocks base method.
+func (m *MockService) ReplaceOIDCProvider(ctx context.Context, name string, oidcProvider v1alpha1.OIDCProvider) (*v1alpha1.OIDCProvider, v1alpha1.Status) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReplaceOIDCProvider", ctx, name, oidcProvider)
+	ret0, _ := ret[0].(*v1alpha1.OIDCProvider)
+	ret1, _ := ret[1].(v1alpha1.Status)
+	return ret0, ret1
+}
+
+// ReplaceOIDCProvider indicates an expected call of ReplaceOIDCProvider.
+func (mr *MockServiceMockRecorder) ReplaceOIDCProvider(ctx, name, oidcProvider any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReplaceOIDCProvider", reflect.TypeOf((*MockService)(nil).ReplaceOIDCProvider), ctx, name, oidcProvider)
 }
 
 // ReplaceRepository mocks base method.

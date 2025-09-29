@@ -1,0 +1,21 @@
+apiVersion: flightctl.io/v1alpha1
+kind: OIDCProvider
+metadata:
+  name: azure-per-user-org
+  labels:
+    provider: azure
+    assignment-type: per-user
+spec:
+  issuer: https://login.microsoftonline.com/your-tenant-id/v2.0
+  clientId: your-azure-client-id
+  clientSecret: your-azure-client-secret
+  redirectUri: https://your-flightctl-instance.com/auth/callback
+  scopes:
+    - openid
+    - email
+    - profile
+  enabled: true
+  organizationAssignment:
+    type: perUser
+    organizationNamePrefix: "user-org-"  # Optional: defaults to "user-org-"
+    organizationNameSuffix: ""          # Optional: defaults to ""

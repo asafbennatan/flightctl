@@ -1,0 +1,22 @@
+apiVersion: flightctl.io/v1alpha1
+kind: OIDCProvider
+metadata:
+  name: keycloak-dynamic-org
+  labels:
+    provider: keycloak
+    assignment-type: dynamic
+spec:
+  issuer: https://your-keycloak-instance.com/realms/your-realm
+  clientId: your-keycloak-client-id
+  clientSecret: your-keycloak-client-secret
+  redirectUri: https://your-flightctl-instance.com/auth/callback
+  scopes:
+    - openid
+    - email
+    - profile
+    - groups
+  enabled: true
+  organizationAssignment:
+    type: dynamic
+    claimPath: "groups.0"  # First group from the groups claim
+    organizationNameMapping: "org-{value}"  # Prefix with "org-"

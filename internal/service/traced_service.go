@@ -8,6 +8,7 @@ import (
 	"time"
 
 	api "github.com/flightctl/flightctl/api/v1alpha1"
+	authcommon "github.com/flightctl/flightctl/internal/auth/common"
 	"github.com/flightctl/flightctl/internal/instrumentation/tracing"
 	"github.com/flightctl/flightctl/internal/store"
 	"github.com/flightctl/flightctl/internal/store/selector"
@@ -597,10 +598,96 @@ func (t *TracedService) GetDatabaseTime(ctx context.Context) (time.Time, api.Sta
 	return resp, st
 }
 
+func (t *TracedService) AuthAuthorize(ctx context.Context, params api.AuthAuthorizeParams) (*api.Status, api.Status) {
+	ctx, span := startSpan(ctx, "AuthAuthorize")
+	resp, st := t.inner.AuthAuthorize(ctx, params)
+	endSpan(span, st)
+	return resp, st
+}
+
+func (t *TracedService) AuthJWKS(ctx context.Context) (*api.JWKSResponse, api.Status) {
+	ctx, span := startSpan(ctx, "AuthJWKS")
+	resp, st := t.inner.AuthJWKS(ctx)
+	endSpan(span, st)
+	return resp, st
+}
+
+func (t *TracedService) AuthOpenIDConfiguration(ctx context.Context) (*api.OpenIDConfiguration, api.Status) {
+	ctx, span := startSpan(ctx, "AuthOpenIDConfiguration")
+	resp, st := t.inner.AuthOpenIDConfiguration(ctx)
+	endSpan(span, st)
+	return resp, st
+}
+
+func (t *TracedService) AuthToken(ctx context.Context, req api.TokenRequest) (*api.TokenResponse, api.Status) {
+	ctx, span := startSpan(ctx, "AuthToken")
+	resp, st := t.inner.AuthToken(ctx, req)
+	endSpan(span, st)
+	return resp, st
+}
+
+func (t *TracedService) AuthUserInfo(ctx context.Context, accessToken string) (*api.UserInfoResponse, api.Status) {
+	ctx, span := startSpan(ctx, "AuthUserInfo")
+	resp, st := t.inner.AuthUserInfo(ctx, accessToken)
+	endSpan(span, st)
+	return resp, st
+}
+
 // --- Organization ---
 func (t *TracedService) ListOrganizations(ctx context.Context) (*api.OrganizationList, api.Status) {
 	ctx, span := startSpan(ctx, "ListOrganizations")
 	resp, st := t.inner.ListOrganizations(ctx)
+	endSpan(span, st)
+	return resp, st
+}
+
+// --- OIDCProvider ---
+func (t *TracedService) CreateOIDCProvider(ctx context.Context, oidcProvider api.OIDCProvider) (*api.OIDCProvider, api.Status) {
+	ctx, span := startSpan(ctx, "CreateOIDCProvider")
+	resp, st := t.inner.CreateOIDCProvider(ctx, oidcProvider)
+	endSpan(span, st)
+	return resp, st
+}
+
+func (t *TracedService) ListOIDCProviders(ctx context.Context, params api.ListOIDCProvidersParams) (*api.OIDCProviderList, api.Status) {
+	ctx, span := startSpan(ctx, "ListOIDCProviders")
+	resp, st := t.inner.ListOIDCProviders(ctx, params)
+	endSpan(span, st)
+	return resp, st
+}
+
+func (t *TracedService) GetOIDCProvider(ctx context.Context, name string) (*api.OIDCProvider, api.Status) {
+	ctx, span := startSpan(ctx, "GetOIDCProvider")
+	resp, st := t.inner.GetOIDCProvider(ctx, name)
+	endSpan(span, st)
+	return resp, st
+}
+
+func (t *TracedService) GetOIDCProviderByIssuer(ctx context.Context, issuer string) (*api.OIDCProvider, api.Status) {
+	ctx, span := startSpan(ctx, "GetOIDCProviderByIssuer")
+	resp, st := t.inner.GetOIDCProviderByIssuer(ctx, issuer)
+	endSpan(span, st)
+	return resp, st
+}
+
+func (t *TracedService) ReplaceOIDCProvider(ctx context.Context, name string, oidcProvider api.OIDCProvider) (*api.OIDCProvider, api.Status) {
+	ctx, span := startSpan(ctx, "ReplaceOIDCProvider")
+	resp, st := t.inner.ReplaceOIDCProvider(ctx, name, oidcProvider)
+	endSpan(span, st)
+	return resp, st
+}
+
+func (t *TracedService) DeleteOIDCProvider(ctx context.Context, name string) api.Status {
+	ctx, span := startSpan(ctx, "DeleteOIDCProvider")
+	st := t.inner.DeleteOIDCProvider(ctx, name)
+	endSpan(span, st)
+	return st
+}
+
+// --- Auth ---
+func (t *TracedService) GetAuthConfig(ctx context.Context, authConfig authcommon.AuthConfig) (*api.AuthConfig, api.Status) {
+	ctx, span := startSpan(ctx, "GetAuthConfig")
+	resp, st := t.inner.GetAuthConfig(ctx, authConfig)
 	endSpan(span, st)
 	return resp, st
 }

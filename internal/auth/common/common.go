@@ -27,28 +27,56 @@ type AuthConfig struct {
 
 type AuthOrganizationsConfig struct {
 	Enabled bool
+	// OrganizationAssignment defines how users are assigned to organizations
+	OrganizationAssignment *OrganizationAssignment
+}
+
+// OrganizationAssignment defines how users are assigned to organizations
+type OrganizationAssignment struct {
+	Type string `json:"type"` // "static", "dynamic", or "perUser"
+
+	// Static assignment fields
+	OrganizationName *string `json:"organizationName,omitempty"`
+
+	// Dynamic assignment fields
+	ClaimPath               *string `json:"claimPath,omitempty"`
+	OrganizationNameMapping *string `json:"organizationNameMapping,omitempty"`
+
+	// Per-user assignment fields
+	OrganizationNamePrefix *string `json:"organizationNamePrefix,omitempty"`
+	OrganizationNameSuffix *string `json:"organizationNameSuffix,omitempty"`
 }
 
 type Identity interface {
 	GetUsername() string
 	GetUID() string
-	GetGroups() []string
+	GetOrganizations() []string
+	GetRoles() []string
+}
+
+type AuthNMiddleware interface {
+	GetAuthToken(r *http.Request) (string, error)
+	ValidateToken(ctx context.Context, token string) error
+	GetIdentity(ctx context.Context, token string) (Identity, error)
+	GetAuthConfig() AuthConfig
 }
 
 type BaseIdentity struct {
-	username string
-	uID      string
-	groups   []string
+	username      string
+	uID           string
+	organizations []string
+	roles         []string
 }
 
 // Ensure BaseIdentity implements Identity
 var _ Identity = (*BaseIdentity)(nil)
 
-func NewBaseIdentity(username string, uID string, groups []string) *BaseIdentity {
+func NewBaseIdentity(username string, uID string, organizations []string, roles []string) *BaseIdentity {
 	return &BaseIdentity{
-		username: username,
-		uID:      uID,
-		groups:   append([]string(nil), groups...),
+		username:      username,
+		uID:           uID,
+		organizations: append([]string(nil), organizations...),
+		roles:         roles,
 	}
 }
 
@@ -68,12 +96,20 @@ func (i *BaseIdentity) SetUID(uID string) {
 	i.uID = uID
 }
 
-func (i *BaseIdentity) GetGroups() []string {
-	return append([]string(nil), i.groups...)
+func (i *BaseIdentity) GetOrganizations() []string {
+	return append([]string(nil), i.organizations...)
 }
 
-func (i *BaseIdentity) SetGroups(groups []string) {
-	i.groups = append([]string(nil), groups...)
+func (i *BaseIdentity) SetOrganizations(organizations []string) {
+	i.organizations = append([]string(nil), organizations...)
+}
+
+func (i *BaseIdentity) GetRoles() []string {
+	return append([]string(nil), i.roles...)
+}
+
+func (i *BaseIdentity) SetRoles(roles []string) {
+	i.roles = append([]string(nil), roles...)
 }
 
 func GetIdentity(ctx context.Context) (Identity, error) {

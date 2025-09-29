@@ -16,7 +16,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestJWTAuth_parseAndCreateIdentity(t *testing.T) {
+// createTestOIDCAuth creates an OIDCAuth instance for testing without OIDC discovery
+func createTestOIDCAuth(jwksUri string) OIDCAuth {
+	oidcAuth := OIDCAuth{
+		jwksUri:       jwksUri,
+		client:        &http.Client{Timeout: 5 * time.Second},
+		usernameClaim: "preferred_username",
+		groupsClaim:   "groups",
+	}
+
+	// Initialize JWKS cache (this is what NewOIDCAuth does internally)
+	oidcAuth.jwksCache = jwk.NewCache(context.Background())
+	oidcAuth.jwksCache.Register(jwksUri, jwk.WithMinRefreshInterval(15*time.Minute))
+
+	return oidcAuth
+}
+
+func TestOIDCAuth_parseAndCreateIdentity(t *testing.T) {
 	// Create a test JWKS server
 	testKey, err := jwk.FromRaw([]byte("test-secret-key-that-is-at-least-32-bytes-long"))
 	require.NoError(t, err)
@@ -77,7 +93,7 @@ func TestJWTAuth_parseAndCreateIdentity(t *testing.T) {
 			uri:           "http://invalid-url-that-does-not-exist",
 			token:         string(validTokenBytes),
 			expectError:   true,
-			errorContains: "failed to fetch JWK set",
+			errorContains: "failed to get JWK set from cache",
 		},
 		{
 			name:          "invalid token",
@@ -109,12 +125,8 @@ func TestJWTAuth_parseAndCreateIdentity(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			jwtAuth := JWTAuth{
-				jwksUri: tt.uri,
-				client:  &http.Client{Timeout: 5 * time.Second},
-			}
-
-			identity, err := jwtAuth.parseAndCreateIdentity(tt.ctx, tt.token)
+			oidcAuth := createTestOIDCAuth(tt.uri)
+			identity, err := oidcAuth.parseAndCreateIdentity(tt.ctx, tt.token)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -135,4 +147,113 @@ func TestJWTAuth_parseAndCreateIdentity(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOIDCAuth_extractOrganizations(t *testing.T) {
+	// Create a test JWKS server
+	testKey, err := jwk.FromRaw([]byte("test-secret-key-that-is-at-least-32-bytes-long"))
+	require.NoError(t, err)
+	require.NoError(t, testKey.Set(jwk.KeyIDKey, "test-key-id"))
+	require.NoError(t, testKey.Set(jwk.AlgorithmKey, jwa.HS256))
+
+	testKeySet := jwk.NewSet()
+	require.NoError(t, testKeySet.AddKey(testKey))
+
+	jwksServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		jwksBytes, _ := json.Marshal(testKeySet)
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write(jwksBytes)
+		if err != nil {
+			http.Error(w, "Failed to write response", http.StatusInternalServerError)
+		}
+	}))
+	defer jwksServer.Close()
+
+	// Create a test token with organization claim
+	now := time.Now()
+	token, err := jwt.NewBuilder().
+		Issuer("https://test-issuer.com").
+		Subject("test-user-id").
+		Audience([]string{"test-audience"}).
+		IssuedAt(now).
+		Expiration(now.Add(time.Hour)).
+		Claim("preferred_username", "testuser").
+		Claim("groups", []string{"admin", "user"}).
+		Claim("organization", "test-org").
+		Build()
+	require.NoError(t, err)
+
+	tokenBytes, err := jwt.Sign(token, jwt.WithKey(jwa.HS256, testKey))
+	require.NoError(t, err)
+
+	tests := []struct {
+		name         string
+		orgConfig    *common.AuthOrganizationsConfig
+		expectedOrgs []string
+	}{
+		{
+			name:         "no org config",
+			orgConfig:    nil,
+			expectedOrgs: nil,
+		},
+		{
+			name: "organizations disabled",
+			orgConfig: &common.AuthOrganizationsConfig{
+				Enabled: false,
+			},
+			expectedOrgs: nil,
+		},
+		{
+			name: "static organization assignment",
+			orgConfig: &common.AuthOrganizationsConfig{
+				Enabled: true,
+				OrganizationAssignment: &common.OrganizationAssignment{
+					Type:             "static",
+					OrganizationName: stringPtr("static-org"),
+				},
+			},
+			expectedOrgs: []string{"static-org"},
+		},
+		{
+			name: "dynamic organization assignment",
+			orgConfig: &common.AuthOrganizationsConfig{
+				Enabled: true,
+				OrganizationAssignment: &common.OrganizationAssignment{
+					Type:      "dynamic",
+					ClaimPath: stringPtr("organization"),
+				},
+			},
+			expectedOrgs: []string{"test-org"},
+		},
+		{
+			name: "per-user organization assignment",
+			orgConfig: &common.AuthOrganizationsConfig{
+				Enabled: true,
+				OrganizationAssignment: &common.OrganizationAssignment{
+					Type:                   "perUser",
+					OrganizationNamePrefix: stringPtr("user-"),
+					OrganizationNameSuffix: stringPtr("-org"),
+				},
+			},
+			expectedOrgs: []string{"user-testuser-org"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oidcAuth := createTestOIDCAuth(jwksServer.URL)
+			oidcAuth.orgConfig = tt.orgConfig
+
+			identity, err := oidcAuth.parseAndCreateIdentity(context.Background(), string(tokenBytes))
+			require.NoError(t, err)
+
+			organizations := identity.GetOrganizations()
+			assert.Equal(t, tt.expectedOrgs, organizations)
+		})
+	}
+}
+
+// Helper function to create string pointers
+func stringPtr(s string) *string {
+	return &s
 }

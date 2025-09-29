@@ -134,7 +134,7 @@ func runRestore(ctx context.Context) error {
 	if err != nil {
 		log.Fatalf("failed to build organization resolver: %v", err)
 	}
-	serviceHandler := service.NewServiceHandler(storeInst, nil, kvStore, nil, log, "", "", []string{}, orgResolver)
+	serviceHandler := service.NewServiceHandler(storeInst, nil, kvStore, nil, log, "", "", []string{}, orgResolver, nil)
 
 	log.Println("Running post-restoration device preparation")
 	if err := serviceHandler.PrepareDevicesAfterRestore(ctx); err != nil {

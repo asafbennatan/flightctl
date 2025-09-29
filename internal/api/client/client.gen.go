@@ -90,8 +90,25 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+	// AuthOpenIDConfiguration request
+	AuthOpenIDConfiguration(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AuthAuthorize request
+	AuthAuthorize(ctx context.Context, params *AuthAuthorizeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// AuthConfig request
 	AuthConfig(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AuthJWKS request
+	AuthJWKS(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AuthTokenWithBody request with any body
+	AuthTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AuthToken(ctx context.Context, body AuthTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AuthUserInfo request
+	AuthUserInfo(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AuthValidate request
 	AuthValidate(ctx context.Context, params *AuthValidateParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -275,6 +292,25 @@ type ClientInterface interface {
 	// ListLabels request
 	ListLabels(ctx context.Context, params *ListLabelsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListOIDCProviders request
+	ListOIDCProviders(ctx context.Context, params *ListOIDCProvidersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateOIDCProviderWithBody request with any body
+	CreateOIDCProviderWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateOIDCProvider(ctx context.Context, body CreateOIDCProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteOIDCProvider request
+	DeleteOIDCProvider(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetOIDCProvider request
+	GetOIDCProvider(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReplaceOIDCProviderWithBody request with any body
+	ReplaceOIDCProviderWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ReplaceOIDCProvider(ctx context.Context, name string, body ReplaceOIDCProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListOrganizations request
 	ListOrganizations(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -330,8 +366,80 @@ type ClientInterface interface {
 	GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
+func (c *Client) AuthOpenIDConfiguration(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAuthOpenIDConfigurationRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AuthAuthorize(ctx context.Context, params *AuthAuthorizeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAuthAuthorizeRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) AuthConfig(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAuthConfigRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AuthJWKS(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAuthJWKSRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AuthTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAuthTokenRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AuthToken(ctx context.Context, body AuthTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAuthTokenRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AuthUserInfo(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAuthUserInfoRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -1158,6 +1266,90 @@ func (c *Client) ListLabels(ctx context.Context, params *ListLabelsParams, reqEd
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListOIDCProviders(ctx context.Context, params *ListOIDCProvidersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListOIDCProvidersRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateOIDCProviderWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateOIDCProviderRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateOIDCProvider(ctx context.Context, body CreateOIDCProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateOIDCProviderRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteOIDCProvider(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteOIDCProviderRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetOIDCProvider(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetOIDCProviderRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReplaceOIDCProviderWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplaceOIDCProviderRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReplaceOIDCProvider(ctx context.Context, name string, body ReplaceOIDCProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplaceOIDCProviderRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListOrganizations(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListOrganizationsRequest(c.Server)
 	if err != nil {
@@ -1398,6 +1590,134 @@ func (c *Client) GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) 
 	return c.Client.Do(req)
 }
 
+// NewAuthOpenIDConfigurationRequest generates requests for AuthOpenIDConfiguration
+func NewAuthOpenIDConfigurationRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/.well-known/openid_configuration")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAuthAuthorizeRequest generates requests for AuthAuthorize
+func NewAuthAuthorizeRequest(server string, params *AuthAuthorizeParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/authorize")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "response_type", runtime.ParamLocationQuery, params.ResponseType); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "client_id", runtime.ParamLocationQuery, params.ClientId); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "redirect_uri", runtime.ParamLocationQuery, params.RedirectUri); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if params.Scope != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "scope", runtime.ParamLocationQuery, *params.Scope); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewAuthConfigRequest generates requests for AuthConfig
 func NewAuthConfigRequest(server string) (*http.Request, error) {
 	var err error
@@ -1408,6 +1728,100 @@ func NewAuthConfigRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/auth/config")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAuthJWKSRequest generates requests for AuthJWKS
+func NewAuthJWKSRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/jwks")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAuthTokenRequest calls the generic AuthToken builder with application/json body
+func NewAuthTokenRequest(server string, body AuthTokenJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAuthTokenRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewAuthTokenRequestWithBody generates requests for AuthToken with any type of body
+func NewAuthTokenRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/token")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAuthUserInfoRequest generates requests for AuthUserInfo
+func NewAuthUserInfoRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/userinfo")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -3797,6 +4211,258 @@ func NewListLabelsRequest(server string, params *ListLabelsParams) (*http.Reques
 	return req, nil
 }
 
+// NewListOIDCProvidersRequest generates requests for ListOIDCProviders
+func NewListOIDCProvidersRequest(server string, params *ListOIDCProvidersParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/oidcproviders")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Continue != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "continue", runtime.ParamLocationQuery, *params.Continue); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.LabelSelector != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "labelSelector", runtime.ParamLocationQuery, *params.LabelSelector); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.FieldSelector != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "fieldSelector", runtime.ParamLocationQuery, *params.FieldSelector); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateOIDCProviderRequest calls the generic CreateOIDCProvider builder with application/json body
+func NewCreateOIDCProviderRequest(server string, body CreateOIDCProviderJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateOIDCProviderRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateOIDCProviderRequestWithBody generates requests for CreateOIDCProvider with any type of body
+func NewCreateOIDCProviderRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/oidcproviders")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteOIDCProviderRequest generates requests for DeleteOIDCProvider
+func NewDeleteOIDCProviderRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "name", runtime.ParamLocationPath, name)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/oidcproviders/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetOIDCProviderRequest generates requests for GetOIDCProvider
+func NewGetOIDCProviderRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "name", runtime.ParamLocationPath, name)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/oidcproviders/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewReplaceOIDCProviderRequest calls the generic ReplaceOIDCProvider builder with application/json body
+func NewReplaceOIDCProviderRequest(server string, name string, body ReplaceOIDCProviderJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReplaceOIDCProviderRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewReplaceOIDCProviderRequestWithBody generates requests for ReplaceOIDCProvider with any type of body
+func NewReplaceOIDCProviderRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "name", runtime.ParamLocationPath, name)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/oidcproviders/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListOrganizationsRequest generates requests for ListOrganizations
 func NewListOrganizationsRequest(server string) (*http.Request, error) {
 	var err error
@@ -4492,8 +5158,25 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
+	// AuthOpenIDConfigurationWithResponse request
+	AuthOpenIDConfigurationWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*AuthOpenIDConfigurationResponse, error)
+
+	// AuthAuthorizeWithResponse request
+	AuthAuthorizeWithResponse(ctx context.Context, params *AuthAuthorizeParams, reqEditors ...RequestEditorFn) (*AuthAuthorizeResponse, error)
+
 	// AuthConfigWithResponse request
 	AuthConfigWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*AuthConfigResponse, error)
+
+	// AuthJWKSWithResponse request
+	AuthJWKSWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*AuthJWKSResponse, error)
+
+	// AuthTokenWithBodyWithResponse request with any body
+	AuthTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AuthTokenResponse, error)
+
+	AuthTokenWithResponse(ctx context.Context, body AuthTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*AuthTokenResponse, error)
+
+	// AuthUserInfoWithResponse request
+	AuthUserInfoWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*AuthUserInfoResponse, error)
 
 	// AuthValidateWithResponse request
 	AuthValidateWithResponse(ctx context.Context, params *AuthValidateParams, reqEditors ...RequestEditorFn) (*AuthValidateResponse, error)
@@ -4677,6 +5360,25 @@ type ClientWithResponsesInterface interface {
 	// ListLabelsWithResponse request
 	ListLabelsWithResponse(ctx context.Context, params *ListLabelsParams, reqEditors ...RequestEditorFn) (*ListLabelsResponse, error)
 
+	// ListOIDCProvidersWithResponse request
+	ListOIDCProvidersWithResponse(ctx context.Context, params *ListOIDCProvidersParams, reqEditors ...RequestEditorFn) (*ListOIDCProvidersResponse, error)
+
+	// CreateOIDCProviderWithBodyWithResponse request with any body
+	CreateOIDCProviderWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateOIDCProviderResponse, error)
+
+	CreateOIDCProviderWithResponse(ctx context.Context, body CreateOIDCProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateOIDCProviderResponse, error)
+
+	// DeleteOIDCProviderWithResponse request
+	DeleteOIDCProviderWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteOIDCProviderResponse, error)
+
+	// GetOIDCProviderWithResponse request
+	GetOIDCProviderWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetOIDCProviderResponse, error)
+
+	// ReplaceOIDCProviderWithBodyWithResponse request with any body
+	ReplaceOIDCProviderWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceOIDCProviderResponse, error)
+
+	ReplaceOIDCProviderWithResponse(ctx context.Context, name string, body ReplaceOIDCProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceOIDCProviderResponse, error)
+
 	// ListOrganizationsWithResponse request
 	ListOrganizationsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListOrganizationsResponse, error)
 
@@ -4732,6 +5434,50 @@ type ClientWithResponsesInterface interface {
 	GetVersionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetVersionResponse, error)
 }
 
+type AuthOpenIDConfigurationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OpenIDConfiguration
+}
+
+// Status returns HTTPResponse.Status
+func (r AuthOpenIDConfigurationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AuthOpenIDConfigurationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AuthAuthorizeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *Status
+}
+
+// Status returns HTTPResponse.Status
+func (r AuthAuthorizeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AuthAuthorizeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type AuthConfigResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4749,6 +5495,74 @@ func (r AuthConfigResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r AuthConfigResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AuthJWKSResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *JWKSResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r AuthJWKSResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AuthJWKSResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AuthTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *TokenResponse
+	JSON400      *TokenResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r AuthTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AuthTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AuthUserInfoResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *UserInfoResponse
+	JSON401      *UserInfoResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r AuthUserInfoResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AuthUserInfoResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -6033,6 +6847,143 @@ func (r ListLabelsResponse) StatusCode() int {
 	return 0
 }
 
+type ListOIDCProvidersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OIDCProviderList
+	JSON400      *Status
+	JSON401      *Status
+	JSON403      *Status
+	JSON429      *Status
+	JSON503      *Status
+}
+
+// Status returns HTTPResponse.Status
+func (r ListOIDCProvidersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListOIDCProvidersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateOIDCProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *OIDCProvider
+	JSON400      *Status
+	JSON401      *Status
+	JSON403      *Status
+	JSON429      *Status
+	JSON503      *Status
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateOIDCProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateOIDCProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteOIDCProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Status
+	JSON401      *Status
+	JSON403      *Status
+	JSON404      *Status
+	JSON429      *Status
+	JSON503      *Status
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteOIDCProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteOIDCProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetOIDCProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OIDCProvider
+	JSON401      *Status
+	JSON403      *Status
+	JSON404      *Status
+	JSON429      *Status
+	JSON503      *Status
+}
+
+// Status returns HTTPResponse.Status
+func (r GetOIDCProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetOIDCProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ReplaceOIDCProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OIDCProvider
+	JSON201      *OIDCProvider
+	JSON400      *Status
+	JSON401      *Status
+	JSON403      *Status
+	JSON404      *Status
+	JSON429      *Status
+	JSON503      *Status
+}
+
+// Status returns HTTPResponse.Status
+func (r ReplaceOIDCProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReplaceOIDCProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListOrganizationsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -6421,6 +7372,24 @@ func (r GetVersionResponse) StatusCode() int {
 	return 0
 }
 
+// AuthOpenIDConfigurationWithResponse request returning *AuthOpenIDConfigurationResponse
+func (c *ClientWithResponses) AuthOpenIDConfigurationWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*AuthOpenIDConfigurationResponse, error) {
+	rsp, err := c.AuthOpenIDConfiguration(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAuthOpenIDConfigurationResponse(rsp)
+}
+
+// AuthAuthorizeWithResponse request returning *AuthAuthorizeResponse
+func (c *ClientWithResponses) AuthAuthorizeWithResponse(ctx context.Context, params *AuthAuthorizeParams, reqEditors ...RequestEditorFn) (*AuthAuthorizeResponse, error) {
+	rsp, err := c.AuthAuthorize(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAuthAuthorizeResponse(rsp)
+}
+
 // AuthConfigWithResponse request returning *AuthConfigResponse
 func (c *ClientWithResponses) AuthConfigWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*AuthConfigResponse, error) {
 	rsp, err := c.AuthConfig(ctx, reqEditors...)
@@ -6428,6 +7397,41 @@ func (c *ClientWithResponses) AuthConfigWithResponse(ctx context.Context, reqEdi
 		return nil, err
 	}
 	return ParseAuthConfigResponse(rsp)
+}
+
+// AuthJWKSWithResponse request returning *AuthJWKSResponse
+func (c *ClientWithResponses) AuthJWKSWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*AuthJWKSResponse, error) {
+	rsp, err := c.AuthJWKS(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAuthJWKSResponse(rsp)
+}
+
+// AuthTokenWithBodyWithResponse request with arbitrary body returning *AuthTokenResponse
+func (c *ClientWithResponses) AuthTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AuthTokenResponse, error) {
+	rsp, err := c.AuthTokenWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAuthTokenResponse(rsp)
+}
+
+func (c *ClientWithResponses) AuthTokenWithResponse(ctx context.Context, body AuthTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*AuthTokenResponse, error) {
+	rsp, err := c.AuthToken(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAuthTokenResponse(rsp)
+}
+
+// AuthUserInfoWithResponse request returning *AuthUserInfoResponse
+func (c *ClientWithResponses) AuthUserInfoWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*AuthUserInfoResponse, error) {
+	rsp, err := c.AuthUserInfo(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAuthUserInfoResponse(rsp)
 }
 
 // AuthValidateWithResponse request returning *AuthValidateResponse
@@ -7020,6 +8024,67 @@ func (c *ClientWithResponses) ListLabelsWithResponse(ctx context.Context, params
 	return ParseListLabelsResponse(rsp)
 }
 
+// ListOIDCProvidersWithResponse request returning *ListOIDCProvidersResponse
+func (c *ClientWithResponses) ListOIDCProvidersWithResponse(ctx context.Context, params *ListOIDCProvidersParams, reqEditors ...RequestEditorFn) (*ListOIDCProvidersResponse, error) {
+	rsp, err := c.ListOIDCProviders(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListOIDCProvidersResponse(rsp)
+}
+
+// CreateOIDCProviderWithBodyWithResponse request with arbitrary body returning *CreateOIDCProviderResponse
+func (c *ClientWithResponses) CreateOIDCProviderWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateOIDCProviderResponse, error) {
+	rsp, err := c.CreateOIDCProviderWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateOIDCProviderResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateOIDCProviderWithResponse(ctx context.Context, body CreateOIDCProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateOIDCProviderResponse, error) {
+	rsp, err := c.CreateOIDCProvider(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateOIDCProviderResponse(rsp)
+}
+
+// DeleteOIDCProviderWithResponse request returning *DeleteOIDCProviderResponse
+func (c *ClientWithResponses) DeleteOIDCProviderWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteOIDCProviderResponse, error) {
+	rsp, err := c.DeleteOIDCProvider(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteOIDCProviderResponse(rsp)
+}
+
+// GetOIDCProviderWithResponse request returning *GetOIDCProviderResponse
+func (c *ClientWithResponses) GetOIDCProviderWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetOIDCProviderResponse, error) {
+	rsp, err := c.GetOIDCProvider(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetOIDCProviderResponse(rsp)
+}
+
+// ReplaceOIDCProviderWithBodyWithResponse request with arbitrary body returning *ReplaceOIDCProviderResponse
+func (c *ClientWithResponses) ReplaceOIDCProviderWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceOIDCProviderResponse, error) {
+	rsp, err := c.ReplaceOIDCProviderWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplaceOIDCProviderResponse(rsp)
+}
+
+func (c *ClientWithResponses) ReplaceOIDCProviderWithResponse(ctx context.Context, name string, body ReplaceOIDCProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceOIDCProviderResponse, error) {
+	rsp, err := c.ReplaceOIDCProvider(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplaceOIDCProviderResponse(rsp)
+}
+
 // ListOrganizationsWithResponse request returning *ListOrganizationsResponse
 func (c *ClientWithResponses) ListOrganizationsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListOrganizationsResponse, error) {
 	rsp, err := c.ListOrganizations(ctx, reqEditors...)
@@ -7194,6 +8259,58 @@ func (c *ClientWithResponses) GetVersionWithResponse(ctx context.Context, reqEdi
 	return ParseGetVersionResponse(rsp)
 }
 
+// ParseAuthOpenIDConfigurationResponse parses an HTTP response from a AuthOpenIDConfigurationWithResponse call
+func ParseAuthOpenIDConfigurationResponse(rsp *http.Response) (*AuthOpenIDConfigurationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AuthOpenIDConfigurationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OpenIDConfiguration
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAuthAuthorizeResponse parses an HTTP response from a AuthAuthorizeWithResponse call
+func ParseAuthAuthorizeResponse(rsp *http.Response) (*AuthAuthorizeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AuthAuthorizeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseAuthConfigResponse parses an HTTP response from a AuthConfigWithResponse call
 func ParseAuthConfigResponse(rsp *http.Response) (*AuthConfigResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -7221,6 +8338,98 @@ func ParseAuthConfigResponse(rsp *http.Response) (*AuthConfigResponse, error) {
 			return nil, err
 		}
 		response.JSON418 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAuthJWKSResponse parses an HTTP response from a AuthJWKSWithResponse call
+func ParseAuthJWKSResponse(rsp *http.Response) (*AuthJWKSResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AuthJWKSResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest JWKSResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAuthTokenResponse parses an HTTP response from a AuthTokenWithResponse call
+func ParseAuthTokenResponse(rsp *http.Response) (*AuthTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AuthTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TokenResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest TokenResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAuthUserInfoResponse parses an HTTP response from a AuthUserInfoWithResponse call
+func ParseAuthUserInfoResponse(rsp *http.Response) (*AuthUserInfoResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AuthUserInfoResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UserInfoResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest UserInfoResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
 
 	}
 
@@ -10265,6 +11474,325 @@ func ParseListLabelsResponse(rsp *http.Response) (*ListLabelsResponse, error) {
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListOIDCProvidersResponse parses an HTTP response from a ListOIDCProvidersWithResponse call
+func ParseListOIDCProvidersResponse(rsp *http.Response) (*ListOIDCProvidersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListOIDCProvidersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OIDCProviderList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateOIDCProviderResponse parses an HTTP response from a CreateOIDCProviderWithResponse call
+func ParseCreateOIDCProviderResponse(rsp *http.Response) (*CreateOIDCProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateOIDCProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest OIDCProvider
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteOIDCProviderResponse parses an HTTP response from a DeleteOIDCProviderWithResponse call
+func ParseDeleteOIDCProviderResponse(rsp *http.Response) (*DeleteOIDCProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteOIDCProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetOIDCProviderResponse parses an HTTP response from a GetOIDCProviderWithResponse call
+func ParseGetOIDCProviderResponse(rsp *http.Response) (*GetOIDCProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetOIDCProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OIDCProvider
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReplaceOIDCProviderResponse parses an HTTP response from a ReplaceOIDCProviderWithResponse call
+func ParseReplaceOIDCProviderResponse(rsp *http.Response) (*ReplaceOIDCProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReplaceOIDCProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OIDCProvider
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest OIDCProvider
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
 		var dest Status

@@ -1,0 +1,20 @@
+apiVersion: flightctl.io/v1alpha1
+kind: OIDCProvider
+metadata:
+  name: google-static-org
+  labels:
+    provider: google
+    assignment-type: static
+spec:
+  issuer: https://accounts.google.com
+  clientId: your-google-client-id
+  clientSecret: your-google-client-secret
+  redirectUri: https://your-flightctl-instance.com/auth/callback
+  scopes:
+    - openid
+    - email
+    - profile
+  enabled: true
+  organizationAssignment:
+    type: static
+    organizationName: "company-org"

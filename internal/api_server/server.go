@@ -14,6 +14,7 @@ import (
 	"github.com/flightctl/flightctl/internal/api/server"
 	fcmiddleware "github.com/flightctl/flightctl/internal/api_server/middleware"
 	"github.com/flightctl/flightctl/internal/auth"
+	"github.com/flightctl/flightctl/internal/auth/issuer"
 	"github.com/flightctl/flightctl/internal/config"
 	"github.com/flightctl/flightctl/internal/console"
 	"github.com/flightctl/flightctl/internal/crypto"
@@ -167,7 +168,27 @@ func (s *Server) Run(ctx context.Context) error {
 		MultiErrorHandler: oapiMultiErrorHandler,
 	}
 
-	s.authN, s.authZ, err = auth.InitAuth(s.cfg, s.log, s.orgResolver)
+	// Create OIDC issuer if configured
+	var oidcIssuer issuer.OIDCIssuer
+	if s.cfg.Auth != nil && s.cfg.Auth.OIDCIssuer != nil {
+		// For now, we only support SSSD-based OIDC issuer
+		// This could be extended to support other issuer types in the future
+		// Create SSSD OIDC provider
+		// Note: SSSD functionality requires Linux build constraints
+		sssdOIDCProvider, err := s.createSSSDOIDCProvider()
+		if err != nil {
+			s.log.WithError(err).Warn("Failed to create SSSD OIDC provider, OIDC endpoints will not be available")
+		} else {
+			oidcIssuer = sssdOIDCProvider
+		}
+	}
+
+	// Create service handler first so it can be used for auth initialization
+	serviceHandler := service.WrapWithTracing(service.NewServiceHandler(
+		s.store, workerClient, kvStore, s.ca, s.log, s.cfg.Service.BaseAgentEndpointUrl, s.cfg.Service.BaseUIUrl, s.cfg.Service.TPMCAPaths, s.orgResolver, oidcIssuer))
+
+	// Initialize auth with service handler for OIDC provider access
+	s.authN, s.authZ, err = auth.InitMultiAuth(s.cfg, s.log, s.orgResolver, serviceHandler)
 	if err != nil {
 		return fmt.Errorf("failed initializing auth: %w", err)
 	}
@@ -193,9 +214,6 @@ func (s *Server) Run(ctx context.Context) error {
 		middleware.Logger,
 		middleware.Recoverer,
 	)
-
-	serviceHandler := service.WrapWithTracing(service.NewServiceHandler(
-		s.store, workerClient, kvStore, s.ca, s.log, s.cfg.Service.BaseAgentEndpointUrl, s.cfg.Service.BaseUIUrl, s.cfg.Service.TPMCAPaths, s.orgResolver))
 
 	// a group is a new mux copy, with its own copy of the middleware stack
 	// this one handles the OpenAPI handling of the service (excluding auth validate endpoint)

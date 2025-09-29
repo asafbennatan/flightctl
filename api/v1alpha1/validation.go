@@ -1167,3 +1167,106 @@ func validateImmutableCoreFields(currentName, newName *string, currentAPIVersion
 	}
 	return errs
 }
+
+func (o OIDCProvider) Validate() []error {
+	allErrs := []error{}
+	allErrs = append(allErrs, validation.ValidateResourceName(o.Metadata.Name)...)
+	allErrs = append(allErrs, validation.ValidateLabels(o.Metadata.Labels)...)
+	allErrs = append(allErrs, validation.ValidateAnnotations(o.Metadata.Annotations)...)
+	allErrs = append(allErrs, o.Spec.Validate()...)
+
+	return allErrs
+}
+
+func (o OIDCProviderSpec) Validate() []error {
+	allErrs := []error{}
+
+	if o.Issuer == "" {
+		allErrs = append(allErrs, errors.New("issuer is required"))
+	}
+	if o.ClientId == "" {
+		allErrs = append(allErrs, errors.New("clientId is required"))
+	}
+	if o.ClientSecret == "" {
+		allErrs = append(allErrs, errors.New("clientSecret is required"))
+	}
+	if o.RedirectUri == "" {
+		allErrs = append(allErrs, errors.New("redirectUri is required"))
+	}
+
+	// Validate organization assignment
+	allErrs = append(allErrs, o.OrganizationAssignment.Validate()...)
+
+	return allErrs
+}
+
+func (o OIDCOrganizationAssignment) Validate() []error {
+	allErrs := []error{}
+
+	// Get the discriminator to determine which type of assignment this is
+	discriminator, err := o.Discriminator()
+	if err != nil {
+		allErrs = append(allErrs, fmt.Errorf("invalid organization assignment: %w", err))
+		return allErrs
+	}
+
+	switch discriminator {
+	case "static":
+		static, err := o.AsOIDCStaticOrganizationAssignment()
+		if err != nil {
+			allErrs = append(allErrs, fmt.Errorf("invalid static organization assignment: %w", err))
+		} else {
+			allErrs = append(allErrs, static.Validate()...)
+		}
+	case "dynamic":
+		dynamic, err := o.AsOIDCDynamicOrganizationAssignment()
+		if err != nil {
+			allErrs = append(allErrs, fmt.Errorf("invalid dynamic organization assignment: %w", err))
+		} else {
+			allErrs = append(allErrs, dynamic.Validate()...)
+		}
+	case "perUser":
+		perUser, err := o.AsOIDCPerUserOrganizationAssignment()
+		if err != nil {
+			allErrs = append(allErrs, fmt.Errorf("invalid per-user organization assignment: %w", err))
+		} else {
+			allErrs = append(allErrs, perUser.Validate()...)
+		}
+	default:
+		allErrs = append(allErrs, fmt.Errorf("unknown organization assignment type: %s", discriminator))
+	}
+
+	return allErrs
+}
+
+func (o OIDCStaticOrganizationAssignment) Validate() []error {
+	allErrs := []error{}
+
+	if o.OrganizationName == "" {
+		allErrs = append(allErrs, errors.New("organizationName is required for static assignment"))
+	}
+
+	return allErrs
+}
+
+func (o OIDCDynamicOrganizationAssignment) Validate() []error {
+	allErrs := []error{}
+
+	if o.ClaimPath == "" {
+		allErrs = append(allErrs, errors.New("claimPath is required for dynamic assignment"))
+	}
+	if o.OrganizationNameMapping == "" {
+		allErrs = append(allErrs, errors.New("organizationNameMapping is required for dynamic assignment"))
+	}
+
+	return allErrs
+}
+
+func (o OIDCPerUserOrganizationAssignment) Validate() []error {
+	allErrs := []error{}
+
+	// Per-user assignment doesn't have required fields beyond the type
+	// The prefix and suffix are optional with defaults
+
+	return allErrs
+}

@@ -12,6 +12,10 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+const (
+	BearerAuthScopes = "bearerAuth.Scopes"
+)
+
 // Defines values for AppType.
 const (
 	AppTypeCompose AppType = "compose"
@@ -33,6 +37,13 @@ const (
 	ApplicationsSummaryStatusError    ApplicationsSummaryStatusType = "Error"
 	ApplicationsSummaryStatusHealthy  ApplicationsSummaryStatusType = "Healthy"
 	ApplicationsSummaryStatusUnknown  ApplicationsSummaryStatusType = "Unknown"
+)
+
+// Defines values for AuthProviderInfoType.
+const (
+	Aap  AuthProviderInfoType = "aap"
+	K8s  AuthProviderInfoType = "k8s"
+	Oidc AuthProviderInfoType = "oidc"
 )
 
 // Defines values for ConditionStatus.
@@ -292,6 +303,21 @@ const (
 	NotIn        MatchExpressionOperator = "NotIn"
 )
 
+// Defines values for OIDCDynamicOrganizationAssignmentType.
+const (
+	Dynamic OIDCDynamicOrganizationAssignmentType = "dynamic"
+)
+
+// Defines values for OIDCPerUserOrganizationAssignmentType.
+const (
+	PerUser OIDCPerUserOrganizationAssignmentType = "perUser"
+)
+
+// Defines values for OIDCStaticOrganizationAssignmentType.
+const (
+	Static OIDCStaticOrganizationAssignmentType = "static"
+)
+
 // Defines values for PatchRequestOp.
 const (
 	Add     PatchRequestOp = "add"
@@ -324,6 +350,7 @@ const (
 	ResourceKindDevice                    ResourceKind = "Device"
 	ResourceKindEnrollmentRequest         ResourceKind = "EnrollmentRequest"
 	ResourceKindFleet                     ResourceKind = "Fleet"
+	ResourceKindOIDCProvider              ResourceKind = "OIDCProvider"
 	ResourceKindRepository                ResourceKind = "Repository"
 	ResourceKindResourceSync              ResourceKind = "ResourceSync"
 	ResourceKindTemplateVersion           ResourceKind = "TemplateVersion"
@@ -351,6 +378,23 @@ const (
 // Defines values for RolloutStrategy.
 const (
 	RolloutStrategyBatchSequence RolloutStrategy = "BatchSequence"
+)
+
+// Defines values for TokenRequestGrantType.
+const (
+	Password     TokenRequestGrantType = "password"
+	RefreshToken TokenRequestGrantType = "refresh_token"
+)
+
+// Defines values for TokenResponseTokenType.
+const (
+	Bearer TokenResponseTokenType = "Bearer"
+)
+
+// Defines values for AuthAuthorizeParamsResponseType.
+const (
+	Code  AuthAuthorizeParamsResponseType = "code"
+	Token AuthAuthorizeParamsResponseType = "token"
 )
 
 // Defines values for ListEventsParamsOrder.
@@ -432,23 +476,47 @@ type ApplicationVolumeStatus struct {
 // ApplicationsSummaryStatusType Status of all applications on the device.
 type ApplicationsSummaryStatusType string
 
-// AuthConfig Auth config.
+// AuthConfig defines model for AuthConfig.
 type AuthConfig struct {
-	// AuthOrganizationsConfig Auth related organizations configuration.
-	AuthOrganizationsConfig AuthOrganizationsConfig `json:"authOrganizationsConfig"`
+	// DefaultProvider Name of the default authentication provider
+	DefaultProvider *string `json:"defaultProvider,omitempty"`
 
-	// AuthType Auth type.
-	AuthType string `json:"authType"`
+	// OrganizationsEnabled Whether organizations are enabled for authentication
+	OrganizationsEnabled *bool `json:"organizationsEnabled,omitempty"`
 
-	// AuthURL Auth URL.
-	AuthURL string `json:"authURL"`
+	// Providers List of all available authentication providers
+	Providers *[]AuthProviderInfo `json:"providers,omitempty"`
 }
 
-// AuthOrganizationsConfig Auth related organizations configuration.
-type AuthOrganizationsConfig struct {
-	// Enabled If true, support for IdP provided organizations is enabled.
-	Enabled bool `json:"enabled"`
+// AuthProviderInfo Auth config.
+type AuthProviderInfo struct {
+	// AuthUrl Authentication URL for the provider
+	AuthUrl *string `json:"authUrl,omitempty"`
+
+	// ClientId Default client ID for OIDC providers
+	ClientId *string `json:"clientId,omitempty"`
+
+	// DisplayName Human-readable display name
+	DisplayName *string `json:"displayName,omitempty"`
+
+	// IsDefault Whether this is the default provider
+	IsDefault *bool `json:"isDefault,omitempty"`
+
+	// IsStatic Whether this is a static provider (from config) or dynamic (from database)
+	IsStatic *bool `json:"isStatic,omitempty"`
+
+	// Issuer OIDC issuer URL (for OIDC providers)
+	Issuer *string `json:"issuer,omitempty"`
+
+	// Name Unique identifier for the provider
+	Name *string `json:"name,omitempty"`
+
+	// Type Type of authentication provider
+	Type *AuthProviderInfoType `json:"type,omitempty"`
 }
+
+// AuthProviderInfoType Type of authentication provider
+type AuthProviderInfoType string
 
 // Batch Batch is an element in batch sequence.
 type Batch struct {
@@ -1613,6 +1681,29 @@ type InternalTaskPermanentlyFailedDetails struct {
 // InternalTaskPermanentlyFailedDetailsDetailType The type of detail for discriminator purposes.
 type InternalTaskPermanentlyFailedDetailsDetailType string
 
+// JWKSResponse JSON Web Key Set
+type JWKSResponse struct {
+	Keys *[]struct {
+		// Alg Algorithm
+		Alg *string `json:"alg,omitempty"`
+
+		// E RSA exponent
+		E *string `json:"e,omitempty"`
+
+		// Kid Key ID
+		Kid *string `json:"kid,omitempty"`
+
+		// Kty Key type
+		Kty *string `json:"kty,omitempty"`
+
+		// N RSA modulus
+		N *string `json:"n,omitempty"`
+
+		// Use Key use
+		Use *string `json:"use,omitempty"`
+	} `json:"keys,omitempty"`
+}
+
 // KubernetesSecretProviderSpec defines model for KubernetesSecretProviderSpec.
 type KubernetesSecretProviderSpec struct {
 	// Name The name of the config provider.
@@ -1682,6 +1773,129 @@ type MemoryResourceMonitorSpec struct {
 	SamplingInterval string `json:"samplingInterval"`
 }
 
+// OIDCDynamicOrganizationAssignment OIDCDynamicOrganizationAssignment assigns users to organizations based on OIDC JWT claims.
+type OIDCDynamicOrganizationAssignment struct {
+	// ClaimPath The JSON path to the claim in the OIDC JWT that contains the organization identifier (e.g., "groups.0" or "custom.org")
+	ClaimPath string `json:"claimPath"`
+
+	// OrganizationNameMapping The mapping pattern to convert the claim value to organization name (e.g., "org-{value}" or just "{value}")
+	OrganizationNameMapping string `json:"organizationNameMapping"`
+
+	// Type The type of organization assignment
+	Type OIDCDynamicOrganizationAssignmentType `json:"type"`
+}
+
+// OIDCDynamicOrganizationAssignmentType The type of organization assignment
+type OIDCDynamicOrganizationAssignmentType string
+
+// OIDCOrganizationAssignment OIDCOrganizationAssignment defines how users from this OIDC provider are assigned to organizations.
+type OIDCOrganizationAssignment struct {
+	union json.RawMessage
+}
+
+// OIDCPerUserOrganizationAssignment OIDCPerUserOrganizationAssignment creates a separate organization for each user.
+type OIDCPerUserOrganizationAssignment struct {
+	// OrganizationNamePrefix The prefix for the user-specific organization name (e.g., "user-org-")
+	OrganizationNamePrefix *string `json:"organizationNamePrefix,omitempty"`
+
+	// OrganizationNameSuffix The suffix for the user-specific organization name (e.g., "-org")
+	OrganizationNameSuffix *string `json:"organizationNameSuffix,omitempty"`
+
+	// Type The type of organization assignment
+	Type OIDCPerUserOrganizationAssignmentType `json:"type"`
+}
+
+// OIDCPerUserOrganizationAssignmentType The type of organization assignment
+type OIDCPerUserOrganizationAssignmentType string
+
+// OIDCProvider OIDCProvider represents an OpenID Connect provider configuration.
+type OIDCProvider struct {
+	// ApiVersion APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources.
+	ApiVersion string `json:"apiVersion"`
+
+	// Kind Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds.
+	Kind string `json:"kind"`
+
+	// Metadata ObjectMeta is metadata that all persisted resources must have, which includes all objects users must create.
+	Metadata ObjectMeta `json:"metadata"`
+
+	// Spec OIDCProviderSpec describes an OIDC provider configuration.
+	Spec OIDCProviderSpec `json:"spec"`
+
+	// Status OIDCProviderStatus represents information about the status of an OIDC provider.
+	Status *OIDCProviderStatus `json:"status,omitempty"`
+}
+
+// OIDCProviderList OIDCProviderList is a list of OIDC providers.
+type OIDCProviderList struct {
+	// ApiVersion APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources.
+	ApiVersion string `json:"apiVersion"`
+
+	// Items List of OIDC providers.
+	Items []OIDCProvider `json:"items"`
+
+	// Kind Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds.
+	Kind string `json:"kind"`
+
+	// Metadata ListMeta describes metadata that synthetic resources must have, including lists and various status objects. A resource may have only one of {ObjectMeta, ListMeta}.
+	Metadata ListMeta `json:"metadata"`
+}
+
+// OIDCProviderSpec OIDCProviderSpec describes an OIDC provider configuration.
+type OIDCProviderSpec struct {
+	// ClientId The OIDC client ID
+	ClientId string `json:"clientId"`
+
+	// ClientSecret The OIDC client secret
+	ClientSecret string `json:"clientSecret"`
+
+	// Enabled Whether this OIDC provider is enabled
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Issuer The OIDC issuer URL (e.g., https://accounts.google.com)
+	Issuer string `json:"issuer"`
+
+	// ExternalIssuer The external OIDC issuer URL for UI/browser clients (e.g., https://external-accounts.google.com)
+	// If not specified, defaults to the same value as Issuer
+	ExternalIssuer *string `json:"externalIssuer,omitempty"`
+
+	// OrganizationAssignment OIDCOrganizationAssignment defines how users from this OIDC provider are assigned to organizations.
+	OrganizationAssignment OIDCOrganizationAssignment `json:"organizationAssignment"`
+
+	// RedirectUri The redirect URI for OIDC authentication
+	RedirectUri string `json:"redirectUri"`
+
+	// Scopes List of OIDC scopes to request
+	Scopes *[]string `json:"scopes,omitempty"`
+
+	// UsernameClaim JSON path to the username claim in the JWT token (e.g., "preferred_username", "email", "sub")
+	UsernameClaim *string `json:"usernameClaim,omitempty"`
+
+	// RoleClaim JSON path to the role/group claim in the JWT token (e.g., "groups", "roles", "realm_access.roles")
+	RoleClaim *string `json:"roleClaim,omitempty"`
+}
+
+// OIDCProviderStatus OIDCProviderStatus represents information about the status of an OIDC provider.
+type OIDCProviderStatus struct {
+	// Conditions Current state of the OIDC provider.
+	Conditions []Condition `json:"conditions"`
+
+	// LastChecked Last time the OIDC provider configuration was validated
+	LastChecked *time.Time `json:"lastChecked,omitempty"`
+}
+
+// OIDCStaticOrganizationAssignment OIDCStaticOrganizationAssignment assigns all users from this OIDC provider to a single static organization.
+type OIDCStaticOrganizationAssignment struct {
+	// OrganizationName The name of the organization where all users will be assigned
+	OrganizationName string `json:"organizationName"`
+
+	// Type The type of organization assignment
+	Type OIDCStaticOrganizationAssignmentType `json:"type"`
+}
+
+// OIDCStaticOrganizationAssignmentType The type of organization assignment
+type OIDCStaticOrganizationAssignmentType string
+
 // ObjectMeta ObjectMeta is metadata that all persisted resources must have, which includes all objects users must create.
 type ObjectMeta struct {
 	// Annotations Properties set by the service.
@@ -1716,6 +1930,42 @@ type ObjectReference struct {
 
 	// Name The name of the referenced object.
 	Name string `json:"name"`
+}
+
+// OpenIDConfiguration OpenID Connect configuration
+type OpenIDConfiguration struct {
+	// AuthorizationEndpoint Authorization endpoint
+	AuthorizationEndpoint *string `json:"authorization_endpoint,omitempty"`
+
+	// ClaimsSupported Supported claims
+	ClaimsSupported *[]string `json:"claims_supported,omitempty"`
+
+	// GrantTypesSupported Supported grant types
+	GrantTypesSupported *[]string `json:"grant_types_supported,omitempty"`
+
+	// IdTokenSigningAlgValuesSupported Supported signing algorithms
+	IdTokenSigningAlgValuesSupported *[]string `json:"id_token_signing_alg_values_supported,omitempty"`
+
+	// Issuer OIDC issuer
+	Issuer *string `json:"issuer,omitempty"`
+
+	// JwksUri JWKS endpoint
+	JwksUri *string `json:"jwks_uri,omitempty"`
+
+	// ResponseTypesSupported Supported response types
+	ResponseTypesSupported *[]string `json:"response_types_supported,omitempty"`
+
+	// ScopesSupported Supported scopes
+	ScopesSupported *[]string `json:"scopes_supported,omitempty"`
+
+	// TokenEndpoint Token endpoint
+	TokenEndpoint *string `json:"token_endpoint,omitempty"`
+
+	// TokenEndpointAuthMethodsSupported Supported authentication methods
+	TokenEndpointAuthMethodsSupported *[]string `json:"token_endpoint_auth_methods_supported,omitempty"`
+
+	// UserinfoEndpoint UserInfo endpoint
+	UserinfoEndpoint *string `json:"userinfo_endpoint,omitempty"`
 }
 
 // Organization defines model for Organization.
@@ -2117,6 +2367,57 @@ type TemplateVersionStatus struct {
 // TimeZone Time zone identifiers follow the IANA format AREA/LOCATION, where AREA represents a continent or ocean, and LOCATION specifies a particular site within that area, for example America/New_York, Europe/Paris. Only unambiguous 3-character time zones are supported ("GMT", "UTC").
 type TimeZone = string
 
+// TokenRequest OAuth2 token request
+type TokenRequest struct {
+	// ClientId OAuth2 client ID
+	ClientId *string `json:"client_id,omitempty"`
+
+	// ClientSecret OAuth2 client secret
+	ClientSecret *string `json:"client_secret,omitempty"`
+
+	// GrantType OAuth2 grant type
+	GrantType TokenRequestGrantType `json:"grant_type"`
+
+	// Password Password for password grant
+	Password *string `json:"password,omitempty"`
+
+	// RefreshToken Refresh token for refresh_token grant
+	RefreshToken *string `json:"refresh_token,omitempty"`
+
+	// Scope OAuth2 scope
+	Scope *string `json:"scope,omitempty"`
+
+	// Username Username for password grant
+	Username *string `json:"username,omitempty"`
+}
+
+// TokenRequestGrantType OAuth2 grant type
+type TokenRequestGrantType string
+
+// TokenResponse OAuth2 token response
+type TokenResponse struct {
+	// AccessToken OAuth2 access token
+	AccessToken *string `json:"access_token,omitempty"`
+
+	// Error OAuth2 error code
+	Error *string `json:"error,omitempty"`
+
+	// ErrorDescription OAuth2 error description
+	ErrorDescription *string `json:"error_description,omitempty"`
+
+	// ExpiresIn Token expiration time in seconds
+	ExpiresIn *int `json:"expires_in,omitempty"`
+
+	// RefreshToken OAuth2 refresh token
+	RefreshToken *string `json:"refresh_token,omitempty"`
+
+	// TokenType Token type
+	TokenType *TokenResponseTokenType `json:"token_type,omitempty"`
+}
+
+// TokenResponseTokenType Token type
+type TokenResponseTokenType string
+
 // UpdateSchedule Defines the schedule for automatic downloading and updates, including timing and optional timeout.
 type UpdateSchedule struct {
 	// At Cron expression format for scheduling times.
@@ -2132,11 +2433,59 @@ type UpdateSchedule struct {
 	TimeZone *TimeZone `json:"timeZone,omitempty"`
 }
 
+// UserInfoResponse OIDC UserInfo response
+type UserInfoResponse struct {
+	// Email Email address
+	Email *string `json:"email,omitempty"`
+
+	// EmailVerified Email verification status
+	EmailVerified *bool `json:"email_verified,omitempty"`
+
+	// Error Error code
+	Error *string `json:"error,omitempty"`
+
+	// Name Full name
+	Name *string `json:"name,omitempty"`
+
+	// Organizations User organizations
+	Organizations *[]string `json:"organizations,omitempty"`
+
+	// PreferredUsername Preferred username
+	PreferredUsername *string `json:"preferred_username,omitempty"`
+
+	// Roles User roles
+	Roles *[]string `json:"roles,omitempty"`
+
+	// Sub Subject identifier
+	Sub *string `json:"sub,omitempty"`
+}
+
 // Version defines model for Version.
 type Version struct {
 	// Version Git version of the service.
 	Version string `json:"version"`
 }
+
+// AuthAuthorizeParams defines parameters for AuthAuthorize.
+type AuthAuthorizeParams struct {
+	// ResponseType OAuth2 response type
+	ResponseType AuthAuthorizeParamsResponseType `form:"response_type" json:"response_type"`
+
+	// ClientId OAuth2 client ID
+	ClientId string `form:"client_id" json:"client_id"`
+
+	// RedirectUri OAuth2 redirect URI
+	RedirectUri string `form:"redirect_uri" json:"redirect_uri"`
+
+	// Scope OAuth2 scope
+	Scope *string `form:"scope,omitempty" json:"scope,omitempty"`
+
+	// State OAuth2 state parameter
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+}
+
+// AuthAuthorizeParamsResponseType defines parameters for AuthAuthorize.
+type AuthAuthorizeParamsResponseType string
 
 // AuthValidateParams defines parameters for AuthValidate.
 type AuthValidateParams struct {
@@ -2279,6 +2628,21 @@ type ListLabelsParams struct {
 // ListLabelsParamsKind defines parameters for ListLabels.
 type ListLabelsParamsKind string
 
+// ListOIDCProvidersParams defines parameters for ListOIDCProviders.
+type ListOIDCProvidersParams struct {
+	// Continue An optional parameter to query more results from the server. The value of the paramter must match the value of the 'continue' field in the previous list response.
+	Continue *string `form:"continue,omitempty" json:"continue,omitempty"`
+
+	// LabelSelector A selector to restrict the list of returned objects by their labels. Defaults to everything.
+	LabelSelector *string `form:"labelSelector,omitempty" json:"labelSelector,omitempty"`
+
+	// FieldSelector A selector to restrict the list of returned objects by their fields, supporting operators like '=', '==', and '!=' (e.g., "key1=value1,key2!=value2").
+	FieldSelector *string `form:"fieldSelector,omitempty" json:"fieldSelector,omitempty"`
+
+	// Limit The maximum number of results returned in the list response. The server will set the 'continue' field in the list response if more results exist. The continue value may then be specified as parameter in a subsequent query.
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListRepositoriesParams defines parameters for ListRepositories.
 type ListRepositoriesParams struct {
 	// Continue An optional parameter to query more results from the server. The value of the paramter must match the value of the 'continue' field in the previous list response.
@@ -2308,6 +2672,9 @@ type ListResourceSyncsParams struct {
 	// Limit The maximum number of results returned in the list response. The server will set the 'continue' field in the list response if more results exist. The continue value may then be specified as parameter in a subsequent query.
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// AuthTokenJSONRequestBody defines body for AuthToken for application/json ContentType.
+type AuthTokenJSONRequestBody = TokenRequest
 
 // CreateCertificateSigningRequestJSONRequestBody defines body for CreateCertificateSigningRequest for application/json ContentType.
 type CreateCertificateSigningRequestJSONRequestBody = CertificateSigningRequest
@@ -2374,6 +2741,12 @@ type PatchFleetStatusApplicationJSONPatchPlusJSONRequestBody = PatchRequest
 
 // ReplaceFleetStatusJSONRequestBody defines body for ReplaceFleetStatus for application/json ContentType.
 type ReplaceFleetStatusJSONRequestBody = Fleet
+
+// CreateOIDCProviderJSONRequestBody defines body for CreateOIDCProvider for application/json ContentType.
+type CreateOIDCProviderJSONRequestBody = OIDCProvider
+
+// ReplaceOIDCProviderJSONRequestBody defines body for ReplaceOIDCProvider for application/json ContentType.
+type ReplaceOIDCProviderJSONRequestBody = OIDCProvider
 
 // CreateRepositoryJSONRequestBody defines body for CreateRepository for application/json ContentType.
 type CreateRepositoryJSONRequestBody = Repository
@@ -3583,6 +3956,125 @@ func (t HookCondition) MarshalJSON() ([]byte, error) {
 }
 
 func (t *HookCondition) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsOIDCStaticOrganizationAssignment returns the union data inside the OIDCOrganizationAssignment as a OIDCStaticOrganizationAssignment
+func (t OIDCOrganizationAssignment) AsOIDCStaticOrganizationAssignment() (OIDCStaticOrganizationAssignment, error) {
+	var body OIDCStaticOrganizationAssignment
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromOIDCStaticOrganizationAssignment overwrites any union data inside the OIDCOrganizationAssignment as the provided OIDCStaticOrganizationAssignment
+func (t *OIDCOrganizationAssignment) FromOIDCStaticOrganizationAssignment(v OIDCStaticOrganizationAssignment) error {
+	v.Type = "static"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeOIDCStaticOrganizationAssignment performs a merge with any union data inside the OIDCOrganizationAssignment, using the provided OIDCStaticOrganizationAssignment
+func (t *OIDCOrganizationAssignment) MergeOIDCStaticOrganizationAssignment(v OIDCStaticOrganizationAssignment) error {
+	v.Type = "static"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsOIDCDynamicOrganizationAssignment returns the union data inside the OIDCOrganizationAssignment as a OIDCDynamicOrganizationAssignment
+func (t OIDCOrganizationAssignment) AsOIDCDynamicOrganizationAssignment() (OIDCDynamicOrganizationAssignment, error) {
+	var body OIDCDynamicOrganizationAssignment
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromOIDCDynamicOrganizationAssignment overwrites any union data inside the OIDCOrganizationAssignment as the provided OIDCDynamicOrganizationAssignment
+func (t *OIDCOrganizationAssignment) FromOIDCDynamicOrganizationAssignment(v OIDCDynamicOrganizationAssignment) error {
+	v.Type = "dynamic"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeOIDCDynamicOrganizationAssignment performs a merge with any union data inside the OIDCOrganizationAssignment, using the provided OIDCDynamicOrganizationAssignment
+func (t *OIDCOrganizationAssignment) MergeOIDCDynamicOrganizationAssignment(v OIDCDynamicOrganizationAssignment) error {
+	v.Type = "dynamic"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsOIDCPerUserOrganizationAssignment returns the union data inside the OIDCOrganizationAssignment as a OIDCPerUserOrganizationAssignment
+func (t OIDCOrganizationAssignment) AsOIDCPerUserOrganizationAssignment() (OIDCPerUserOrganizationAssignment, error) {
+	var body OIDCPerUserOrganizationAssignment
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromOIDCPerUserOrganizationAssignment overwrites any union data inside the OIDCOrganizationAssignment as the provided OIDCPerUserOrganizationAssignment
+func (t *OIDCOrganizationAssignment) FromOIDCPerUserOrganizationAssignment(v OIDCPerUserOrganizationAssignment) error {
+	v.Type = "perUser"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeOIDCPerUserOrganizationAssignment performs a merge with any union data inside the OIDCOrganizationAssignment, using the provided OIDCPerUserOrganizationAssignment
+func (t *OIDCOrganizationAssignment) MergeOIDCPerUserOrganizationAssignment(v OIDCPerUserOrganizationAssignment) error {
+	v.Type = "perUser"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t OIDCOrganizationAssignment) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"type"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t OIDCOrganizationAssignment) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "dynamic":
+		return t.AsOIDCDynamicOrganizationAssignment()
+	case "perUser":
+		return t.AsOIDCPerUserOrganizationAssignment()
+	case "static":
+		return t.AsOIDCStaticOrganizationAssignment()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t OIDCOrganizationAssignment) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *OIDCOrganizationAssignment) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }

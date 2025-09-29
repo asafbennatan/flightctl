@@ -27,7 +27,11 @@ func (m *mockTokenIdentity) GetUID() string {
 	return ""
 }
 
-func (m *mockTokenIdentity) GetGroups() []string {
+func (m *mockTokenIdentity) GetOrganizations() []string {
+	return []string{}
+}
+
+func (m *mockTokenIdentity) GetRoles() []string {
 	return []string{}
 }
 

@@ -9,6 +9,7 @@ import (
 
 	api "github.com/flightctl/flightctl/api/v1alpha1"
 	"github.com/flightctl/flightctl/internal/api/server"
+	"github.com/flightctl/flightctl/internal/auth/common"
 	"github.com/flightctl/flightctl/internal/consts"
 	"github.com/flightctl/flightctl/internal/flterrors"
 	"github.com/sirupsen/logrus"
@@ -50,7 +51,7 @@ func stringToAction(s string) action {
 	return action(s)
 }
 
-func CreateAuthNMiddleware(authN AuthNMiddleware, log logrus.FieldLogger) func(http.Handler) http.Handler {
+func CreateAuthNMiddleware(authN common.AuthNMiddleware, log logrus.FieldLogger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		fn := func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/api/v1/auth/config" {

@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
 
@@ -27,13 +26,6 @@ const (
 	k8sApiService     = "https://kubernetes.default.svc"
 )
 
-type AuthNMiddleware interface {
-	GetAuthToken(r *http.Request) (string, error)
-	ValidateToken(ctx context.Context, token string) error
-	GetIdentity(ctx context.Context, token string) (common.Identity, error)
-	GetAuthConfig() common.AuthConfig
-}
-
 type AuthZMiddleware interface {
 	CheckPermission(ctx context.Context, resource string, op string) (bool, error)
 }
@@ -53,7 +45,7 @@ func GetConfiguredAuthType() AuthType {
 
 var configuredAuthType AuthType
 
-func initK8sAuth(cfg *config.Config, log logrus.FieldLogger) (AuthNMiddleware, AuthZMiddleware, error) {
+func initK8sAuth(cfg *config.Config, log logrus.FieldLogger) (common.AuthNMiddleware, AuthZMiddleware, error) {
 	apiUrl := strings.TrimSuffix(cfg.Auth.K8s.ApiUrl, "/")
 	externalOpenShiftApiUrl := strings.TrimSuffix(cfg.Auth.K8s.ExternalOpenShiftApiUrl, "/")
 	log.Infof("k8s auth enabled: %s", apiUrl)
@@ -98,19 +90,19 @@ func getOrgConfig(cfg *config.Config) *common.AuthOrganizationsConfig {
 	}
 }
 
-func initOIDCAuth(cfg *config.Config, log logrus.FieldLogger, orgResolver resolvers.Resolver) (AuthNMiddleware, AuthZMiddleware, error) {
+func initOIDCAuth(cfg *config.Config, log logrus.FieldLogger, orgResolver resolvers.Resolver) (common.AuthNMiddleware, AuthZMiddleware, error) {
 	oidcUrl := strings.TrimSuffix(cfg.Auth.OIDC.OIDCAuthority, "/")
 	externalOidcUrl := strings.TrimSuffix(cfg.Auth.OIDC.ExternalOIDCAuthority, "/")
 	log.Infof("OIDC auth enabled: %s", oidcUrl)
 	authZProvider := authz.NewOrgMembershipAuthZ(orgResolver)
-	authNProvider, err := authn.NewJWTAuth(oidcUrl, externalOidcUrl, getTlsConfig(cfg), getOrgConfig(cfg))
+	authNProvider, err := authn.NewOIDCAuth(oidcUrl, externalOidcUrl, getTlsConfig(cfg), getOrgConfig(cfg), cfg.Auth.OIDC.UsernameClaim, cfg.Auth.OIDC.GroupsClaim)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create OIDC AuthN: %w", err)
 	}
 	return authNProvider, authZProvider, nil
 }
 
-func initAAPAuth(cfg *config.Config, log logrus.FieldLogger, orgResolver resolvers.Resolver) (AuthNMiddleware, AuthZMiddleware, error) {
+func initAAPAuth(cfg *config.Config, log logrus.FieldLogger, orgResolver resolvers.Resolver) (common.AuthNMiddleware, AuthZMiddleware, error) {
 	gatewayUrl := strings.TrimSuffix(cfg.Auth.AAP.ApiUrl, "/")
 	gatewayExternalUrl := strings.TrimSuffix(cfg.Auth.AAP.ExternalApiUrl, "/")
 	log.Infof("AAP Gateway auth enabled: %s", gatewayUrl)
@@ -122,7 +114,7 @@ func initAAPAuth(cfg *config.Config, log logrus.FieldLogger, orgResolver resolve
 	return authNProvider, authZProvider, nil
 }
 
-func InitAuth(cfg *config.Config, log logrus.FieldLogger, orgResolver resolvers.Resolver) (AuthNMiddleware, AuthZMiddleware, error) {
+func InitAuth(cfg *config.Config, log logrus.FieldLogger, orgResolver resolvers.Resolver) (common.AuthNMiddleware, AuthZMiddleware, error) {
 	value, exists := os.LookupEnv(DisableAuthEnvKey)
 	if exists && value != "" {
 		log.Warnln("Auth disabled")
@@ -131,7 +123,7 @@ func InitAuth(cfg *config.Config, log logrus.FieldLogger, orgResolver resolvers.
 		authZProvider := NilAuth{}
 		return authNProvider, authZProvider, nil
 	} else if cfg.Auth != nil {
-		var authNProvider AuthNMiddleware
+		var authNProvider common.AuthNMiddleware
 		var authZProvider AuthZMiddleware
 		var err error
 		if cfg.Auth.K8s != nil {
@@ -144,7 +136,6 @@ func InitAuth(cfg *config.Config, log logrus.FieldLogger, orgResolver resolvers.
 			configuredAuthType = AuthTypeAAP
 			authNProvider, authZProvider, err = initAAPAuth(cfg, log, orgResolver)
 		}
-
 		if err != nil {
 			return nil, nil, err
 		}
@@ -159,6 +150,98 @@ func InitAuth(cfg *config.Config, log logrus.FieldLogger, orgResolver resolvers.
 	}
 
 	return nil, nil, errors.New("no auth configuration provided")
+}
+
+// InitMultiAuth initializes authentication with support for multiple methods
+func InitMultiAuth(cfg *config.Config, log logrus.FieldLogger, orgResolver resolvers.Resolver, oidcProviderService authn.OIDCProviderService) (common.AuthNMiddleware, AuthZMiddleware, error) {
+	value, exists := os.LookupEnv(DisableAuthEnvKey)
+	if exists && value != "" {
+		log.Warnln("Auth disabled")
+		configuredAuthType = AuthTypeNil
+		authNProvider := NilAuth{}
+		authZProvider := NilAuth{}
+		return authNProvider, authZProvider, nil
+	}
+
+	if cfg.Auth == nil {
+		return nil, nil, errors.New("no auth configuration provided")
+	}
+
+	// Create TLS config for OIDC provider connections
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: false, // Use secure connections by default
+	}
+
+	// Create MultiAuth instance
+	multiAuth := authn.NewMultiAuth(oidcProviderService, tlsConfig)
+	var authZProvider AuthZMiddleware
+
+	// Initialize static authentication methods
+	if cfg.Auth.K8s != nil {
+		log.Infof("K8s auth enabled: %s", cfg.Auth.K8s.ApiUrl)
+		k8sAuthN, k8sAuthZ, err := initK8sAuth(cfg, log)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to initialize K8s auth: %w", err)
+		}
+
+		// Add K8s auth with its issuer
+		k8sIssuer := "https://kubernetes.default.svc.cluster.local" // Default K8s issuer
+		if cfg.Auth.K8s.ApiUrl != "" {
+			k8sIssuer = strings.TrimSuffix(cfg.Auth.K8s.ApiUrl, "/")
+		}
+		multiAuth.AddStaticProvider(k8sIssuer, k8sAuthN)
+
+		// Use K8s authZ as primary (can be overridden by other methods)
+		if authZProvider == nil {
+			authZProvider = k8sAuthZ
+		}
+		configuredAuthType = AuthTypeK8s
+	}
+
+	if cfg.Auth.OIDC != nil {
+		log.Infof("OIDC auth enabled: %s", cfg.Auth.OIDC.OIDCAuthority)
+		oidcAuthN, oidcAuthZ, err := initOIDCAuth(cfg, log, orgResolver)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to initialize OIDC auth: %w", err)
+		}
+
+		// Add OIDC auth with its issuer
+		oidcIssuer := strings.TrimSuffix(cfg.Auth.OIDC.OIDCAuthority, "/")
+		multiAuth.AddStaticProvider(oidcIssuer, oidcAuthN)
+
+		// Use OIDC authZ as primary (can be overridden by other methods)
+		if authZProvider == nil {
+			authZProvider = oidcAuthZ
+		}
+		configuredAuthType = AuthTypeOIDC
+	}
+
+	if cfg.Auth.AAP != nil {
+		log.Infof("AAP Gateway auth enabled: %s", cfg.Auth.AAP.ApiUrl)
+		aapAuthN, aapAuthZ, err := initAAPAuth(cfg, log, orgResolver)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to initialize AAP auth: %w", err)
+		}
+
+		// Add AAP auth (for opaque tokens)
+		multiAuth.AddStaticProvider("aap", aapAuthN)
+
+		// Use AAP authZ as primary (can be overridden by other methods)
+		if authZProvider == nil {
+			authZProvider = aapAuthZ
+		}
+		configuredAuthType = AuthTypeAAP
+	}
+
+	if !multiAuth.HasProviders() {
+		return nil, nil, errors.New("no authentication providers configured")
+	}
+
+	if authZProvider == nil {
+		return nil, nil, errors.New("no authZ provider defined")
+	}
+
+	return multiAuth, authZProvider, nil
 }
 
 type K8sToK8sAuth struct {

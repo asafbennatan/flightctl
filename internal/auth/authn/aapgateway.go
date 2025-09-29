@@ -72,8 +72,20 @@ func (a AapGatewayAuth) loadUserInfo(token string) (*AAPIdentity, error) {
 		return nil, err
 	}
 
+	// Map AAP permissions to roles
+	roles := []string{}
+	if aapUserInfo.IsSuperuser {
+		roles = append(roles, "admin")
+	}
+	if aapUserInfo.IsPlatformAuditor {
+		roles = append(roles, "auditor")
+	}
+	if len(roles) == 0 {
+		roles = append(roles, "user") // default role
+	}
+
 	userInfo := &AAPIdentity{
-		BaseIdentity:    *common.NewBaseIdentity(aapUserInfo.Username, strconv.Itoa(aapUserInfo.ID), []string{}),
+		BaseIdentity:    *common.NewBaseIdentity(aapUserInfo.Username, strconv.Itoa(aapUserInfo.ID), []string{}, roles),
 		superUser:       aapUserInfo.IsSuperuser,
 		platformAuditor: aapUserInfo.IsPlatformAuditor,
 	}

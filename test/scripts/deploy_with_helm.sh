@@ -89,7 +89,7 @@ fi
 
 AUTH_ARGS=""
 if [ "$AUTH" ]; then
-  AUTH_ARGS="--set global.auth.type=builtin"
+  AUTH_ARGS="--set global.auth.type=oidc"
 fi
 
 ORGS_ARGS=""
@@ -121,8 +121,7 @@ if [ "$ONLY_DB" ]; then
 fi
 
 if [ "$AUTH" ]; then
-  kubectl rollout status statefulset keycloak-db -n flightctl-external -w --timeout=300s --context kind-kind
-  kubectl rollout status deployment keycloak -n flightctl-external -w --timeout=300s --context kind-kind
+  echo "Waiting for authentication services to be ready..."
 fi
 
 kubectl rollout status deployment flightctl-api -n flightctl-external -w --timeout=300s
@@ -131,8 +130,8 @@ LOGGED_IN=false
 # attempt to login, it could take some time for API to be stable
 for i in {1..60}; do
   if [ "$AUTH" ]; then
-    PASS=$(kubectl get secret keycloak-demouser-secret -n flightctl-external -o json | jq -r '.data.password' | base64 -d)
-    if ./bin/flightctl login -k https://api.${IP}.nip.io:${API_PORT} -u demouser -p ${PASS}; then
+    # For OIDC authentication, use web-based login
+    if ./bin/flightctl login -k https://api.${IP}.nip.io:${API_PORT} --web; then
       LOGGED_IN=true
       break
     fi

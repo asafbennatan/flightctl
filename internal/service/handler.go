@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/flightctl/flightctl/internal/auth/issuer"
 	"github.com/flightctl/flightctl/internal/crypto"
 	"github.com/flightctl/flightctl/internal/kvstore"
 	"github.com/flightctl/flightctl/internal/org/resolvers"
@@ -20,9 +21,10 @@ type ServiceHandler struct {
 	uiUrl         string
 	tpmCAPaths    []string
 	orgResolver   resolvers.Resolver
+	oidcIssuer    issuer.OIDCIssuer
 }
 
-func NewServiceHandler(store store.Store, workerClient worker_client.WorkerClient, kvStore kvstore.KVStore, ca *crypto.CAClient, log logrus.FieldLogger, agentEndpoint string, uiUrl string, tpmCAPaths []string, orgResolver resolvers.Resolver) *ServiceHandler {
+func NewServiceHandler(store store.Store, workerClient worker_client.WorkerClient, kvStore kvstore.KVStore, ca *crypto.CAClient, log logrus.FieldLogger, agentEndpoint string, uiUrl string, tpmCAPaths []string, orgResolver resolvers.Resolver, oidcIssuer issuer.OIDCIssuer) *ServiceHandler {
 	return &ServiceHandler{
 		eventHandler:  NewEventHandler(store, workerClient, log),
 		store:         store,
@@ -34,5 +36,6 @@ func NewServiceHandler(store store.Store, workerClient worker_client.WorkerClien
 		uiUrl:         uiUrl,
 		tpmCAPaths:    tpmCAPaths,
 		orgResolver:   orgResolver,
+		oidcIssuer:    oidcIssuer,
 	}
 }

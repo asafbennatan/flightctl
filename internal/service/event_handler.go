@@ -352,6 +352,51 @@ func (h *EventHandler) HandleRepositoryUpdatedEvents(ctx context.Context, resour
 }
 
 //////////////////////////////////////////////////////
+//                 OIDCProvider Events              //
+//////////////////////////////////////////////////////
+
+// HandleOIDCProviderUpdatedEvents handles OIDC provider update event emission logic
+func (h *EventHandler) HandleOIDCProviderUpdatedEvents(ctx context.Context, resourceKind api.ResourceKind, orgId uuid.UUID, name string, oldResource, newResource interface{}, created bool, err error) {
+	if err != nil {
+		status := StoreErrorToApiStatus(err, created, api.OIDCProviderKind, &name)
+		h.CreateEvent(ctx, common.GetResourceCreatedOrUpdatedFailureEvent(ctx, created, api.OIDCProviderKind, name, status, nil))
+		return
+	}
+
+	var (
+		oldOIDCProvider, newOIDCProvider *api.OIDCProvider
+		ok                               bool
+	)
+	if oldOIDCProvider, newOIDCProvider, ok = castResources[api.OIDCProvider](oldResource, newResource); !ok {
+		return
+	}
+
+	// Emit success event for create/update
+	if created {
+		h.CreateEvent(ctx, common.GetResourceCreatedOrUpdatedSuccessEvent(ctx, created, api.OIDCProviderKind, name, nil, h.log, nil))
+	} else if oldOIDCProvider != nil && newOIDCProvider != nil {
+		// Check if the conditions changed
+		var oldConditions, newConditions []api.Condition
+		if oldOIDCProvider.Status != nil {
+			oldConditions = oldOIDCProvider.Status.Conditions
+		}
+		if newOIDCProvider.Status != nil {
+			newConditions = newOIDCProvider.Status.Conditions
+		}
+
+		// Emit event if conditions changed
+		if !reflect.DeepEqual(oldConditions, newConditions) {
+			h.CreateEvent(ctx, common.GetResourceCreatedOrUpdatedSuccessEvent(ctx, created, api.OIDCProviderKind, name, nil, h.log, nil))
+		}
+	}
+}
+
+// HandleOIDCProviderDeletedEvents handles OIDC provider deletion event emission logic
+func (h *EventHandler) HandleOIDCProviderDeletedEvents(ctx context.Context, resourceKind api.ResourceKind, orgId uuid.UUID, name string, oldResource, newResource interface{}, created bool, err error) {
+	h.HandleGenericResourceDeletedEvents(ctx, resourceKind, orgId, name, oldResource, newResource, created, err)
+}
+
+//////////////////////////////////////////////////////
 //               EnrollmentRequest Events           //
 //////////////////////////////////////////////////////
 

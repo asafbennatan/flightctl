@@ -4,6 +4,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -15,8 +16,23 @@ import (
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
+	// (GET /api/v1/auth/.well-known/openid_configuration)
+	AuthOpenIDConfiguration(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/v1/auth/authorize)
+	AuthAuthorize(w http.ResponseWriter, r *http.Request, params AuthAuthorizeParams)
+
 	// (GET /api/v1/auth/config)
 	AuthConfig(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/v1/auth/jwks)
+	AuthJWKS(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/v1/auth/token)
+	AuthToken(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/v1/auth/userinfo)
+	AuthUserInfo(w http.ResponseWriter, r *http.Request)
 
 	// (GET /api/v1/auth/validate)
 	AuthValidate(w http.ResponseWriter, r *http.Request, params AuthValidateParams)
@@ -155,6 +171,21 @@ type ServerInterface interface {
 
 	// (GET /api/v1/labels)
 	ListLabels(w http.ResponseWriter, r *http.Request, params ListLabelsParams)
+
+	// (GET /api/v1/oidcproviders)
+	ListOIDCProviders(w http.ResponseWriter, r *http.Request, params ListOIDCProvidersParams)
+
+	// (POST /api/v1/oidcproviders)
+	CreateOIDCProvider(w http.ResponseWriter, r *http.Request)
+
+	// (DELETE /api/v1/oidcproviders/{name})
+	DeleteOIDCProvider(w http.ResponseWriter, r *http.Request, name string)
+
+	// (GET /api/v1/oidcproviders/{name})
+	GetOIDCProvider(w http.ResponseWriter, r *http.Request, name string)
+
+	// (PUT /api/v1/oidcproviders/{name})
+	ReplaceOIDCProvider(w http.ResponseWriter, r *http.Request, name string)
 	// List organizations
 	// (GET /api/v1/organizations)
 	ListOrganizations(w http.ResponseWriter, r *http.Request)
@@ -203,8 +234,33 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
+// (GET /api/v1/auth/.well-known/openid_configuration)
+func (_ Unimplemented) AuthOpenIDConfiguration(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/v1/auth/authorize)
+func (_ Unimplemented) AuthAuthorize(w http.ResponseWriter, r *http.Request, params AuthAuthorizeParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // (GET /api/v1/auth/config)
 func (_ Unimplemented) AuthConfig(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/v1/auth/jwks)
+func (_ Unimplemented) AuthJWKS(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /api/v1/auth/token)
+func (_ Unimplemented) AuthToken(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/v1/auth/userinfo)
+func (_ Unimplemented) AuthUserInfo(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -438,6 +494,31 @@ func (_ Unimplemented) ListLabels(w http.ResponseWriter, r *http.Request, params
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// (GET /api/v1/oidcproviders)
+func (_ Unimplemented) ListOIDCProviders(w http.ResponseWriter, r *http.Request, params ListOIDCProvidersParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /api/v1/oidcproviders)
+func (_ Unimplemented) CreateOIDCProvider(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (DELETE /api/v1/oidcproviders/{name})
+func (_ Unimplemented) DeleteOIDCProvider(w http.ResponseWriter, r *http.Request, name string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/v1/oidcproviders/{name})
+func (_ Unimplemented) GetOIDCProvider(w http.ResponseWriter, r *http.Request, name string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (PUT /api/v1/oidcproviders/{name})
+func (_ Unimplemented) ReplaceOIDCProvider(w http.ResponseWriter, r *http.Request, name string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // List organizations
 // (GET /api/v1/organizations)
 func (_ Unimplemented) ListOrganizations(w http.ResponseWriter, r *http.Request) {
@@ -518,12 +599,155 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// AuthOpenIDConfiguration operation middleware
+func (siw *ServerInterfaceWrapper) AuthOpenIDConfiguration(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AuthOpenIDConfiguration(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// AuthAuthorize operation middleware
+func (siw *ServerInterfaceWrapper) AuthAuthorize(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AuthAuthorizeParams
+
+	// ------------- Required query parameter "response_type" -------------
+
+	if paramValue := r.URL.Query().Get("response_type"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "response_type"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "response_type", r.URL.Query(), &params.ResponseType)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "response_type", Err: err})
+		return
+	}
+
+	// ------------- Required query parameter "client_id" -------------
+
+	if paramValue := r.URL.Query().Get("client_id"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "client_id"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "client_id", r.URL.Query(), &params.ClientId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "client_id", Err: err})
+		return
+	}
+
+	// ------------- Required query parameter "redirect_uri" -------------
+
+	if paramValue := r.URL.Query().Get("redirect_uri"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "redirect_uri"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "redirect_uri", r.URL.Query(), &params.RedirectUri)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "redirect_uri", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "scope" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "scope", r.URL.Query(), &params.Scope)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scope", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "state", r.URL.Query(), &params.State)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AuthAuthorize(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
 // AuthConfig operation middleware
 func (siw *ServerInterfaceWrapper) AuthConfig(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AuthConfig(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// AuthJWKS operation middleware
+func (siw *ServerInterfaceWrapper) AuthJWKS(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AuthJWKS(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// AuthToken operation middleware
+func (siw *ServerInterfaceWrapper) AuthToken(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AuthToken(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// AuthUserInfo operation middleware
+func (siw *ServerInterfaceWrapper) AuthUserInfo(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AuthUserInfo(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1945,6 +2169,151 @@ func (siw *ServerInterfaceWrapper) ListLabels(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r.WithContext(ctx))
 }
 
+// ListOIDCProviders operation middleware
+func (siw *ServerInterfaceWrapper) ListOIDCProviders(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListOIDCProvidersParams
+
+	// ------------- Optional query parameter "continue" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "continue", r.URL.Query(), &params.Continue)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "continue", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "labelSelector" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "labelSelector", r.URL.Query(), &params.LabelSelector)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "labelSelector", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "fieldSelector" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "fieldSelector", r.URL.Query(), &params.FieldSelector)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fieldSelector", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOIDCProviders(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// CreateOIDCProvider operation middleware
+func (siw *ServerInterfaceWrapper) CreateOIDCProvider(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateOIDCProvider(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// DeleteOIDCProvider operation middleware
+func (siw *ServerInterfaceWrapper) DeleteOIDCProvider(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", chi.URLParam(r, "name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteOIDCProvider(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// GetOIDCProvider operation middleware
+func (siw *ServerInterfaceWrapper) GetOIDCProvider(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", chi.URLParam(r, "name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOIDCProvider(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// ReplaceOIDCProvider operation middleware
+func (siw *ServerInterfaceWrapper) ReplaceOIDCProvider(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", chi.URLParam(r, "name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReplaceOIDCProvider(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
 // ListOrganizations operation middleware
 func (siw *ServerInterfaceWrapper) ListOrganizations(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -2431,7 +2800,22 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/auth/.well-known/openid_configuration", wrapper.AuthOpenIDConfiguration)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/auth/authorize", wrapper.AuthAuthorize)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/auth/config", wrapper.AuthConfig)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/auth/jwks", wrapper.AuthJWKS)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/token", wrapper.AuthToken)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/auth/userinfo", wrapper.AuthUserInfo)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/auth/validate", wrapper.AuthValidate)
@@ -2570,6 +2954,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/labels", wrapper.ListLabels)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/oidcproviders", wrapper.ListOIDCProviders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/oidcproviders", wrapper.CreateOIDCProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/oidcproviders/{name}", wrapper.DeleteOIDCProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/oidcproviders/{name}", wrapper.GetOIDCProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/oidcproviders/{name}", wrapper.ReplaceOIDCProvider)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/organizations", wrapper.ListOrganizations)
