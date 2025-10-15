@@ -1,0 +1,20 @@
+go 1.23.0
+
+toolchain go1.23.9
+
+use (
+	.
+	./cmd/devicesimulator
+	./cmd/flightctl
+	./cmd/flightctl-agent
+	./cmd/flightctl-alert-exporter
+	./cmd/flightctl-alertmanager-proxy
+	./cmd/flightctl-api
+	./cmd/flightctl-db-migrate
+	./cmd/flightctl-periodic
+	./cmd/flightctl-restore
+	./cmd/flightctl-telemetry-gateway
+	./cmd/flightctl-userinfo-proxy
+	./cmd/flightctl-worker
+)
+
