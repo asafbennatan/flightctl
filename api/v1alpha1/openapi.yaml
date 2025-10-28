@@ -6161,3 +6161,380 @@ components:
           items:
             $ref: '#/components/schemas/Organization'
       description: OrganizationList is a list of Organizations.
+    TokenRequest:
+      type: object
+      required:
+        - grant_type
+      properties:
+        grant_type:
+          type: string
+          enum: [refresh_token, authorization_code]
+          description: OAuth2 grant type
+        username:
+          type: string
+          description: Username for password grant
+        password:
+          type: string
+          description: Password for password grant
+        refresh_token:
+          type: string
+          description: Refresh token for refresh_token grant
+        code:
+          type: string
+          description: Authorization code for authorization_code grant
+        client_id:
+          type: string
+          description: OAuth2 client ID
+        client_secret:
+          type: string
+          description: OAuth2 client secret
+        scope:
+          type: string
+          description: OAuth2 scope
+      description: OAuth2 token request
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: OAuth2 access token
+        token_type:
+          type: string
+          enum: [Bearer]
+          description: Token type
+        refresh_token:
+          type: string
+          description: OAuth2 refresh token
+        expires_in:
+          type: integer
+          description: Token expiration time in seconds
+        error:
+          type: string
+          description: OAuth2 error code
+        error_description:
+          type: string
+          description: OAuth2 error description
+      description: OAuth2 token response
+    UserInfoResponse:
+      type: object
+      properties:
+        sub:
+          type: string
+          description: Subject identifier
+        preferred_username:
+          type: string
+          description: Preferred username
+        name:
+          type: string
+          description: Full name
+        email:
+          type: string
+          description: Email address
+        email_verified:
+          type: boolean
+          description: Email verification status
+        roles:
+          type: array
+          items:
+            type: string
+          description: User roles
+        organizations:
+          type: array
+          items:
+            type: string
+          description: User organizations
+        error:
+          type: string
+          description: Error code
+      description: OIDC UserInfo response
+    JWKSResponse:
+      type: object
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            properties:
+              kty:
+                type: string
+                description: Key type
+              use:
+                type: string
+                description: Key use
+              kid:
+                type: string
+                description: Key ID
+              alg:
+                type: string
+                description: Algorithm
+              n:
+                type: string
+                description: RSA modulus
+              e:
+                type: string
+                description: RSA exponent
+      description: JSON Web Key Set
+    OpenIDConfiguration:
+      type: object
+      properties:
+        issuer:
+          type: string
+          description: OIDC issuer
+        authorization_endpoint:
+          type: string
+          description: Authorization endpoint
+        token_endpoint:
+          type: string
+          description: Token endpoint
+        userinfo_endpoint:
+          type: string
+          description: UserInfo endpoint
+        jwks_uri:
+          type: string
+          description: JWKS endpoint
+        response_types_supported:
+          type: array
+          items:
+            type: string
+          description: Supported response types
+        grant_types_supported:
+          type: array
+          items:
+            type: string
+          description: Supported grant types
+        scopes_supported:
+          type: array
+          items:
+            type: string
+          description: Supported scopes
+        claims_supported:
+          type: array
+          items:
+            type: string
+          description: Supported claims
+        id_token_signing_alg_values_supported:
+          type: array
+          items:
+            type: string
+          description: Supported signing algorithms
+        token_endpoint_auth_methods_supported:
+          type: array
+          items:
+            type: string
+          description: Supported authentication methods
+      description: OpenID Connect configuration
+    AuthProvider:
+      type: object
+      properties:
+        apiVersion:
+          type: string
+          description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources.'
+        kind:
+          type: string
+          description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds.'
+        metadata:
+          $ref: '#/components/schemas/ObjectMeta'
+        spec:
+          $ref: '#/components/schemas/AuthProviderSpec'
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+      description: AuthProvider represents an authentication provider configuration supporting both OIDC and OAuth2.
+    AuthProviderSpec:
+      oneOf:
+        - $ref: '#/components/schemas/OIDCProviderSpec'
+        - $ref: '#/components/schemas/OAuth2ProviderSpec'
+      discriminator:
+        propertyName: providerType
+        mapping:
+          oidc: '#/components/schemas/OIDCProviderSpec'
+          oauth2: '#/components/schemas/OAuth2ProviderSpec'
+      required:
+        - providerType
+    OIDCProviderSpec:
+      type: object
+      description: OIDCProviderSpec describes an OIDC provider configuration.
+      properties:
+        providerType:
+          type: string
+          enum: [oidc]
+          description: The type of authentication provider
+        issuer:
+          type: string
+          description: The OIDC issuer URL (e.g., https://accounts.google.com)
+        clientId:
+          type: string
+          description: The OIDC client ID
+        clientSecret:
+          type: string
+          description: The OIDC client secret
+        enabled:
+          type: boolean
+          description: Whether this OIDC provider is enabled
+          default: true
+        scopes:
+          type: array
+          items:
+            type: string
+          description: List of OIDC scopes to request
+        organizationAssignment:
+          $ref: '#/components/schemas/AuthOrganizationAssignment'
+        usernameClaim:
+          type: string
+          description: JSON path to the username claim in the JWT token (e.g., "preferred_username", "email", "sub")
+          default: "preferred_username"
+        roleClaim:
+          type: string
+          description: JSON path to the role/group claim in the JWT token (e.g., "groups", "roles", "realm_access.roles")
+          default: "groups"
+      required:
+        - providerType
+        - issuer
+        - clientId
+        - clientSecret
+        - organizationAssignment
+    OAuth2ProviderSpec:
+      type: object
+      description: OAuth2ProviderSpec describes an OAuth2 provider configuration.
+      properties:
+        providerType:
+          type: string
+          enum: [oauth2]
+          description: The type of authentication provider
+        issuer:
+          type: string
+          description: The OAuth2 issuer identifier (used for issuer identification in tokens)
+        authorizationUrl:
+          type: string
+          description: The OAuth2 authorization endpoint URL
+        tokenUrl:
+          type: string
+          description: The OAuth2 token endpoint URL
+        userinfoUrl:
+          type: string
+          description: The OAuth2 userinfo endpoint URL
+        clientId:
+          type: string
+          description: The OAuth2 client ID
+        clientSecret:
+          type: string
+          description: The OAuth2 client secret
+        enabled:
+          type: boolean
+          description: Whether this OAuth2 provider is enabled
+          default: true
+        scopes:
+          type: array
+          items:
+            type: string
+          description: List of OAuth2 scopes to request
+        organizationAssignment:
+          $ref: '#/components/schemas/AuthOrganizationAssignment'
+        usernameClaim:
+          type: string
+          description: JSON path to the username claim in the userinfo response (e.g., "preferred_username", "email", "sub")
+          default: "preferred_username"
+        roleClaim:
+          type: string
+          description: JSON path to the role/group claim in the userinfo response (e.g., "groups", "roles", "realm_access.roles")
+          default: "groups"
+      required:
+        - providerType
+        - issuer
+        - authorizationUrl
+        - tokenUrl
+        - userinfoUrl
+        - clientId
+        - clientSecret
+        - organizationAssignment
+    AuthOrganizationAssignment:
+      type: object
+      description: AuthOrganizationAssignment defines how users from this auth provider are assigned to organizations.
+      oneOf:
+        - $ref: '#/components/schemas/AuthStaticOrganizationAssignment'
+        - $ref: '#/components/schemas/AuthDynamicOrganizationAssignment'
+        - $ref: '#/components/schemas/AuthPerUserOrganizationAssignment'
+      discriminator:
+        propertyName: type
+        mapping:
+          static: '#/components/schemas/AuthStaticOrganizationAssignment'
+          dynamic: '#/components/schemas/AuthDynamicOrganizationAssignment'
+          perUser: '#/components/schemas/AuthPerUserOrganizationAssignment'
+    AuthStaticOrganizationAssignment:
+      type: object
+      description: AuthStaticOrganizationAssignment assigns all users from this auth provider to a single static organization.
+      properties:
+        type:
+          type: string
+          enum: [static]
+          description: The type of organization assignment
+        organizationName:
+          type: string
+          description: The name of the organization where all users will be assigned
+      required:
+        - type
+        - organizationName
+    AuthDynamicOrganizationAssignment:
+      type: object
+      description: AuthDynamicOrganizationAssignment assigns users to organizations based on auth provider claims.
+      properties:
+        type:
+          type: string
+          enum: [dynamic]
+          description: The type of organization assignment
+        claimPath:
+          type: string
+          description: The JSON path to the claim that contains the organization identifier (e.g., "groups.0" or "custom.org")
+        organizationNamePrefix:
+          type: string
+          description: The prefix for the organization name (e.g., "org-")
+          default: ""
+        organizationNameSuffix:
+          type: string
+          description: The suffix for the organization name (e.g., "-org")
+          default: ""
+      required:
+        - type
+        - claimPath
+    AuthPerUserOrganizationAssignment:
+      type: object
+      description: AuthPerUserOrganizationAssignment creates a separate organization for each user.
+      properties:
+        type:
+          type: string
+          enum: [perUser]
+          description: The type of organization assignment
+        organizationNamePrefix:
+          type: string
+          description: The prefix for the user-specific organization name (e.g., "user-org-")
+          default: "user-org-"
+        organizationNameSuffix:
+          type: string
+          description: The suffix for the user-specific organization name (e.g., "-org")
+          default: ""
+      required:
+        - type
+    AuthProviderList:
+      type: object
+      properties:
+        apiVersion:
+          type: string
+          description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources.'
+        kind:
+          type: string
+          description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds.'
+        metadata:
+          $ref: '#/components/schemas/ListMeta'
+        items:
+          type: array
+          description: 'List of auth providers.'
+          items:
+            $ref: '#/components/schemas/AuthProvider'
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - items
+      description: AuthProviderList is a list of auth providers.
