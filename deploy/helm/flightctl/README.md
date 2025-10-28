@@ -286,7 +286,6 @@ For more detailed configuration options, see the [Values](#values) section below
 | global.auth.k8s.externalApiToken | string | `""` | In case flightctl is not running within a cluster, you can provide api token |
 | global.auth.k8s.externalOpenShiftApiUrl | string | `""` | API URL of OpenShift cluster that can be accessed by external client to retrieve auth token |
 | global.auth.k8s.rbacNs | string | `""` | Namespace that should be used for the RBAC checks |
-| global.auth.linux | string | `nil` |  |
 | global.auth.oidc.clientId | string | `"flightctl-client"` | OIDC Client ID |
 | global.auth.oidc.enabled | bool | `true` | Whether this OIDC provider is enabled |
 | global.auth.oidc.externalOidcAuthority | string | `""` | The base URL for the OIDC provider that is reachable by clients. Example: https://auth.foo.net/realms/flightctl |
@@ -300,7 +299,7 @@ For more detailed configuration options, see the [Values](#values) section below
 | global.auth.sssdOidcIssuer.redirectUris | list | `[]` | Allowed redirect URIs for OAuth2 flows |
 | global.auth.sssdOidcIssuer.scopes | list | `["openid","profile","email","roles"]` | Supported OAuth2 scopes |
 | global.auth.sssdOidcIssuer.sssdService | string | `"flightctl"` | SSSD service name for authentication (default: "flightctl") |
-| global.auth.type | string | `"oidc"` | Type of the auth to use. Can be one of 'k8s', 'oidc', 'linux', or 'none' |
+| global.auth.type | string | `"oidc"` | Type of the auth to use. Can be one of 'k8s', 'oidc', or 'none' |
 | global.baseDomain | string | `""` | Base domain to construct the FQDN for the service endpoints. |
 | global.baseDomainTls.cert | string | `""` | Certificate for the base domain wildcard certificate, it should be valid for *.${baseDomain}. This certificate is only used for non mTLS endpoints, mTLS endpoints like agent-api, etc will use different certificates. |
 | global.baseDomainTls.key | string | `""` | Key for the base domain wildcard certificate. |

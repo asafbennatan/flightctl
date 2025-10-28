@@ -92,7 +92,7 @@ func NewOIDCAuth(oidcAuthority string, clientTlsConfig *tls.Config, orgConfig *c
 	// Initialize JWKS cache with 15-minute refresh interval
 	// This balances performance with key rotation requirements
 	oidcAuth.jwksCache = jwk.NewCache(context.Background())
-	oidcAuth.jwksCache.Register(oidcAuth.jwksUri, jwk.WithMinRefreshInterval(15*time.Minute))
+	_ = oidcAuth.jwksCache.Register(oidcAuth.jwksUri, jwk.WithMinRefreshInterval(15*time.Minute))
 
 	// Create stateless organization extractor
 	oidcAuth.organizationExtractor = NewOrganizationExtractor(orgConfig)
@@ -140,23 +140,10 @@ func (o OIDCAuth) parseAndCreateIdentity(ctx context.Context, token string) (*JW
 	// Validate audience claim contains expected client ID
 	if o.expectedClientId != "" {
 		audienceValid := false
-		if aud, exists := parsedToken.Get("aud"); exists {
-			switch audValue := aud.(type) {
-			case string:
-				// Single audience - must match exactly
-				if audValue == o.expectedClientId {
-					audienceValid = true
-				}
-			case []interface{}:
-				// Multiple audiences - check if our client ID is in the list
-				for _, v := range audValue {
-					if audStr, ok := v.(string); ok {
-						if audStr == o.expectedClientId {
-							audienceValid = true
-							break
-						}
-					}
-				}
+		for _, v := range parsedToken.Audience() {
+			if v == o.expectedClientId {
+				audienceValid = true
+				break
 			}
 		}
 
@@ -224,14 +211,10 @@ func (o OIDCAuth) parseAndCreateIdentity(ctx context.Context, token string) (*JW
 	identity.SetOrganizations(reportedOrganizations)
 
 	// Set the issuer from JWT token
-	issuerID := ""
-	if iss, exists := parsedToken.Get("iss"); exists {
-		if issStr, ok := iss.(string); ok {
-			issuerID = issStr
-		}
+	if issuer := parsedToken.Issuer(); issuer != "" {
+		issuer := identitypkg.NewIssuer(identitypkg.AuthTypeOIDC, issuer)
+		identity.SetIssuer(issuer)
 	}
-	issuer := identitypkg.NewIssuer(identitypkg.AuthTypeOIDC, issuerID)
-	identity.SetIssuer(issuer)
 
 	return identity, nil
 }

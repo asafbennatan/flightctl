@@ -64,7 +64,6 @@ func (r *RealSSSDAuthenticator) LookupUser(username string) (*user.User, error) 
 	gidStr := getFirstValue(attrs, "gidNumber")
 	gecos := getFirstValue(attrs, "gecos")
 	homeDir := getFirstValue(attrs, "homeDirectory")
-	shell := getFirstValue(attrs, "loginShell")
 
 	// Parse UID and GID to validate they are valid integers
 	_, err = strconv.Atoi(uidStr)
@@ -84,12 +83,6 @@ func (r *RealSSSDAuthenticator) LookupUser(username string) (*user.User, error) 
 		Username: username,
 		Name:     gecos,
 		HomeDir:  homeDir,
-	}
-
-	// Set shell if available
-	if shell != "" {
-		// Note: user.User doesn't have a Shell field, but we can store it in Name if needed
-		// For now, we'll just use the gecos as the name
 	}
 
 	return u, nil

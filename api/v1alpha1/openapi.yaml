@@ -147,30 +147,30 @@ paths:
           schema:
             type: string
             enum: [code, token]
-          description: OAuth2 response type
+          description: OAuth2 response type.
         - name: client_id
           in: query
           required: true
           schema:
             type: string
-          description: OAuth2 client ID
+          description: OAuth2 client ID.
         - name: redirect_uri
           in: query
           required: true
           schema:
             type: string
             format: uri
-          description: OAuth2 redirect URI
+          description: OAuth2 redirect URI.
         - name: scope
           in: query
           schema:
             type: string
-          description: OAuth2 scope
+          description: OAuth2 scope.
         - name: state
           in: query
           schema:
             type: string
-          description: OAuth2 state parameter
+          description: OAuth2 state parameter.
       responses:
         "200":
           description: Login form HTML (if user not authenticated)
@@ -241,19 +241,19 @@ paths:
           required: true
           schema:
             type: string
-          description: OAuth2 client ID
+          description: OAuth2 client ID.
         - name: redirect_uri
           in: query
           required: true
           schema:
             type: string
             format: uri
-          description: OAuth2 redirect URI
+          description: OAuth2 redirect URI.
         - name: state
           in: query
           schema:
             type: string
-          description: OAuth2 state parameter
+          description: OAuth2 state parameter.
       responses:
         "200":
           description: Login form HTML
@@ -5957,58 +5957,58 @@ components:
       properties:
         providers:
           type: array
-          description: List of all available authentication providers
+          description: List of all available authentication providers.
           items:
             $ref: '#/components/schemas/AuthProviderInfo'
         defaultProvider:
           type: string
-          description: Name of the default authentication provider
+          description: Name of the default authentication provider.
         organizationsEnabled:
           type: boolean
-          description: Whether organizations are enabled for authentication
+          description: Whether organizations are enabled for authentication.
     AuthProviderInfo:
       type: object
       properties:
         name:
           type: string
-          description: Unique identifier for the provider
+          description: Unique identifier for the provider.
         displayName:
           type: string
-          description: Human-readable display name
+          description: Human-readable display name.
         type:
           type: string
           enum: [oidc, k8s, aap, oauth2]
-          description: Type of authentication provider
+          description: Type of authentication provider.
         issuer:
           type: string
-          description: OIDC issuer URL (for OIDC providers)
+          description: OIDC issuer URL (for OIDC providers).
         clientId:
           type: string
-          description: Default client ID for OIDC/OAuth2 providers
+          description: Default client ID for OIDC/OAuth2 providers.
         authUrl:
           type: string
-          description: Authentication URL for the provider
+          description: Authentication URL for the provider.
         tokenUrl:
           type: string
-          description: Token endpoint URL (for OAuth2 providers)
+          description: Token endpoint URL (for OAuth2 providers).
         userinfoUrl:
           type: string
-          description: Userinfo endpoint URL (for OAuth2 providers)
+          description: Userinfo endpoint URL (for OAuth2 providers).
         scopes:
           type: array
           items:
             type: string
-          description: OAuth2 scopes (for OAuth2 providers)
+          description: OAuth2 scopes (for OAuth2 providers).
         usernameClaim:
           type: string
-          description: JSON path to the username claim (for OIDC/OAuth2 providers)
+          description: JSON path to the username claim (for OIDC/OAuth2 providers).
         isDefault:
           type: boolean
-          description: Whether this is the default provider
+          description: Whether this is the default provider.
           default: false
         isStatic:
           type: boolean
-          description: Whether this is a static provider (from config) or dynamic (from database)
+          description: Whether this is a static provider (from config) or dynamic (from database).
           default: false
       required:
         - authType
@@ -6827,83 +6827,83 @@ components:
         grant_type:
           type: string
           enum: [refresh_token, authorization_code]
-          description: OAuth2 grant type
+          description: OAuth2 grant type.
         username:
           type: string
-          description: Username for password grant
+          description: Username for password grant.
         password:
           type: string
-          description: Password for password grant
+          description: Password for password grant.
         refresh_token:
           type: string
-          description: Refresh token for refresh_token grant
+          description: Refresh token for refresh_token grant.
         code:
           type: string
-          description: Authorization code for authorization_code grant
+          description: Authorization code for authorization_code grant.
         client_id:
           type: string
-          description: OAuth2 client ID
+          description: OAuth2 client ID.
         client_secret:
           type: string
-          description: OAuth2 client secret
+          description: OAuth2 client secret.
         scope:
           type: string
-          description: OAuth2 scope
+          description: OAuth2 scope.
       description: OAuth2 token request
     TokenResponse:
       type: object
       properties:
         access_token:
           type: string
-          description: OAuth2 access token
+          description: OAuth2 access token.
         token_type:
           type: string
           enum: [Bearer]
-          description: Token type
+          description: Token type.
         refresh_token:
           type: string
-          description: OAuth2 refresh token
+          description: OAuth2 refresh token.
         expires_in:
           type: integer
-          description: Token expiration time in seconds
+          description: Token expiration time in seconds.
         error:
           type: string
-          description: OAuth2 error code
+          description: OAuth2 error code.
         error_description:
           type: string
-          description: OAuth2 error description
+          description: OAuth2 error description.
       description: OAuth2 token response
     UserInfoResponse:
       type: object
       properties:
         sub:
           type: string
-          description: Subject identifier
+          description: Subject identifier.
         preferred_username:
           type: string
-          description: Preferred username
+          description: Preferred username.
         name:
           type: string
-          description: Full name
+          description: Full name.
         email:
           type: string
-          description: Email address
+          description: Email address.
         email_verified:
           type: boolean
-          description: Email verification status
+          description: Email verification status.
         roles:
           type: array
           items:
             type: string
-          description: User roles
+          description: User roles.
         organizations:
           type: array
           items:
             type: string
-          description: User organizations
+          description: User organizations.
         error:
           type: string
-          description: Error code
+          description: Error code.
       description: OIDC UserInfo response
     JWKSResponse:
       type: object
@@ -6915,71 +6915,71 @@ components:
             properties:
               kty:
                 type: string
-                description: Key type
+                description: Key type.
               use:
                 type: string
-                description: Key use
+                description: Key use.
               kid:
                 type: string
-                description: Key ID
+                description: Key ID.
               alg:
                 type: string
-                description: Algorithm
+                description: Algorithm.
               n:
                 type: string
-                description: RSA modulus
+                description: RSA modulus.
               e:
                 type: string
-                description: RSA exponent
+                description: RSA exponent.
       description: JSON Web Key Set
     OpenIDConfiguration:
       type: object
       properties:
         issuer:
           type: string
-          description: OIDC issuer
+          description: OIDC issuer.
         authorization_endpoint:
           type: string
-          description: Authorization endpoint
+          description: Authorization endpoint.
         token_endpoint:
           type: string
-          description: Token endpoint
+          description: Token endpoint.
         userinfo_endpoint:
           type: string
-          description: UserInfo endpoint
+          description: UserInfo endpoint.
         jwks_uri:
           type: string
-          description: JWKS endpoint
+          description: JWKS endpoint.
         response_types_supported:
           type: array
           items:
             type: string
-          description: Supported response types
+          description: Supported response types.
         grant_types_supported:
           type: array
           items:
             type: string
-          description: Supported grant types
+          description: Supported grant types.
         scopes_supported:
           type: array
           items:
             type: string
-          description: Supported scopes
+          description: Supported scopes.
         claims_supported:
           type: array
           items:
             type: string
-          description: Supported claims
+          description: Supported claims.
         id_token_signing_alg_values_supported:
           type: array
           items:
             type: string
-          description: Supported signing algorithms
+          description: Supported signing algorithms.
         token_endpoint_auth_methods_supported:
           type: array
           items:
             type: string
-          description: Supported authentication methods
+          description: Supported authentication methods.
       description: OpenID Connect configuration
     AuthProvider:
       type: object
@@ -7018,34 +7018,34 @@ components:
         providerType:
           type: string
           enum: [oidc]
-          description: The type of authentication provider
+          description: The type of authentication provider.
         issuer:
           type: string
-          description: The OIDC issuer URL (e.g., https://accounts.google.com)
+          description: The OIDC issuer URL (e.g., https://accounts.google.com).
         clientId:
           type: string
-          description: The OIDC client ID
+          description: The OIDC client ID.
         clientSecret:
           type: string
-          description: The OIDC client secret
+          description: The OIDC client secret.
         enabled:
           type: boolean
-          description: Whether this OIDC provider is enabled
+          description: Whether this OIDC provider is enabled.
           default: true
         scopes:
           type: array
           items:
             type: string
-          description: List of OIDC scopes to request
+          description: List of OIDC scopes to request.
         organizationAssignment:
           $ref: '#/components/schemas/AuthOrganizationAssignment'
         usernameClaim:
           type: string
-          description: JSON path to the username claim in the JWT token (e.g., "preferred_username", "email", "sub")
+          description: JSON path to the username claim in the JWT token (e.g., "preferred_username", "email", "sub").
           default: "preferred_username"
         roleClaim:
           type: string
-          description: JSON path to the role/group claim in the JWT token (e.g., "groups", "roles", "realm_access.roles")
+          description: JSON path to the role/group claim in the JWT token (e.g., "groups", "roles", "realm_access.roles").
           default: "groups"
       required:
         - providerType
@@ -7060,43 +7060,43 @@ components:
         providerType:
           type: string
           enum: [oauth2]
-          description: The type of authentication provider
+          description: The type of authentication provider.
         issuer:
           type: string
-          description: The OAuth2 issuer identifier (used for issuer identification in tokens)
+          description: The OAuth2 issuer identifier (used for issuer identification in tokens).
         authorizationUrl:
           type: string
-          description: The OAuth2 authorization endpoint URL
+          description: The OAuth2 authorization endpoint URL.
         tokenUrl:
           type: string
-          description: The OAuth2 token endpoint URL
+          description: The OAuth2 token endpoint URL.
         userinfoUrl:
           type: string
-          description: The OAuth2 userinfo endpoint URL
+          description: The OAuth2 userinfo endpoint URL.
         clientId:
           type: string
-          description: The OAuth2 client ID
+          description: The OAuth2 client ID.
         clientSecret:
           type: string
-          description: The OAuth2 client secret
+          description: The OAuth2 client secret.
         enabled:
           type: boolean
-          description: Whether this OAuth2 provider is enabled
+          description: Whether this OAuth2 provider is enabled.
           default: true
         scopes:
           type: array
           items:
             type: string
-          description: List of OAuth2 scopes to request
+          description: List of OAuth2 scopes to request.
         organizationAssignment:
           $ref: '#/components/schemas/AuthOrganizationAssignment'
         usernameClaim:
           type: string
-          description: JSON path to the username claim in the userinfo response (e.g., "preferred_username", "email", "sub")
+          description: JSON path to the username claim in the userinfo response (e.g., "preferred_username", "email", "sub").
           default: "preferred_username"
         roleClaim:
           type: string
-          description: JSON path to the role/group claim in the userinfo response (e.g., "groups", "roles", "realm_access.roles")
+          description: JSON path to the role/group claim in the userinfo response (e.g., "groups", "roles", "realm_access.roles").
           default: "groups"
       required:
         - providerType
@@ -7127,10 +7127,10 @@ components:
         type:
           type: string
           enum: [static]
-          description: The type of organization assignment
+          description: The type of organization assignment.
         organizationName:
           type: string
-          description: The name of the organization where all users will be assigned
+          description: The name of the organization where all users will be assigned.
       required:
         - type
         - organizationName
@@ -7141,17 +7141,17 @@ components:
         type:
           type: string
           enum: [dynamic]
-          description: The type of organization assignment
+          description: The type of organization assignment.
         claimPath:
           type: string
-          description: The JSON path to the claim that contains the organization identifier (e.g., "groups.0" or "custom.org")
+          description: The JSON path to the claim that contains the organization identifier (e.g., "groups.0" or "custom.org").
         organizationNamePrefix:
           type: string
-          description: The prefix for the organization name (e.g., "org-")
+          description: The prefix for the organization name (e.g., "org-").
           default: ""
         organizationNameSuffix:
           type: string
-          description: The suffix for the organization name (e.g., "-org")
+          description: The suffix for the organization name (e.g., "-org").
           default: ""
       required:
         - type
@@ -7163,14 +7163,14 @@ components:
         type:
           type: string
           enum: [perUser]
-          description: The type of organization assignment
+          description: The type of organization assignment.
         organizationNamePrefix:
           type: string
-          description: The prefix for the user-specific organization name (e.g., "user-org-")
+          description: The prefix for the user-specific organization name (e.g., "user-org-").
           default: "user-org-"
         organizationNameSuffix:
           type: string
-          description: The suffix for the user-specific organization name (e.g., "-org")
+          description: The suffix for the user-specific organization name (e.g., "-org").
           default: ""
       required:
         - type

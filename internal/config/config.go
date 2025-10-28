@@ -439,6 +439,7 @@ func LoadOrGenerate(cfgFile string) (*Config, error) {
 	return NewFromFile(cfgFile)
 }
 
+//nolint:gocyclo // Function complexity is acceptable for configuration loading
 func Load(cfgFile string) (*Config, error) {
 	contents, err := os.ReadFile(cfgFile)
 	if err != nil {
@@ -552,7 +553,7 @@ func Load(cfgFile string) (*Config, error) {
 					OrganizationName: org.DefaultExternalID,
 					Type:             api.Static,
 				}
-				c.Auth.OIDC.OrganizationAssignment.FromAuthStaticOrganizationAssignment(staticAssignment)
+				_ = c.Auth.OIDC.OrganizationAssignment.FromAuthStaticOrganizationAssignment(staticAssignment)
 			}
 		}
 	}

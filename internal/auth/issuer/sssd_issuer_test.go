@@ -89,16 +89,6 @@ func createTestCAClient(t *testing.T) *fccrypto.CAClient {
 	return caClient
 }
 
-// Helper function to create an SSSD issuer with mock authenticator
-func createTestSSSDProvider(t *testing.T, mockAuth SSSDAuthenticator) *SSSDOIDCProvider {
-	t.Helper()
-	caClient := createTestCAClient(t)
-	cfg := &config.SSSDOIDCIssuer{}
-	provider, err := NewSSSDOIDCProviderWithAuthenticator(caClient, cfg, mockAuth)
-	require.NoError(t, err)
-	return provider
-}
-
 func TestNewSSSDOIDCProvider(t *testing.T) {
 	caClient := createTestCAClient(t)
 
@@ -1004,7 +994,7 @@ func TestSSSDOIDCProvider_EndToEndFlow(t *testing.T) {
 
 	// Verify all expected claims are present
 	claims := map[string]interface{}{}
-	parsedToken.Walk(context.Background(), jwt.VisitorFunc(func(key string, value interface{}) error {
+	_ = parsedToken.Walk(context.Background(), jwt.VisitorFunc(func(key string, value interface{}) error {
 		claims[key] = value
 		return nil
 	}))
@@ -1051,7 +1041,7 @@ func TestSSSDOIDCProvider_EndToEndFlow(t *testing.T) {
 	require.NoError(t, err)
 
 	refreshClaims := map[string]interface{}{}
-	parsedRefreshToken.Walk(context.Background(), jwt.VisitorFunc(func(key string, value interface{}) error {
+	_ = parsedRefreshToken.Walk(context.Background(), jwt.VisitorFunc(func(key string, value interface{}) error {
 		refreshClaims[key] = value
 		return nil
 	}))

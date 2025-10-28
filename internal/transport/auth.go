@@ -141,11 +141,3 @@ func (h *TransportHandler) extractSessionContext(ctx context.Context, r *http.Re
 
 	return ctx
 }
-
-// Helper function to create string pointer
-func stringPtr(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
-}

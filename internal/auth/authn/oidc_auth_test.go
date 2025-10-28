@@ -30,7 +30,7 @@ func createTestOIDCAuth(jwksUri string) OIDCAuth {
 
 	// Initialize JWKS cache (this is what NewOIDCAuth does internally)
 	oidcAuth.jwksCache = jwk.NewCache(context.Background())
-	oidcAuth.jwksCache.Register(jwksUri, jwk.WithMinRefreshInterval(15*time.Minute))
+	_ = oidcAuth.jwksCache.Register(jwksUri, jwk.WithMinRefreshInterval(15*time.Minute))
 
 	return oidcAuth
 }

@@ -337,20 +337,3 @@ func extractSessionIDFromURL(url string) (string, error) {
 	}
 	return "", fmt.Errorf("no session ID found in URL")
 }
-
-// extractStateFromURL extracts the state from a redirect URL
-func extractStateFromURL(url string) (string, error) {
-	// Simple URL parsing to extract the 'state' parameter
-	if strings.Contains(url, "state=") {
-		parts := strings.Split(url, "state=")
-		if len(parts) > 1 {
-			statePart := parts[1]
-			// Remove any additional parameters after the state
-			if ampIndex := strings.Index(statePart, "&"); ampIndex != -1 {
-				return statePart[:ampIndex], nil
-			}
-			return statePart, nil
-		}
-	}
-	return "", fmt.Errorf("no state found in URL")
-}
