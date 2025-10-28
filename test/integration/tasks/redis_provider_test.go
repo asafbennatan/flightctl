@@ -1110,7 +1110,7 @@ var _ = Describe("Redis Provider Integration Tests", func() {
 			consumerCancel2()
 
 			// Wait a bit for the consumer to fully stop
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 
 			// Try to advance checkpoint again
 			err = provider.AdvanceCheckpointAndCleanup(ctx)
