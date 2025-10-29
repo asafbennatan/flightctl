@@ -34,6 +34,22 @@ auth:
     externalApiUrl: {{AAP_EXTERNAL_API_URL}}
   {{elseif OIDC}}
   oidc:
-    oidcAuthority: {{OIDC_URL}}
-    externalOidcAuthority: {{OIDC_EXTERNAL_URL}}
+    clientId: {{OIDC_CLIENT_ID}}
+    enabled: {{OIDC_ENABLED}}
+    issuer: {{OIDC_ISSUER}}
+    externalOidcAuthority: {{OIDC_EXTERNAL_AUTHORITY}}
+    organizationAssignment:
+      type: {{OIDC_ORG_ASSIGNMENT_TYPE}}
+      organizationName: {{OIDC_ORG_NAME}}
+    usernameClaim: {{OIDC_USERNAME_CLAIM}}
+    roleClaim: {{OIDC_ROLE_CLAIM}}
+  {{if SSSD_OIDC_ISSUER_ENABLED}}
+  sssdOidcIssuer:
+    issuer: {{SSSD_OIDC_ISSUER}}
+    clientId: {{SSSD_OIDC_CLIENT_ID}}
+    clientSecret: {{SSSD_OIDC_CLIENT_SECRET}}
+    scopes: {{SSSD_OIDC_SCOPES}}
+    redirectUris: {{SSSD_OIDC_REDIRECT_URIS}}
+    sssdService: {{SSSD_OIDC_SERVICE}}
+  {{endif}}
   {{endif}}

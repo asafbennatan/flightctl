@@ -9,9 +9,23 @@ global:
       oAuthApplicationClientId:
       oAuthToken:
     oidc:
-      oidcAuthority:
+      clientId: flightctl-client
+      enabled: true
+      issuer:
       externalOidcAuthority:
-      oidcClientId:
+      organizationAssignment:
+        type: static
+        organizationName: default
+      usernameClaim: preferred_username
+      roleClaim: groups
+    sssdOidcIssuer:
+      enabled: false
+      issuer:
+      clientId: flightctl-client
+      clientSecret:
+      scopes: openid,profile,email,roles
+      redirectUris:
+      sssdService: flightctl
   organizations:
     # Enable IdP-provided organizations support
     enabled: false

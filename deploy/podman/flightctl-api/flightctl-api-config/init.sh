@@ -147,14 +147,89 @@ if [ "$AUTH_TYPE" == "aap" ]; then
   fi
 elif [ "$AUTH_TYPE" == "oidc" ]; then
   echo "Configuring OIDC authentication"
-  OIDC_URL=$(extract_value "oidcAuthority" "$SERVICE_CONFIG_FILE")
-  OIDC_EXTERNAL_URL=$(extract_value "externalOidcAuthority" "$SERVICE_CONFIG_FILE")
+  
+  # Extract OIDC configuration from service-config.yaml
+  OIDC_CLIENT_ID=$(sed -n '/^global:/,/^[^[:space:]]/p' "$SERVICE_CONFIG_FILE" | sed -n '/^[[:space:]]*oidc:/,/^[[:space:]]*[^[:space:]]/p' | sed -n 's/^[[:space:]]*clientId:[[:space:]]*[\"'"'"']*\([^\"'"'"'[:space:]]*\)[\"'"'"']*.*/\1/p' | head -1)
+  OIDC_ENABLED=$(sed -n '/^global:/,/^[^[:space:]]/p' "$SERVICE_CONFIG_FILE" | sed -n '/^[[:space:]]*oidc:/,/^[[:space:]]*[^[:space:]]/p' | sed -n 's/^[[:space:]]*enabled:[[:space:]]*\([^[:space:]]*\).*/\1/p' | head -1)
+  OIDC_ISSUER=$(sed -n '/^global:/,/^[^[:space:]]/p' "$SERVICE_CONFIG_FILE" | sed -n '/^[[:space:]]*oidc:/,/^[[:space:]]*[^[:space:]]/p' | sed -n 's/^[[:space:]]*issuer:[[:space:]]*[\"'"'"']*\([^\"'"'"'[:space:]]*\)[\"'"'"']*.*/\1/p' | head -1)
+  OIDC_EXTERNAL_AUTHORITY=$(sed -n '/^global:/,/^[^[:space:]]/p' "$SERVICE_CONFIG_FILE" | sed -n '/^[[:space:]]*oidc:/,/^[[:space:]]*[^[:space:]]/p' | sed -n 's/^[[:space:]]*externalOidcAuthority:[[:space:]]*[\"'"'"']*\([^\"'"'"'[:space:]]*\)[\"'"'"']*.*/\1/p' | head -1)
+  OIDC_ORG_ASSIGNMENT_TYPE=$(sed -n '/^global:/,/^[^[:space:]]/p' "$SERVICE_CONFIG_FILE" | sed -n '/^[[:space:]]*organizationAssignment:/,/^[[:space:]]*[^[:space:]]/p' | sed -n 's/^[[:space:]]*type:[[:space:]]*[\"'"'"']*\([^\"'"'"'[:space:]]*\)[\"'"'"']*.*/\1/p' | head -1)
+  OIDC_ORG_NAME=$(sed -n '/^global:/,/^[^[:space:]]/p' "$SERVICE_CONFIG_FILE" | sed -n '/^[[:space:]]*organizationAssignment:/,/^[[:space:]]*[^[:space:]]/p' | sed -n 's/^[[:space:]]*organizationName:[[:space:]]*[\"'"'"']*\([^\"'"'"'[:space:]]*\)[\"'"'"']*.*/\1/p' | head -1)
+  OIDC_USERNAME_CLAIM=$(sed -n '/^global:/,/^[^[:space:]]/p' "$SERVICE_CONFIG_FILE" | sed -n '/^[[:space:]]*oidc:/,/^[[:space:]]*[^[:space:]]/p' | sed -n 's/^[[:space:]]*usernameClaim:[[:space:]]*[\"'"'"']*\([^\"'"'"'[:space:]]*\)[\"'"'"']*.*/\1/p' | head -1)
+  OIDC_ROLE_CLAIM=$(sed -n '/^global:/,/^[^[:space:]]/p' "$SERVICE_CONFIG_FILE" | sed -n '/^[[:space:]]*oidc:/,/^[[:space:]]*[^[:space:]]/p' | sed -n 's/^[[:space:]]*roleClaim:[[:space:]]*[\"'"'"']*\([^\"'"'"'[:space:]]*\)[\"'"'"']*.*/\1/p' | head -1)
 
+  # Set defaults if not found
+  OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-flightctl-client}
+  OIDC_ENABLED=${OIDC_ENABLED:-true}
+  OIDC_ORG_ASSIGNMENT_TYPE=${OIDC_ORG_ASSIGNMENT_TYPE:-static}
+  OIDC_ORG_NAME=${OIDC_ORG_NAME:-default}
+  OIDC_USERNAME_CLAIM=${OIDC_USERNAME_CLAIM:-preferred_username}
+  OIDC_ROLE_CLAIM=${OIDC_ROLE_CLAIM:-groups}
+
+  # Extract SSSD OIDC Issuer configuration
+  SSSD_OIDC_ISSUER_ENABLED=$(sed -n '/^global:/,/^[^[:space:]]/p' "$SERVICE_CONFIG_FILE" | sed -n '/^[[:space:]]*sssdOidcIssuer:/,/^[[:space:]]*[^[:space:]]/p' | sed -n 's/^[[:space:]]*enabled:[[:space:]]*\([^[:space:]]*\).*/\1/p' | head -1)
+  SSSD_OIDC_ISSUER=$(sed -n '/^global:/,/^[^[:space:]]/p' "$SERVICE_CONFIG_FILE" | sed -n '/^[[:space:]]*sssdOidcIssuer:/,/^[[:space:]]*[^[:space:]]/p' | sed -n 's/^[[:space:]]*issuer:[[:space:]]*[\"'"'"']*\([^\"'"'"'[:space:]]*\)[\"'"'"']*.*/\1/p' | head -1)
+  SSSD_OIDC_CLIENT_ID=$(sed -n '/^global:/,/^[^[:space:]]/p' "$SERVICE_CONFIG_FILE" | sed -n '/^[[:space:]]*sssdOidcIssuer:/,/^[[:space:]]*[^[:space:]]/p' | sed -n 's/^[[:space:]]*clientId:[[:space:]]*[\"'"'"']*\([^\"'"'"'[:space:]]*\)[\"'"'"']*.*/\1/p' | head -1)
+  SSSD_OIDC_CLIENT_SECRET=$(sed -n '/^global:/,/^[^[:space:]]/p' "$SERVICE_CONFIG_FILE" | sed -n '/^[[:space:]]*sssdOidcIssuer:/,/^[[:space:]]*[^[:space:]]/p' | sed -n 's/^[[:space:]]*clientSecret:[[:space:]]*[\"'"'"']*\([^\"'"'"'[:space:]]*\)[\"'"'"']*.*/\1/p' | head -1)
+  SSSD_OIDC_SCOPES=$(sed -n '/^global:/,/^[^[:space:]]/p' "$SERVICE_CONFIG_FILE" | sed -n '/^[[:space:]]*sssdOidcIssuer:/,/^[[:space:]]*[^[:space:]]/p' | sed -n 's/^[[:space:]]*scopes:[[:space:]]*[\"'"'"']*\([^\"'"'"'[:space:]]*\)[\"'"'"']*.*/\1/p' | head -1)
+  SSSD_OIDC_REDIRECT_URIS=$(sed -n '/^global:/,/^[^[:space:]]/p' "$SERVICE_CONFIG_FILE" | sed -n '/^[[:space:]]*sssdOidcIssuer:/,/^[[:space:]]*[^[:space:]]/p' | sed -n 's/^[[:space:]]*redirectUris:[[:space:]]*[\"'"'"']*\([^\"'"'"'[:space:]]*\)[\"'"'"']*.*/\1/p' | head -1)
+  SSSD_OIDC_SERVICE=$(sed -n '/^global:/,/^[^[:space:]]/p' "$SERVICE_CONFIG_FILE" | sed -n '/^[[:space:]]*sssdOidcIssuer:/,/^[[:space:]]*[^[:space:]]/p' | sed -n 's/^[[:space:]]*sssdService:[[:space:]]*[\"'"'"']*\([^\"'"'"'[:space:]]*\)[\"'"'"']*.*/\1/p' | head -1)
+
+  # Set defaults for SSSD
+  SSSD_OIDC_ISSUER_ENABLED=${SSSD_OIDC_ISSUER_ENABLED:-false}
+  SSSD_OIDC_CLIENT_ID=${SSSD_OIDC_CLIENT_ID:-flightctl-client}
+  SSSD_OIDC_SERVICE=${SSSD_OIDC_SERVICE:-flightctl}
+
+  # Convert comma-separated list to YAML array format
+  if [ -n "$SSSD_OIDC_SCOPES" ]; then
+    SSSD_OIDC_SCOPES_YAML=$(echo "$SSSD_OIDC_SCOPES" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]/')
+  else
+    SSSD_OIDC_SCOPES_YAML='["openid", "profile", "email", "roles"]'
+  fi
+
+  if [ -n "$SSSD_OIDC_REDIRECT_URIS" ]; then
+    SSSD_OIDC_REDIRECT_URIS_YAML=$(echo "$SSSD_OIDC_REDIRECT_URIS" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]/')
+  else
+    SSSD_OIDC_REDIRECT_URIS_YAML='[]'
+  fi
+
+  # Build sed commands for OIDC
+  # First, remove the AAP block and elseif marker
   AUTH_SED_CMDS=(
     -e "/{{if AAP}}/,/{{elseif OIDC}}/d"
+  )
+  
+  # Handle SSSD conditional block
+  if [ "$SSSD_OIDC_ISSUER_ENABLED" == "true" ]; then
+    # SSSD is enabled: remove the conditional markers but keep the content
+    AUTH_SED_CMDS+=(
+      -e "/{{if SSSD_OIDC_ISSUER_ENABLED}}/d"
+    )
+  else
+    # SSSD is disabled: remove the entire SSSD block
+    AUTH_SED_CMDS+=(
+      -e "/{{if SSSD_OIDC_ISSUER_ENABLED}}/,/{{endif}}/{/{{endif}}/!d;}"
+      -e "/{{if SSSD_OIDC_ISSUER_ENABLED}}/d"
+    )
+  fi
+  
+  # Remove remaining {{endif}} markers (one for SSSD if enabled, one for outer OIDC block)
+  AUTH_SED_CMDS+=(
     -e "/{{endif}}/d"
-    -e "s|{{OIDC_URL}}|$OIDC_URL|g"
-    -e "s|{{OIDC_EXTERNAL_URL}}|$OIDC_EXTERNAL_URL|g"
+    -e "s|{{OIDC_CLIENT_ID}}|$OIDC_CLIENT_ID|g"
+    -e "s|{{OIDC_ENABLED}}|$OIDC_ENABLED|g"
+    -e "s|{{OIDC_ISSUER}}|$OIDC_ISSUER|g"
+    -e "s|{{OIDC_EXTERNAL_AUTHORITY}}|$OIDC_EXTERNAL_AUTHORITY|g"
+    -e "s|{{OIDC_ORG_ASSIGNMENT_TYPE}}|$OIDC_ORG_ASSIGNMENT_TYPE|g"
+    -e "s|{{OIDC_ORG_NAME}}|$OIDC_ORG_NAME|g"
+    -e "s|{{OIDC_USERNAME_CLAIM}}|$OIDC_USERNAME_CLAIM|g"
+    -e "s|{{OIDC_ROLE_CLAIM}}|$OIDC_ROLE_CLAIM|g"
+    -e "s|{{SSSD_OIDC_ISSUER}}|$SSSD_OIDC_ISSUER|g"
+    -e "s|{{SSSD_OIDC_CLIENT_ID}}|$SSSD_OIDC_CLIENT_ID|g"
+    -e "s|{{SSSD_OIDC_CLIENT_SECRET}}|$SSSD_OIDC_CLIENT_SECRET|g"
+    -e "s|{{SSSD_OIDC_SCOPES}}|$SSSD_OIDC_SCOPES_YAML|g"
+    -e "s|{{SSSD_OIDC_REDIRECT_URIS}}|$SSSD_OIDC_REDIRECT_URIS_YAML|g"
+    -e "s|{{SSSD_OIDC_SERVICE}}|$SSSD_OIDC_SERVICE|g"
   )
 else
   echo "Auth not configured"
