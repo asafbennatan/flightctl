@@ -10,7 +10,6 @@ A helm chart for flightctl
 
 | Repository | Name | Version |
 |------------|------|---------|
-| keycloak | keycloak | 0.0.1 |
 | ui | ui | 0.0.1 |
 
 ## Installation
@@ -156,7 +155,7 @@ global:
   target: "standalone"
   baseDomain: "flightctl.example.com"
   auth:
-    type: "builtin"
+    type: "oidc"
 
 # Example: ACM integration
 global:
@@ -288,9 +287,17 @@ For more detailed configuration options, see the [Values](#values) section below
 | global.auth.k8s.externalApiToken | string | `""` | In case flightctl is not running within a cluster, you can provide api token |
 | global.auth.k8s.externalOpenShiftApiUrl | string | `""` | API URL of OpenShift cluster that can be accessed by external client to retrieve auth token |
 | global.auth.k8s.rbacNs | string | `""` | Namespace that should be used for the RBAC checks |
-| global.auth.oidc.externalOidcAuthority | string | `""` | The base URL for the Keycloak realm that is reachable by clients. Example: https://keycloak.foo.net/realms/flightctl |
-| global.auth.oidc.oidcAuthority | string | `"http://keycloak:8081/realms/flightctl"` | The base URL for the Keycloak realm that is reachable by flightctl services. Example: https://keycloak.foo.internal/realms/flightctl |
-| global.auth.type | string | `"builtin"` | Type of the auth to use. Can be one of 'builtin', 'k8s', 'oidc', or 'none' |
+| global.auth.oidc.clientId | string | `"flightctl-client"` | OIDC Client ID |
+| global.auth.oidc.enabled | bool | `true` | Whether this OIDC provider is enabled |
+| global.auth.oidc.externalOidcAuthority | string | `""` | The base URL for the OIDC provider that is reachable by clients. Example: https://auth.foo.net/realms/flightctl |
+| global.auth.oidc.issuer | string | `""` | The base URL for the OIDC provider that is reachable by flightctl services. Example: https://auth.foo.internal/realms/flightctl |
+| global.auth.pamOidcIssuer.clientId | string | `"flightctl-client"` | OAuth2 client ID for the OIDC issuer |
+| global.auth.pamOidcIssuer.clientSecret | string | `""` | OAuth2 client secret for the OIDC issuer |
+| global.auth.pamOidcIssuer.issuer | string | `""` | The base URL for the OIDC issuer (defaults to API server URL) |
+| global.auth.pamOidcIssuer.pamService | string | `"flightctl"` | PAM service name for authentication (default: "flightctl") |
+| global.auth.pamOidcIssuer.redirectUris | list | `[]` | Allowed redirect URIs for OAuth2 flows |
+| global.auth.pamOidcIssuer.scopes | list | `["openid","profile","email","roles"]` | Supported OAuth2 scopes |
+| global.auth.type | string | `"oidc"` | Type of the auth to use. Can be one of 'k8s', 'oidc', 'builtin', 'aap', or 'none' Note: 'builtin' is a legacy mode that translates to 'oidc' with PAM issuer automatically enabled For new deployments, explicitly set type to 'oidc' and configure pamOidcIssuer settings |
 | global.baseDomain | string | `""` | Base domain to construct the FQDN for the service endpoints. |
 | global.baseDomainTls.cert | string | `""` | Certificate for the base domain wildcard certificate, it should be valid for *.${baseDomain}. This certificate is only used for non mTLS endpoints, mTLS endpoints like agent-api, etc will use different certificates. |
 | global.baseDomainTls.key | string | `""` | Key for the base domain wildcard certificate. |
@@ -308,7 +315,7 @@ For more detailed configuration options, see the [Values](#values) section below
 | global.nodePorts.alertmanagerProxy | int | `8443` | NodePort for Alertmanager proxy service |
 | global.nodePorts.api | int | `3443` | NodePort for Flight Control API service |
 | global.nodePorts.cliArtifacts | int | `8090` | NodePort for CLI artifacts service |
-| global.nodePorts.keycloak | int | `8081` | NodePort for Keycloak service |
+| global.nodePorts.pamIssuer | int | `8444` | NodePort for PAM OIDC issuer service |
 | global.nodePorts.telemetryGatewayOtlp | int | `4317` | NodePort for OTLP telemetry gateway |
 | global.nodePorts.telemetryGatewayProm | int | `9464` | NodePort for Prometheus telemetry gateway |
 | global.nodePorts.ui | int | `9000` | NodePort for web UI service |
@@ -319,8 +326,6 @@ For more detailed configuration options, see the [Values](#values) section below
 | global.tracing.enabled | bool | `false` | Enable distributed tracing with OpenTelemetry |
 | global.tracing.endpoint | string | `"jaeger-collector.flightctl-e2e.svc.cluster.local:4318"` | OpenTelemetry collector endpoint for trace data |
 | global.tracing.insecure | bool | `true` | Use insecure connection to tracing endpoint (development only) |
-| keycloak | object | `{"db":{"fsGroup":""}}` | Keycloak Configuration |
-| keycloak.db.fsGroup | string | `""` | File system group ID for Keycloak database pod security context |
 | kv | object | `{"enabled":true,"fsGroup":"","image":{"image":"quay.io/sclorg/redis-7-c9s","pullPolicy":"","tag":"20250108"},"loglevel":"warning","maxmemory":"1gb","maxmemoryPolicy":"allkeys-lru","password":""}` | Key-Value Store Configuration |
 | kv.enabled | bool | `true` | Enable Redis key-value store for caching and session storage |
 | kv.fsGroup | string | `""` | File system group ID for Redis pod security context |
@@ -331,6 +336,15 @@ For more detailed configuration options, see the [Values](#values) section below
 | kv.maxmemory | string | `"1gb"` | Maximum memory usage for Redis |
 | kv.maxmemoryPolicy | string | `"allkeys-lru"` | Redis memory eviction policy |
 | kv.password | string | `""` | Redis password (leave empty for auto-generation) password: Leave empty to auto-generate secure password, or set to use a specific password. |
+| pamIssuer | object | `{"enabled":false,"env":{},"image":{"image":"quay.io/flightctl/flightctl-pam-issuer","pullPolicy":"","tag":""},"probes":{"enabled":true,"livenessPath":"/api/v1/auth/.well-known/openid-configuration","readinessPath":"/api/v1/auth/.well-known/openid-configuration"}}` | PAM OIDC Issuer Configuration |
+| pamIssuer.enabled | bool | `false` | Enable PAM OIDC Issuer service deployment |
+| pamIssuer.env | object | `{}` | Additional environment variables for PAM issuer |
+| pamIssuer.image.image | string | `"quay.io/flightctl/flightctl-pam-issuer"` | PAM issuer container image |
+| pamIssuer.image.pullPolicy | string | `""` | Image pull policy for PAM issuer container |
+| pamIssuer.image.tag | string | `""` | PAM issuer image tag (leave empty to use chart appVersion) |
+| pamIssuer.probes.enabled | bool | `true` | Enable health and readiness probes for PAM issuer |
+| pamIssuer.probes.livenessPath | string | `"/api/v1/auth/.well-known/openid-configuration"` | HTTP path for liveness probe |
+| pamIssuer.probes.readinessPath | string | `"/api/v1/auth/.well-known/openid-configuration"` | HTTP path for readiness probe |
 | periodic | object | `{"consumers":5,"enabled":true,"image":{"image":"quay.io/flightctl/flightctl-periodic","pullPolicy":"","tag":""}}` | Periodic Configuration |
 | periodic.consumers | int | `5` | Number of periodic consumers |
 | periodic.enabled | bool | `true` | Enable Flight Control periodic service |

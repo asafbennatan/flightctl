@@ -16,6 +16,12 @@ write_default_base_domain() {
     sed -i "s/^\(\s*baseDomain\s*\):\s*.*$/\1: ${base_domain}/" "${SERVICE_CONFIG_FILE}"
 }
 
+# Note: PAM configuration (/etc/pam.d/flightctl) is baked into the
+# flightctl-pam-issuer container image, not configured on the host.
+# Service configuration transformation from service-config.yaml to
+# /etc/flightctl/flightctl-pam-issuer/config.yaml is handled by the
+# flightctl-pam-issuer-init container.
+
 main() {
     echo "Configuring Flight Control"
 
@@ -27,6 +33,13 @@ main() {
     else
         echo "Base domain already set to: $base_domain"
     fi
+    
+    # Configure PAM authentication when auth type is oidc and pamOidcIssuer is enabled
+    auth_type=$(extract_value "global.auth.type" "$SERVICE_CONFIG_FILE")
+    pam_enabled=$(extract_value "global.auth.pamOidcIssuer.enabled" "$SERVICE_CONFIG_FILE")
+    
+    # PAM configuration is baked into the flightctl-pam-issuer container image
+    # No host-level PAM configuration needed
 
     echo "Configuration complete"
 }

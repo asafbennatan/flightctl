@@ -9,9 +9,9 @@ metadata:
 spec:
   gatewayClassName: {{ .Values.global.gatewayClass }}
   listeners:
-  {{- if and (eq .Values.global.target "standalone") (eq .Values.global.auth.type "builtin") }}
-  - name: keycloak
-    hostname: auth.{{ include "flightctl.getBaseDomain" . }}
+  {{- if and (eq .Values.global.target "standalone") (eq (include "flightctl.isPamIssuerEnabled" .) "true") }}
+  - name: pam-issuer
+    hostname: pam-issuer.{{ include "flightctl.getBaseDomain" . }}
     {{- if .Values.global.baseDomainTls.cert }}
     port: {{ .Values.global.gatewayPorts.tls }}
     protocol: HTTPS

@@ -1,13 +1,21 @@
 {{- define "flightctl.getBaseDomain" }}
   {{- if .Values.global.baseDomain }}
     {{- printf .Values.global.baseDomain }}
-  {{- else }}
-    {{- $openShiftBaseDomain := (lookup "config.openshift.io/v1" "DNS" "" "cluster").spec.baseDomain }}
-    {{- if .noNs }}
-      {{- printf "apps.%s" $openShiftBaseDomain }}
+  {{- else if eq .Values.global.target "acm" }}
+    {{- /* For ACM deployments on OpenShift, try to lookup the base domain */}}
+    {{- $dnsConfig := (lookup "config.openshift.io/v1" "DNS" "" "cluster") }}
+    {{- if and $dnsConfig $dnsConfig.spec $dnsConfig.spec.baseDomain }}
+      {{- $openShiftBaseDomain := $dnsConfig.spec.baseDomain }}
+      {{- if .noNs }}
+        {{- printf "apps.%s" $openShiftBaseDomain }}
+      {{- else }}
+        {{- printf "%s.apps.%s" .Release.Namespace $openShiftBaseDomain }}
+      {{- end }}
     {{- else }}
-      {{- printf "%s.apps.%s" .Release.Namespace $openShiftBaseDomain }}
+      {{- fail "Unable to determine OpenShift base domain. Please set global.baseDomain" }}
     {{- end }}
+  {{- else }}
+    {{- fail "global.baseDomain must be set when not running on OpenShift (global.target != 'acm')" }}
   {{- end }}
 {{- end }}
 
@@ -37,9 +45,18 @@ app.kubernetes.io/version: {{ .Chart.AppVersion }}
     {{- printf .Values.global.auth.k8s.externalOpenShiftApiUrl }}
   {{- else if .Values.global.apiUrl }}
     {{- printf .Values.global.apiUrl }}
+  {{- else if .Values.global.auth.k8s.apiUrl }}
+    {{- printf .Values.global.auth.k8s.apiUrl }}
+  {{- else if eq .Values.global.target "acm" }}
+    {{- /* For ACM deployments on OpenShift, try to lookup the API URL */}}
+    {{- $dnsConfig := (lookup "config.openshift.io/v1" "DNS" "" "cluster") }}
+    {{- if and $dnsConfig $dnsConfig.spec $dnsConfig.spec.baseDomain }}
+      {{- printf "https://api.%s:6443" $dnsConfig.spec.baseDomain }}
+    {{- else }}
+      {{- fail "Unable to determine OpenShift API URL. Please set global.auth.k8s.externalOpenShiftApiUrl, global.apiUrl, or global.auth.k8s.apiUrl" }}
+    {{- end }}
   {{- else }}
-    {{- $openShiftBaseDomain := (lookup "config.openshift.io/v1" "DNS" "" "cluster").spec.baseDomain }}
-    {{- printf "https://api.%s:6443" $openShiftBaseDomain }}
+    {{- fail "global.auth.k8s.externalOpenShiftApiUrl, global.apiUrl, or global.auth.k8s.apiUrl must be set when using k8s auth" }}
   {{- end }}
 {{- end }}
 
@@ -92,25 +109,57 @@ app.kubernetes.io/version: {{ .Chart.AppVersion }}
 {{- end }}
 
 {{- define "flightctl.getOidcAuthorityUrl" }}
-  {{- if .Values.global.auth.oidc.externalOidcAuthority }}
+  {{- if eq .Values.global.auth.type "builtin" }}
+    {{- /* For builtin auth, use PAM issuer as the OIDC authority */}}
+    {{- include "flightctl.getPamIssuerUrl" . }}
+  {{- else if .Values.global.auth.oidc.externalOidcAuthority }}
     {{- printf .Values.global.auth.oidc.externalOidcAuthority }}
   {{- else }}
-    {{- $baseDomain := (include "flightctl.getBaseDomain" . )}}
-    {{- $scheme := (include "flightctl.getHttpScheme" . )}}
-    {{- $exposeMethod := (include "flightctl.getServiceExposeMethod" .)}}
-    {{- if eq $exposeMethod "nodePort" }}
-      {{- printf "%s://%s:%v/realms/flightctl" $scheme $baseDomain .Values.global.nodePorts.keycloak }}
-    {{- else if eq $exposeMethod "gateway" }}
-      {{- if and (eq $scheme "http") (not (eq (int .Values.global.gatewayPorts.http) 80)) }}
-        {{- printf "%s://auth.%s:%v/realms/flightctl" $scheme $baseDomain .Values.global.gatewayPorts.http }}
-      {{- else if and (eq $scheme "https") (not (eq (int .Values.global.gatewayPorts.tls) 443))}}
-        {{- printf "%s://auth.%s:%v/realms/flightctl" $scheme $baseDomain .Values.global.gatewayPorts.tls }}
-      {{- else }}
-        {{- printf "%s://auth.%s/realms/flightctl" $scheme $baseDomain }}
-      {{- end }}
-    {{- else }}
-      {{- printf "%s://auth.%s/realms/flightctl" $scheme $baseDomain }}
-    {{- end }}
+    {{- include "flightctl.getApiUrl" . }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Get the effective auth type, translating 'builtin' to 'oidc' for backwards compatibility.
+Usage: {{- $authType := include "flightctl.getEffectiveAuthType" . }}
+*/}}
+{{- define "flightctl.getEffectiveAuthType" }}
+  {{- if eq .Values.global.auth.type "builtin" }}
+    {{- print "oidc" }}
+  {{- else }}
+    {{- print .Values.global.auth.type }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Check if PAM issuer should be enabled based on auth configuration.
+Returns "true" if PAM issuer should be enabled.
+Usage: {{- if eq (include "flightctl.isPamIssuerEnabled" .) "true" }}
+*/}}
+{{- define "flightctl.isPamIssuerEnabled" }}
+  {{- if eq .Values.global.auth.type "builtin" }}
+    {{- print "true" }}
+  {{- else if .Values.pamIssuer.enabled }}
+    {{- print "true" }}
+  {{- else }}
+    {{- print "false" }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Get the PAM issuer URL based on expose method.
+Usage: {{- include "flightctl.getPamIssuerUrl" . }}
+*/}}
+{{- define "flightctl.getPamIssuerUrl" }}
+  {{- $baseDomain := (include "flightctl.getBaseDomain" . )}}
+  {{- if .Values.global.auth.pamOidcIssuer.issuer }}
+    {{- printf .Values.global.auth.pamOidcIssuer.issuer }}
+  {{- else if eq (include "flightctl.getServiceExposeMethod" .) "nodePort" }}
+    {{- printf "https://pam-issuer.%s:%v" $baseDomain .Values.global.nodePorts.pamIssuer }}
+  {{- else if and (eq (include "flightctl.getServiceExposeMethod" .) "gateway") (not (eq (int .Values.global.gatewayPorts.tls) 443)) }}
+    {{- printf "https://pam-issuer.%s:%v" $baseDomain .Values.global.gatewayPorts.tls }}
+  {{- else }}
+    {{- printf "https://pam-issuer.%s" $baseDomain }}
   {{- end }}
 {{- end }}
 
