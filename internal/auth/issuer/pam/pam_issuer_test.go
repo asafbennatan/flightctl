@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	api "github.com/flightctl/flightctl/api/v1alpha1"
 	pam_issuer "github.com/flightctl/flightctl/api/v1alpha1/pam-issuer"
 	"github.com/flightctl/flightctl/internal/auth/authn"
 	"github.com/flightctl/flightctl/internal/auth/common"
@@ -774,7 +775,7 @@ func TestPAMOIDCProvider_RefreshTokenFlow(t *testing.T) {
 		require.NoError(t, err)
 
 		// Create a valid refresh token (simplified for this test)
-		identity := common.NewBaseIdentity(testUsername, testUsername, []string{"default"})
+		identity := common.NewBaseIdentity(testUsername, testUsername, []common.ReportedOrganization{{Name: "default", ID: "default", IsInternalID: true}}, []string{api.RoleAdmin})
 		tokenGenerationRequest := authn.TokenGenerationRequest{
 			Username:      identity.GetUsername(),
 			UID:           identity.GetUID(),
@@ -1091,7 +1092,7 @@ func TestPAMOIDCProvider_TokenValidation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a test identity
-	identity := common.NewBaseIdentity("testuser", "testuser", []string{"admin"})
+	identity := common.NewBaseIdentity("testuser", "testuser", []common.ReportedOrganization{{Name: "default", ID: "default", IsInternalID: true}}, []string{api.RoleAdmin})
 	tokenGenerationRequest := authn.TokenGenerationRequest{
 		Username:      identity.GetUsername(),
 		UID:           identity.GetUID(),

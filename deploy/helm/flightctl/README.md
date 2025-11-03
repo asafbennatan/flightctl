@@ -291,6 +291,9 @@ For more detailed configuration options, see the [Values](#values) section below
 | global.auth.oidc.enabled | bool | `true` | Whether this OIDC provider is enabled |
 | global.auth.oidc.externalOidcAuthority | string | `""` | The base URL for the OIDC provider that is reachable by clients. Example: https://auth.foo.net/realms/flightctl |
 | global.auth.oidc.issuer | string | `""` | The base URL for the OIDC provider that is reachable by flightctl services. Example: https://auth.foo.internal/realms/flightctl |
+| global.auth.oidc.organizationAssignment | object | `{"organizationName":"default","type":"static"}` | Organization assignment configuration |
+| global.auth.oidc.roleClaim | string | `"groups"` | Role claim to extract from OIDC token (default: "groups") |
+| global.auth.oidc.usernameClaim | string | `"preferred_username"` | Username claim to extract from OIDC token (default: "preferred_username") |
 | global.auth.pamOidcIssuer.clientId | string | `"flightctl-client"` | OAuth2 client ID for the OIDC issuer |
 | global.auth.pamOidcIssuer.clientSecret | string | `""` | OAuth2 client secret for the OIDC issuer |
 | global.auth.pamOidcIssuer.issuer | string | `""` | The base URL for the OIDC issuer (defaults to API server URL) |
@@ -353,15 +356,24 @@ For more detailed configuration options, see the [Values](#values) section below
 | periodic.image.tag | string | `""` | Periodic image tag |
 | prometheus | object | `{"enabled":false}` | Prometheus Configuration |
 | prometheus.enabled | bool | `false` | Enable Prometheus deployment |
+| telemetryGateway | object | `{"enabled":false,"migration":{"activeDeadlineSeconds":0,"backoffLimit":2147483647}}` | Telemetry Gateway Configuration |
 | telemetryGateway | object | `{"enabled":false}` | Telemetry Gateway Configuration |
 | telemetryGateway.enabled | bool | `false` | Enable telemetry gateway service |
+| telemetryGateway.enabled | bool | `false` | Enable telemetry gateway service |
+| telemetryGateway.migration.activeDeadlineSeconds | int | `0` | Maximum runtime in seconds for the migration Job (0 = no deadline) |
+| telemetryGateway.migration.backoffLimit | int | `2147483647` | Number of retries for the migration Job on failure  |
 | ui | object | `{"api":{"insecureSkipTlsVerify":true},"enabled":true}` | UI Configuration |
 | ui.api.insecureSkipTlsVerify | bool | `true` | Skip TLS verification for UI API calls |
 | ui.enabled | bool | `true` | Enable web UI deployment |
 | upgradeHooks | object | `{"databaseMigrationDryRun":true,"scaleDown":{"condition":"chart","deployments":["flightctl-periodic","flightctl-worker"],"timeoutSeconds":120}}` | Upgrade hooks |
+| upgradeHooks | object | `{"databaseMigrationDryRun":true,"scaleDown":{"condition":"chart","deployments":["flightctl-periodic","flightctl-worker"],"timeoutSeconds":120}}` | Upgrade hooks |
+| upgradeHooks.databaseMigrationDryRun | bool | `true` | Enable pre-upgrade DB migration dry-run as a hook |
 | upgradeHooks.databaseMigrationDryRun | bool | `true` | Enable pre-upgrade DB migration dry-run as a hook |
 | upgradeHooks.scaleDown.condition | string | `"chart"` | When to run pre-upgrade scale down job: "always", "never", or "chart" (default). "chart" runs only if helm.sh/chart changed. |
+| upgradeHooks.scaleDown.condition | string | `"chart"` | When to run pre-upgrade scale down job: "always", "never", or "chart" (default). "chart" runs only if helm.sh/chart changed. |
 | upgradeHooks.scaleDown.deployments | list | `["flightctl-periodic","flightctl-worker"]` | List of Deployments to scale down in order |
+| upgradeHooks.scaleDown.deployments | list | `["flightctl-periodic","flightctl-worker"]` | List of Deployments to scale down in order |
+| upgradeHooks.scaleDown.timeoutSeconds | int | `120` | Timeout in seconds to wait for rollout per Deployment |
 | upgradeHooks.scaleDown.timeoutSeconds | int | `120` | Timeout in seconds to wait for rollout per Deployment |
 | worker | object | `{"enableSecretsClusterRoleBinding":true,"enabled":true,"image":{"image":"quay.io/flightctl/flightctl-worker","pullPolicy":"","tag":""}}` | Worker Configuration |
 | worker.enableSecretsClusterRoleBinding | bool | `true` | Enable secrets cluster role binding for worker |

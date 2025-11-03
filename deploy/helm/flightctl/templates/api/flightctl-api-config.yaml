@@ -88,7 +88,21 @@ data:
             {{- else }}
             oidcAuthority: {{ .Values.global.auth.oidc.oidcAuthority }}
             {{- end }}
+            clientId: {{ .Values.global.auth.oidc.clientId }}
+            {{- if .Values.global.auth.oidc.enabled }}
+            enabled: {{ .Values.global.auth.oidc.enabled }}
+            {{- end }}
+            issuer: {{ .Values.global.auth.oidc.issuer }}
             externalOidcAuthority: {{ include "flightctl.getOidcAuthorityUrl" . }}
+            {{- if .Values.global.auth.oidc.organizationAssignment }}
+            organizationAssignment: {{ .Values.global.auth.oidc.organizationAssignment | toYaml | nindent 12 }}
+            {{- end }}
+            {{- if .Values.global.auth.oidc.usernameClaim }}
+            usernameClaim: {{ .Values.global.auth.oidc.usernameClaim }}
+            {{- end }}
+            {{- if .Values.global.auth.oidc.roleClaim }}
+            roleClaim: {{ .Values.global.auth.oidc.roleClaim }}
+            {{- end }}
         {{- end }}
     {{ end }}
     organizations:

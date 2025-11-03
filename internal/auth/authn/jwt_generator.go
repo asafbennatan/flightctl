@@ -115,6 +115,12 @@ func (g *JWTGenerator) GenerateToken(identity common.Identity, expiration time.D
 	if err := token.Set("preferred_username", identity.GetUsername()); err != nil {
 		return "", fmt.Errorf("failed to set preferred_username: %w", err)
 	}
+	if err := token.Set("roles", identity.GetRoles()); err != nil {
+		return "", fmt.Errorf("failed to set roles: %w", err)
+	}
+	if err := token.Set("organizations", identity.GetOrganizations()); err != nil {
+		return "", fmt.Errorf("failed to set organizations: %w", err)
+	}
 
 	// Create JWK from private key
 	jwkKey, err := jwk.FromRaw(g.privateKey)
@@ -475,6 +481,34 @@ func (g *JWTGenerator) ValidateToken(tokenString string) (*JWTIdentity, error) {
 	if preferredUsername, exists := parsedToken.Get("preferred_username"); exists {
 		if username, ok := preferredUsername.(string); ok {
 			identity.SetUsername(username)
+		}
+	}
+
+	if roles, exists := parsedToken.Get("roles"); exists {
+		if rolesList, ok := roles.([]interface{}); ok {
+			roleStrings := make([]string, 0, len(rolesList))
+			for _, role := range rolesList {
+				if roleStr, ok := role.(string); ok {
+					roleStrings = append(roleStrings, roleStr)
+				}
+			}
+			identity.SetRoles(roleStrings)
+		}
+	}
+
+	if orgs, exists := parsedToken.Get("organizations"); exists {
+		if orgList, ok := orgs.([]interface{}); ok {
+			orgStrings := make([]common.ReportedOrganization, 0, len(orgList))
+			for _, org := range orgList {
+				if orgStr, ok := org.(string); ok {
+					orgStrings = append(orgStrings, common.ReportedOrganization{
+						Name:         orgStr,
+						IsInternalID: false,
+						ID:           orgStr,
+					})
+				}
+			}
+			identity.SetOrganizations(orgStrings)
 		}
 	}
 

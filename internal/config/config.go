@@ -8,7 +8,9 @@ import (
 	"strings"
 	"time"
 
+	api "github.com/flightctl/flightctl/api/v1alpha1"
 	"github.com/flightctl/flightctl/internal/config/ca"
+	"github.com/flightctl/flightctl/internal/org"
 	"github.com/flightctl/flightctl/internal/util"
 	"sigs.k8s.io/yaml"
 )
@@ -117,6 +119,7 @@ type authConfig struct {
 	CACert                string         `json:"caCert,omitempty"`
 	InsecureSkipTlsVerify bool           `json:"insecureSkipTlsVerify,omitempty"`
 	PAMOIDCIssuer         *PAMOIDCIssuer `json:"pamOidcIssuer,omitempty"` // this is the issuer implementation configuration
+	DynamicProviderCacheTTL util.Duration  `json:"dynamicProviderCacheTTL,omitempty"` // TTL for dynamic auth provider cache (default: 5s)
 }
 
 type k8sAuth struct {
@@ -126,8 +129,21 @@ type k8sAuth struct {
 }
 
 type oidcAuth struct {
-	OIDCAuthority         string `json:"oidcAuthority,omitempty"`
+	// OIDC Client ID
+	ClientId string `json:"clientId,omitempty"`
+	// Whether this OIDC provider is enabled
+	Enabled *bool `json:"enabled,omitempty"`
+	// OIDC Issuer URL (e.g., "https://auth.company.com")
+	Issuer string `json:"issuer,omitempty"`
+	// External OIDC Authority URL (for external access)
 	ExternalOIDCAuthority string `json:"externalOidcAuthority,omitempty"`
+	// Organization assignment configuration
+	OrganizationAssignment api.AuthOrganizationAssignment `json:"organizationAssignment,omitempty"`
+	// OAuth2 scopes to request (e.g., ["openid", "profile", "email", "roles"])
+	Scopes []string `json:"scopes,omitempty"`
+	// Custom claims mapping
+	UsernameClaim *string `json:"usernameClaim,omitempty"` // e.g., "preferred_username", "email"
+	RoleClaim     *string `json:"roleClaim,omitempty"`     // e.g., "groups", "roles"
 }
 
 type aapAuth struct {
@@ -266,6 +282,65 @@ func WithTracingEnabled() ConfigOption {
 	}
 }
 
+func WithOIDCAuth(issuer, clientId string, enabled bool) ConfigOption {
+	return func(c *Config) {
+		if c.Auth == nil {
+			c.Auth = &authConfig{
+				DynamicProviderCacheTTL: util.Duration(5 * time.Second),
+			}
+		}
+		c.Auth.OIDC = &oidcAuth{
+			Issuer:   issuer,
+			ClientId: clientId,
+			Enabled:  &enabled,
+		}
+	}
+}
+
+func WithK8sAuth(apiUrl, rbacNs string) ConfigOption {
+	return func(c *Config) {
+		if c.Auth == nil {
+			c.Auth = &authConfig{
+				DynamicProviderCacheTTL: util.Duration(5 * time.Second),
+			}
+		}
+		c.Auth.K8s = &k8sAuth{
+			ApiUrl: apiUrl,
+			RBACNs: rbacNs,
+		}
+	}
+}
+
+func WithAAPAuth(apiUrl, externalApiUrl string) ConfigOption {
+	return func(c *Config) {
+		if c.Auth == nil {
+			c.Auth = &authConfig{
+				DynamicProviderCacheTTL: util.Duration(5 * time.Second),
+			}
+		}
+		c.Auth.AAP = &aapAuth{
+			ApiUrl:         apiUrl,
+			ExternalApiUrl: externalApiUrl,
+		}
+	}
+}
+
+func WithPAMOIDCIssuer(issuer, clientId, clientSecret, pamService string) ConfigOption {
+	return func(c *Config) {
+		if c.Auth == nil {
+			c.Auth = &authConfig{
+				DynamicProviderCacheTTL: util.Duration(5 * time.Second),
+			}
+		}
+		c.Auth.PAMOIDCIssuer = &PAMOIDCIssuer{
+			Issuer:       issuer,
+			ClientID:     clientId,
+			ClientSecret: clientSecret,
+			PAMService:   pamService,
+		}
+	}
+}
+
 func ConfigDir() string {
 	return filepath.Join(util.MustString(os.UserHomeDir), "."+appName)
 }
@@ -390,6 +465,9 @@ func NewDefault(opts ...ConfigOption) *Config {
 				"/metadata/resourceVersion",
 			},
 		},
+		Auth: &authConfig{
+			DynamicProviderCacheTTL: util.Duration(5 * time.Second),
+		},
 	}
 	c.CA = ca.NewDefault(CertificateDir())
 	// CA certs are stored in the same location as Server Certs by default
@@ -424,6 +502,7 @@ func LoadOrGenerate(cfgFile string) (*Config, error) {
 	return NewFromFile(cfgFile)
 }
 
+//nolint:gocyclo // Function complexity is acceptable for configuration loading
 func Load(cfgFile string) (*Config, error) {
 	contents, err := os.ReadFile(cfgFile)
 	if err != nil {
@@ -476,7 +555,36 @@ func Load(cfgFile string) (*Config, error) {
 				}
 			}
 		}
+
+		// Only apply OIDC client defaults if OIDC block is provided
+		if c.Auth.OIDC != nil {
+			if c.Auth.OIDC.ClientId == "" {
+				c.Auth.OIDC.ClientId = "flightctl-client"
+			}
+			if c.Auth.OIDC.Issuer == "" {
+				c.Auth.OIDC.Issuer = c.Service.BaseUrl
+			}
+			if c.Auth.OIDC.ExternalOIDCAuthority == "" {
+				c.Auth.OIDC.ExternalOIDCAuthority = c.Service.BaseUrl
+			}
+			if c.Auth.OIDC.UsernameClaim == nil {
+				c.Auth.OIDC.UsernameClaim = &[]string{"preferred_username"}[0]
+			}
+			if c.Auth.OIDC.RoleClaim == nil {
+				c.Auth.OIDC.RoleClaim = &[]string{"groups"}[0]
+			}
+			// Set default organization assignment if not provided
+			if _, err := c.Auth.OIDC.OrganizationAssignment.Discriminator(); err != nil {
+				// Create a default static organization assignment
+				staticAssignment := api.AuthStaticOrganizationAssignment{
+					OrganizationName: org.DefaultExternalID,
+					Type:             api.Static,
+				}
+				_ = c.Auth.OIDC.OrganizationAssignment.FromAuthStaticOrganizationAssignment(staticAssignment)
+			}
+		}
 	}
+
 	return c, nil
 }
 

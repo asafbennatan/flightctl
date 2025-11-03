@@ -1,7 +1,7 @@
 global:
   baseDomain:
   auth:
-    type: none # aap, oidc, builtin (legacy, translates to oidc with PAM), or none
+    type: oidc # aap, oidc, builtin (legacy, translates to oidc with PAM), or none
     insecureSkipTlsVerify: false
     aap:
       apiUrl:
@@ -9,9 +9,15 @@ global:
       oAuthApplicationClientId:
       oAuthToken:
     oidc:
-      oidcAuthority:
+      clientId: flightctl-client
+      enabled: true
+      issuer:
       externalOidcAuthority:
-      oidcClientId:
+      organizationAssignment:
+        type: static
+        organizationName: default
+      usernameClaim: preferred_username
+      roleClaim: groups
     pamOidcIssuer:
       enabled: true
       issuer: # Leave empty to auto-configure based on baseDomain:8444/api/v1/auth

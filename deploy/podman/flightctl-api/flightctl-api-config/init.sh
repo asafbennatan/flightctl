@@ -162,7 +162,7 @@ if [ "$AUTH_TYPE" == "aap" ]; then
   fi
 elif [ "$AUTH_TYPE" == "oidc" ]; then
   echo "Configuring OIDC authentication"
-  
+
   # Extract OIDC configuration from service-config.yaml (under global.auth.oidc)
   # Use grep to find values in the oidc section
   OIDC_CLIENT_ID=$(grep -A 20 "oidc:" "$SERVICE_CONFIG_FILE" | grep "clientId:" | head -1 | sed 's/.*clientId:[[:space:]]*\(.*\)/\1/' | sed 's/[[:space:]]*$//')
@@ -204,11 +204,11 @@ elif [ "$AUTH_TYPE" == "oidc" ]; then
   PAM_OIDC_ISSUER=${PAM_OIDC_ISSUER:-${BASE_URL}}
   PAM_OIDC_CLIENT_ID=${PAM_OIDC_CLIENT_ID:-flightctl-client}
   PAM_OIDC_SERVICE=${PAM_OIDC_SERVICE:-flightctl}
-  
+
   # Set PAM OIDC issuer URL for API server to connect to
   # This is the URL where the PAM issuer service is accessible
   PAM_OIDC_ISSUER_URL=${PAM_OIDC_ISSUER:-"https://${BASE_DOMAIN}:8444/api/v1/auth"}
-  
+
   # Default redirect URI if not specified
   if [ -z "$PAM_OIDC_REDIRECT_URIS" ]; then
     PAM_OIDC_REDIRECT_URIS="${BASE_URL}/auth/callback"
@@ -248,7 +248,7 @@ elif [ "$AUTH_TYPE" == "oidc" ]; then
     -e "s|{{PAM_OIDC_SERVICE}}|$PAM_OIDC_SERVICE|g"
     -e "s|{{PAM_OIDC_ISSUER_URL}}|$PAM_OIDC_ISSUER_URL|g"
   )
-  
+
   # Handle PAM conditional block
   if [ "$PAM_OIDC_ISSUER_ENABLED" == "true" ]; then
     # PAM is enabled: remove the conditional markers but keep the content
