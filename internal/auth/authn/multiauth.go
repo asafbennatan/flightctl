@@ -553,8 +553,8 @@ func (m *MultiAuth) validateJWTToken(ctx context.Context, token string, parsedTo
 
 	switch tokenType {
 	case TokenTypeK8s:
-		// K8s tokens: use issuer-only routing
-		if provider, exists := m.staticProviders[issuer]; exists {
+		// K8s tokens: use static "k8s" key
+		if provider, exists := m.staticProviders["k8s"]; exists {
 			return provider.ValidateToken(ctx, token)
 		}
 		return fmt.Errorf("no K8s provider found for issuer: %s", issuer)
@@ -603,8 +603,8 @@ func (m *MultiAuth) getJWTIdentity(ctx context.Context, token string, parsedToke
 
 	switch tokenType {
 	case TokenTypeK8s:
-		// K8s tokens: use issuer-only routing
-		if provider, exists := m.staticProviders[issuer]; exists {
+		// K8s tokens: use static "k8s" key
+		if provider, exists := m.staticProviders["k8s"]; exists {
 			return provider.GetIdentity(ctx, token)
 		}
 		return nil, fmt.Errorf("no K8s provider found for issuer: %s", issuer)

@@ -13,10 +13,14 @@ import (
 	"github.com/flightctl/flightctl/internal/auth/common"
 	"github.com/flightctl/flightctl/internal/config"
 	"github.com/flightctl/flightctl/internal/consts"
+	"github.com/flightctl/flightctl/pkg/k8sclient"
 	"github.com/sirupsen/logrus"
 )
 
 const DisableAuthEnvKey = "FLIGHTCTL_DISABLE_AUTH"
+
+// k8sApiService is the in-cluster Kubernetes API service URL
+const k8sApiService = "https://kubernetes.default.svc"
 
 // Supported auth types
 const (
@@ -133,6 +137,40 @@ func initAAPAuth(cfg *config.Config, log logrus.FieldLogger) (common.AuthNMiddle
 	return authNProvider, authZProvider, nil
 }
 
+func initK8sAuth(cfg *config.Config, log logrus.FieldLogger) (common.AuthNMiddleware, AuthZMiddleware, error) {
+	apiUrl := strings.TrimSuffix(cfg.Auth.K8s.ApiUrl, "/")
+	externalOpenShiftApiUrl := strings.TrimSuffix(cfg.Auth.K8s.ExternalOpenShiftApiUrl, "/")
+	log.Infof("k8s auth enabled: %s", apiUrl)
+
+	// Create K8s client - use in-cluster config if apiUrl matches the k8s service
+	var k8sClient k8sclient.K8SClient
+	var err error
+	if apiUrl == k8sApiService {
+		k8sClient, err = k8sclient.NewK8SClient()
+	} else {
+		k8sClient, err = k8sclient.NewK8SExternalClient(apiUrl, cfg.Auth.InsecureSkipTlsVerify, cfg.Auth.CACert)
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create k8s client: %w", err)
+	}
+
+	// Create K8s AuthZ provider
+	authZProvider := K8sToK8sAuth{
+		K8sAuthZ: authz.K8sAuthZ{
+			K8sClient: k8sClient,
+			Namespace: cfg.Auth.K8s.RBACNs,
+		},
+	}
+
+	// Create K8s AuthN provider
+	authNProvider, err := authn.NewK8sAuthN(k8sClient, externalOpenShiftApiUrl, cfg.Auth.K8s.RBACNs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create k8s AuthN: %w", err)
+	}
+
+	return authNProvider, authZProvider, nil
+}
+
 // InitMultiAuth initializes authentication with support for multiple methods
 func InitMultiAuth(cfg *config.Config, log logrus.FieldLogger,
 	authProviderService authn.AuthProviderService) (common.AuthNMiddleware, AuthZMiddleware, error) {
@@ -157,11 +195,22 @@ func InitMultiAuth(cfg *config.Config, log logrus.FieldLogger,
 	var authZProvider AuthZMiddleware
 
 	// Initialize static authentication methods
-	// TODO: K8s auth disabled temporarily - needs correct initialization
-	// if cfg.Auth.K8s != nil {
-	// 	log.Infof("K8s auth enabled: %s", cfg.Auth.K8s.ApiUrl)
-	// 	...
-	// }
+	if cfg.Auth.K8s != nil {
+		log.Infof("K8s auth enabled: %s", cfg.Auth.K8s.ApiUrl)
+		k8sAuthN, k8sAuthZ, err := initK8sAuth(cfg, log)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to initialize K8s auth: %w", err)
+		}
+
+		// Add K8s auth (for bearer tokens)
+		multiAuth.AddStaticProvider("k8s", k8sAuthN)
+
+		// Use K8s authZ as primary (can be overridden by other methods)
+		if authZProvider == nil {
+			authZProvider = k8sAuthZ
+		}
+		configuredAuthType = AuthTypeK8s
+	}
 
 	if cfg.Auth.OIDC != nil {
 		log.Infof("OIDC auth enabled: %s", cfg.Auth.OIDC.Issuer)
