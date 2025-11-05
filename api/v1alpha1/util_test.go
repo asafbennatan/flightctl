@@ -10,9 +10,9 @@ import (
 
 func TestAuthProviderHideSensitiveData(t *testing.T) {
 	tests := []struct {
-		name             string
-		setupProvider    func() *AuthProvider
-		expectedType     string
+		name              string
+		setupProvider     func() *AuthProvider
+		expectedType      string
 		checkSecretHidden bool
 	}{
 		{
@@ -42,7 +42,7 @@ func TestAuthProviderHideSensitiveData(t *testing.T) {
 				_ = provider.Spec.FromOIDCProviderSpec(oidcSpec)
 				return provider
 			},
-			expectedType:     string(Oidc),
+			expectedType:      string(Oidc),
 			checkSecretHidden: true,
 		},
 		{
@@ -75,7 +75,7 @@ func TestAuthProviderHideSensitiveData(t *testing.T) {
 				_ = provider.Spec.FromOAuth2ProviderSpec(oauth2Spec)
 				return provider
 			},
-			expectedType:     string(OAuth2ProviderSpecProviderTypeOauth2),
+			expectedType:      string(OAuth2ProviderSpecProviderTypeOauth2),
 			checkSecretHidden: true,
 		},
 	}
