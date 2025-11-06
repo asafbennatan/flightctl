@@ -168,6 +168,7 @@ func (h *Handler) AuthOpenIDConfiguration(w http.ResponseWriter, r *http.Request
 		ClaimsSupported:                   v1Config.ClaimsSupported,
 		IdTokenSigningAlgValuesSupported:  v1Config.IdTokenSigningAlgValuesSupported,
 		TokenEndpointAuthMethodsSupported: v1Config.TokenEndpointAuthMethodsSupported,
+		CodeChallengeMethodsSupported:     v1Config.CodeChallengeMethodsSupported,
 	}
 	writeJSON(w, http.StatusOK, &config)
 }
@@ -317,6 +318,9 @@ func (h *Handler) AuthToken(w http.ResponseWriter, r *http.Request) {
 		}
 		if scope := r.FormValue("scope"); scope != "" {
 			req.Scope = &scope
+		}
+		if codeVerifier := r.FormValue("code_verifier"); codeVerifier != "" {
+			req.CodeVerifier = &codeVerifier
 		}
 	} else {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

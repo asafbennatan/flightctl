@@ -5,6 +5,8 @@ package pam
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -36,14 +38,16 @@ var defaultGroupRoleMap = map[string]string{
 
 // AuthorizationCodeData represents stored authorization code data
 type AuthorizationCodeData struct {
-	Code        string
-	ClientID    string
-	RedirectURI string
-	Scope       string
-	State       string
-	Username    string
-	ExpiresAt   time.Time
-	CreatedAt   time.Time
+	Code                string
+	ClientID            string
+	RedirectURI         string
+	Scope               string
+	State               string
+	Username            string
+	ExpiresAt           time.Time
+	CreatedAt           time.Time
+	CodeChallenge       string // PKCE code challenge
+	CodeChallengeMethod string // PKCE code challenge method (plain or S256)
 }
 
 // AuthorizationCodeStore manages temporary authorization codes
@@ -125,6 +129,27 @@ func generateAuthorizationCode() (string, error) {
 		return "", fmt.Errorf("failed to generate random bytes: %w", err)
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+// verifyPKCEChallenge verifies that the code_verifier matches the stored code_challenge
+// according to RFC 7636 (Proof Key for Code Exchange)
+// Only S256 method is supported (plain is not secure and not allowed)
+// Assumes both codeChallenge and codeVerifier are non-empty (enforced by caller)
+func verifyPKCEChallenge(codeVerifier, codeChallenge, codeChallengeMethod string) bool {
+	if codeVerifier == "" || codeChallenge == "" {
+		// Both must be provided
+		return false
+	}
+
+	// Only S256 method is supported
+	if codeChallengeMethod != "S256" && codeChallengeMethod != "" {
+		return false
+	}
+
+	// S256: BASE64URL(SHA256(ASCII(code_verifier)))
+	hash := sha256.Sum256([]byte(codeVerifier))
+	computedChallenge := base64.RawURLEncoding.EncodeToString(hash[:])
+	return computedChallenge == codeChallenge
 }
 
 // PAMOIDCProvider handles OIDC-compliant authentication flows using PAM/NSS
@@ -260,7 +285,7 @@ func (s *PAMOIDCProvider) handleAuthorizationCodeGrant(ctx context.Context, req 
 
 	// Validate client authentication based on whether a secret is configured
 	// If clientSecret is configured (non-empty), this is a confidential client and we require authentication
-	// If clientSecret is empty, this is a public client (CLI, SPA) and we don't require secret (should use PKCE in production)
+	// If clientSecret is empty, this is a public client (CLI, SPA) and PKCE is required
 	if s.config.ClientSecret != "" {
 		// Confidential client - require client_secret_post authentication
 		if req.ClientSecret == nil {
@@ -272,8 +297,6 @@ func (s *PAMOIDCProvider) handleAuthorizationCodeGrant(ctx context.Context, req 
 			return &pamapi.TokenResponse{Error: lo.ToPtr(ErrorInvalidClient)}, nil
 		}
 	}
-	// For public clients (empty secret), we accept the request without secret validation
-	// In production, this should be combined with PKCE (code_challenge/code_verifier) for security
 
 	// Validate and retrieve authorization code
 	codeData, exists := s.codeStore.GetCode(*req.Code)
@@ -286,6 +309,36 @@ func (s *PAMOIDCProvider) handleAuthorizationCodeGrant(ctx context.Context, req 
 	if codeData.ClientID != *req.ClientId {
 		s.log.Warnf("handleAuthorizationCodeGrant: invalid client ID - expected=%s, got=%s", codeData.ClientID, *req.ClientId)
 		return &pamapi.TokenResponse{Error: lo.ToPtr(ErrorInvalidGrant)}, nil
+	}
+
+	// SECURITY: Verify PKCE for public clients (required unless config allows) and confidential clients (if used)
+	// Public clients MUST use PKCE per OAuth 2.0 Security BCP, unless explicitly allowed by config
+	isPublicClient := s.config.ClientSecret == ""
+	if isPublicClient {
+		// Public client: PKCE is mandatory unless explicitly allowed by config
+		if codeData.CodeChallenge == "" {
+			if !s.config.AllowPublicClientWithoutPKCE {
+				s.log.Warnf("handleAuthorizationCodeGrant: PKCE required for public client but not provided during authorization")
+				return &pamapi.TokenResponse{Error: lo.ToPtr(ErrorInvalidGrant)}, nil
+			}
+			s.log.Warnf("handleAuthorizationCodeGrant: public client without PKCE (allowed by configuration)")
+		} else {
+			// Verify PKCE challenge (only S256 supported)
+			codeVerifier := lo.FromPtrOr(req.CodeVerifier, "")
+			if !verifyPKCEChallenge(codeVerifier, codeData.CodeChallenge, codeData.CodeChallengeMethod) {
+				s.log.Warnf("handleAuthorizationCodeGrant: PKCE verification failed for public client")
+				return &pamapi.TokenResponse{Error: lo.ToPtr(ErrorInvalidGrant)}, nil
+			}
+			s.log.Debugf("handleAuthorizationCodeGrant: PKCE verification successful for public client (method=%s)", codeData.CodeChallengeMethod)
+		}
+	} else if codeData.CodeChallenge != "" {
+		// Confidential client: PKCE is optional, but if used must be valid (only S256 supported)
+		codeVerifier := lo.FromPtrOr(req.CodeVerifier, "")
+		if !verifyPKCEChallenge(codeVerifier, codeData.CodeChallenge, codeData.CodeChallengeMethod) {
+			s.log.Warnf("handleAuthorizationCodeGrant: PKCE verification failed for confidential client")
+			return &pamapi.TokenResponse{Error: lo.ToPtr(ErrorInvalidGrant)}, nil
+		}
+		s.log.Debugf("handleAuthorizationCodeGrant: PKCE verification successful for confidential client (method=%s)", codeData.CodeChallengeMethod)
 	}
 
 	// Get user information from NSS
@@ -390,6 +443,40 @@ func (s *PAMOIDCProvider) Authorize(ctx context.Context, req *pamapi.AuthAuthori
 	}
 	s.log.Debugf("Authorize: response type validation passed - %s", req.ResponseType)
 
+	// SECURITY: Require PKCE for public clients (no client secret configured)
+	// Per OAuth 2.0 Security BCP, public clients MUST use PKCE unless explicitly allowed by config
+	isPublicClient := s.config.ClientSecret == ""
+	if isPublicClient {
+		codeChallenge := lo.FromPtrOr(req.CodeChallenge, "")
+		if codeChallenge == "" {
+			// Check if public clients are allowed without PKCE (for backward compatibility/testing)
+			if !s.config.AllowPublicClientWithoutPKCE {
+				s.log.Warnf("Authorize: PKCE required for public client but code_challenge not provided")
+				return nil, errors.New(ErrorInvalidRequest)
+			}
+			s.log.Warnf("Authorize: public client without PKCE (allowed by configuration)")
+		} else {
+			// PKCE provided: validate code_challenge_method (only S256 supported)
+			codeChallengeMethod := string(lo.FromPtrOr(req.CodeChallengeMethod, ""))
+			if codeChallengeMethod != "S256" && codeChallengeMethod != "" {
+				s.log.Warnf("Authorize: unsupported code_challenge_method - %s (only S256 supported)", codeChallengeMethod)
+				return nil, errors.New(ErrorInvalidRequest)
+			}
+			// Default to S256 if not specified
+			if codeChallengeMethod == "" {
+				codeChallengeMethod = "S256"
+			}
+			s.log.Debugf("Authorize: PKCE validation passed for public client - method=%s", codeChallengeMethod)
+		}
+	} else if req.CodeChallenge != nil && *req.CodeChallenge != "" {
+		// Confidential client with PKCE: validate method (only S256 supported)
+		codeChallengeMethod := string(lo.FromPtrOr(req.CodeChallengeMethod, ""))
+		if codeChallengeMethod != "S256" && codeChallengeMethod != "" {
+			s.log.Warnf("Authorize: unsupported code_challenge_method - %s (only S256 supported)", codeChallengeMethod)
+			return nil, errors.New(ErrorInvalidRequest)
+		}
+	}
+
 	// Authorization flow:
 	// 1. Check if user is already authenticated (session/cookie)
 	// 2. If not authenticated, return embedded login form
@@ -458,15 +545,23 @@ func (s *PAMOIDCProvider) Authorize(ctx context.Context, req *pamapi.AuthAuthori
 
 	// Store authorization code with expiration (10 minutes)
 	// Use values from session (which were validated above) to prevent parameter tampering
+	codeChallenge := lo.FromPtrOr(req.CodeChallenge, "")
+	codeChallengeMethod := string(lo.FromPtrOr(req.CodeChallengeMethod, ""))
+	// Default to S256 if challenge provided but method not specified
+	if codeChallenge != "" && codeChallengeMethod == "" {
+		codeChallengeMethod = "S256"
+	}
 	codeData := &AuthorizationCodeData{
-		Code:        authCode,
-		ClientID:    sessionData.ClientID,
-		RedirectURI: sessionData.RedirectURI,
-		Scope:       scopes,
-		State:       sessionData.State,
-		Username:    username,
-		ExpiresAt:   time.Now().Add(10 * time.Minute),
-		CreatedAt:   time.Now(),
+		Code:                authCode,
+		ClientID:            sessionData.ClientID,
+		RedirectURI:         sessionData.RedirectURI,
+		Scope:               scopes,
+		State:               sessionData.State,
+		Username:            username,
+		ExpiresAt:           time.Now().Add(10 * time.Minute),
+		CreatedAt:           time.Now(),
+		CodeChallenge:       codeChallenge,
+		CodeChallengeMethod: codeChallengeMethod,
 	}
 
 	s.codeStore.StoreCode(codeData)
@@ -718,6 +813,12 @@ func (s *PAMOIDCProvider) GetOpenIDConfiguration() (*pamapi.OpenIDConfiguration,
 		tokenEndpointAuthMethods = []string{AuthMethodNone, AuthMethodClientSecretPost}
 	}
 
+	// Advertise PKCE support as per RFC 7636
+	// Only S256 code challenge method is supported (plain is not secure)
+	codeChallengeMethodsSupported := []pamapi.OpenIDConfigurationCodeChallengeMethodsSupported{
+		pamapi.OpenIDConfigurationCodeChallengeMethodsSupportedS256,
+	}
+
 	return &pamapi.OpenIDConfiguration{
 		Issuer:                            &issuer,
 		AuthorizationEndpoint:             &authzEndpoint,
@@ -731,6 +832,7 @@ func (s *PAMOIDCProvider) GetOpenIDConfiguration() (*pamapi.OpenIDConfiguration,
 		IdTokenSigningAlgValuesSupported:  &idTokenSigningAlgs,
 		TokenEndpointAuthMethodsSupported: &tokenEndpointAuthMethods,
 		SubjectTypesSupported:             &subjectTypesSupported,
+		CodeChallengeMethodsSupported:     &codeChallengeMethodsSupported,
 	}, nil
 }
 
