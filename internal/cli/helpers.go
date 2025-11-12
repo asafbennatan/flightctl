@@ -28,6 +28,7 @@ const (
 	DeviceKind                    ResourceKind = "device"
 	EnrollmentRequestKind         ResourceKind = "enrollmentrequest"
 	EventKind                     ResourceKind = "event"
+	AuthProviderKind              ResourceKind = "authprovider"
 	FleetKind                     ResourceKind = "fleet"
 	OrganizationKind              ResourceKind = "organization"
 	RepositoryKind                ResourceKind = "repository"
@@ -63,6 +64,7 @@ var (
 		DeviceKind:                    {},
 		EnrollmentRequestKind:         {},
 		EventKind:                     {},
+		AuthProviderKind:              {},
 		FleetKind:                     {},
 		OrganizationKind:              {},
 		RepositoryKind:                {},
@@ -77,6 +79,7 @@ var (
 		"devices":                    DeviceKind,
 		"enrollmentrequests":         EnrollmentRequestKind,
 		"events":                     EventKind,
+		"authproviders":              AuthProviderKind,
 		"fleets":                     FleetKind,
 		"organizations":              OrganizationKind,
 		"repositories":               RepositoryKind,
@@ -89,6 +92,7 @@ var (
 		DeviceKind:                    "devices",
 		EnrollmentRequestKind:         "enrollmentrequests",
 		EventKind:                     "events",
+		AuthProviderKind:              "authproviders",
 		FleetKind:                     "fleets",
 		OrganizationKind:              "organizations",
 		RepositoryKind:                "repositories",
@@ -101,6 +105,7 @@ var (
 		"dev":  DeviceKind,
 		"er":   EnrollmentRequestKind,
 		"ev":   EventKind,
+		"ap":   AuthProviderKind,
 		"flt":  FleetKind,
 		"org":  OrganizationKind,
 		"repo": RepositoryKind,
