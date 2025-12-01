@@ -502,3 +502,289 @@ func TestLoginOptions_GetAuthConfig_HTTPResponseErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestLoginOptions_Validate_ClientCredentials(t *testing.T) {
+	tests := []struct {
+		name         string
+		clientId     string
+		clientSecret string
+		username     string
+		password     string
+		accessToken  string
+		web          bool
+		wantErr      bool
+		errMsg       string
+	}{
+		{
+			name:         "valid client credentials",
+			clientId:     "my-client-id",
+			clientSecret: "my-client-secret",
+			wantErr:      false,
+		},
+		{
+			name:     "client-id without client-secret",
+			clientId: "my-client-id",
+			wantErr:  true,
+			errMsg:   "--client-id and --client-secret must be used together",
+		},
+		{
+			name:         "client-secret without client-id",
+			clientSecret: "my-client-secret",
+			wantErr:      true,
+			errMsg:       "--client-id and --client-secret must be used together",
+		},
+		{
+			name:         "client credentials with username/password",
+			clientId:     "my-client-id",
+			clientSecret: "my-client-secret",
+			username:     "user",
+			password:     "pass",
+			wantErr:      true,
+			errMsg:       "client credentials flow (--client-id/--client-secret) cannot be used with password flow (--username/--password)",
+		},
+		{
+			name:         "client credentials with web flag",
+			clientId:     "my-client-id",
+			clientSecret: "my-client-secret",
+			web:          true,
+			wantErr:      true,
+			errMsg:       "client credentials flow (--client-id/--client-secret) cannot be used with --web",
+		},
+		{
+			name:         "client credentials with access token",
+			clientId:     "my-client-id",
+			clientSecret: "my-client-secret",
+			accessToken:  "token123",
+			wantErr:      true,
+			errMsg:       "--token cannot be used with --client-id or --client-secret",
+		},
+		{
+			name:        "username/password with access token",
+			username:    "user",
+			password:    "pass",
+			accessToken: "token123",
+			wantErr:     true,
+			errMsg:      "--token cannot be used with --username or --password",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := DefaultLoginOptions()
+			o.ClientId = tt.clientId
+			o.ClientSecret = tt.clientSecret
+			o.Username = tt.username
+			o.Password = tt.password
+			o.AccessToken = tt.accessToken
+			o.Web = tt.web
+
+			err := o.Validate([]string{"https://api.example.com"})
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestLoginOptions_Validate_ShowProvidersWithClientCredentials(t *testing.T) {
+	tests := []struct {
+		name         string
+		showProvider bool
+		clientId     string
+		clientSecret string
+		wantErr      bool
+		errMsg       string
+	}{
+		{
+			name:         "show-providers with client-id",
+			showProvider: true,
+			clientId:     "my-client-id",
+			wantErr:      true,
+			errMsg:       "--show-providers cannot be used with --client-id or --client-secret",
+		},
+		{
+			name:         "show-providers with client-secret",
+			showProvider: true,
+			clientSecret: "my-client-secret",
+			wantErr:      true,
+			errMsg:       "--show-providers cannot be used with --client-id or --client-secret",
+		},
+		{
+			name:         "show-providers with both client credentials",
+			showProvider: true,
+			clientId:     "my-client-id",
+			clientSecret: "my-client-secret",
+			wantErr:      true,
+			errMsg:       "--show-providers cannot be used with --client-id or --client-secret",
+		},
+		{
+			name:         "show-providers alone",
+			showProvider: true,
+			wantErr:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := DefaultLoginOptions()
+			o.ShowProviders = tt.showProvider
+			o.ClientId = tt.clientId
+			o.ClientSecret = tt.clientSecret
+
+			err := o.Validate([]string{"https://api.example.com"})
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestLoginOptions_Validate_PasswordFlow(t *testing.T) {
+	tests := []struct {
+		name     string
+		username string
+		password string
+		web      bool
+		wantErr  bool
+		errMsg   string
+	}{
+		{
+			name:     "valid password flow",
+			username: "user",
+			password: "pass",
+			wantErr:  false,
+		},
+		{
+			name:     "username without password",
+			username: "user",
+			wantErr:  true,
+			errMsg:   "--username and --password must be used together",
+		},
+		{
+			name:     "password without username",
+			password: "pass",
+			wantErr:  true,
+			errMsg:   "--username and --password must be used together",
+		},
+		{
+			name:     "password flow with web flag",
+			username: "user",
+			password: "pass",
+			web:      true,
+			wantErr:  true,
+			errMsg:   "--web cannot be used with --username or --password",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := DefaultLoginOptions()
+			o.Username = tt.username
+			o.Password = tt.password
+			o.Web = tt.web
+
+			err := o.Validate([]string{"https://api.example.com"})
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestLoginOptions_Validate_MutualExclusion(t *testing.T) {
+	tests := []struct {
+		name         string
+		accessToken  string
+		username     string
+		password     string
+		clientId     string
+		clientSecret string
+		provider     string
+		authCAFile   string
+		wantErr      bool
+		errMsg       string
+	}{
+		{
+			name:        "token with provider",
+			accessToken: "token123",
+			provider:    "my-provider",
+			wantErr:     true,
+			errMsg:      "--token cannot be used with --provider",
+		},
+		{
+			name:        "token with auth CA",
+			accessToken: "token123",
+			authCAFile:  "/path/to/ca.crt",
+			wantErr:     true,
+			errMsg:      "--token cannot be used with --auth-certificate-authority",
+		},
+		{
+			name:        "token with username/password",
+			accessToken: "token123",
+			username:    "user",
+			password:    "pass",
+			wantErr:     true,
+			errMsg:      "--token cannot be used with --username or --password",
+		},
+		{
+			name:         "token with client credentials",
+			accessToken:  "token123",
+			clientId:     "my-client-id",
+			clientSecret: "my-client-secret",
+			wantErr:      true,
+			errMsg:       "--token cannot be used with --client-id or --client-secret",
+		},
+		{
+			name:         "all three auth methods",
+			accessToken:  "token123",
+			username:     "user",
+			password:     "pass",
+			clientId:     "my-client-id",
+			clientSecret: "my-client-secret",
+			wantErr:      true,
+			errMsg:       "--token cannot be used with",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := DefaultLoginOptions()
+			o.AccessToken = tt.accessToken
+			o.Username = tt.username
+			o.Password = tt.password
+			o.ClientId = tt.clientId
+			o.ClientSecret = tt.clientSecret
+			o.Provider = tt.provider
+			o.AuthCAFile = tt.authCAFile
+
+			err := o.Validate([]string{"https://api.example.com"})
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

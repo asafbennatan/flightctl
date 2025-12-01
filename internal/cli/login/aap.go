@@ -10,15 +10,7 @@ import (
 )
 
 type AAPOAuth struct {
-	Metadata           api.ObjectMeta
-	Spec               api.AapProviderSpec
-	CAFile             string
-	InsecureSkipVerify bool
-	ApiServerURL       string
-	CallbackPort       int
-	Username           string
-	Password           string
-	Web                bool
+	AuthProviderBase[api.AapProviderSpec]
 }
 
 type AAPRoundTripper struct {
@@ -38,17 +30,21 @@ func (c *AAPRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, nil
 }
 
-func NewAAPOAuth2Config(metadata api.ObjectMeta, spec api.AapProviderSpec, caFile string, insecure bool, apiServerURL string, callbackPort int, username, password string, web bool) *AAPOAuth {
+func NewAAPOAuth2Config(metadata api.ObjectMeta, spec api.AapProviderSpec, caFile string, insecure bool, apiServerURL string, callbackPort int, username, password string, clientId, clientSecret string, web bool) *AAPOAuth {
 	return &AAPOAuth{
-		Metadata:           metadata,
-		Spec:               spec,
-		CAFile:             caFile,
-		InsecureSkipVerify: insecure,
-		CallbackPort:       callbackPort,
-		ApiServerURL:       apiServerURL,
-		Username:           username,
-		Password:           password,
-		Web:                web,
+		AuthProviderBase: NewAuthProviderBase(
+			metadata,
+			spec,
+			caFile,
+			insecure,
+			apiServerURL,
+			callbackPort,
+			username,
+			password,
+			clientId,
+			clientSecret,
+			web,
+		),
 	}
 }
 
@@ -102,7 +98,25 @@ func (o *AAPOAuth) getOAuth2Client(callback string) (*osincli.Client, error) {
 }
 
 func (o *AAPOAuth) Auth() (AuthInfo, error) {
+	// Use client credentials flow if client ID and secret are provided
+	if o.HasClientCredentials() {
+		return o.authClientCredentialsFlow()
+	}
 	authInfo, err := oauth2AuthCodeFlow(o.getOAuth2Client, o.CallbackPort)
+	if err != nil {
+		return AuthInfo{}, err
+	}
+	authInfo.TokenToUse = TokenToUseAccessToken
+	// AAP returns expires_in in nanoseconds, convert to seconds
+	if authInfo.ExpiresIn != nil {
+		expiresInSeconds := *authInfo.ExpiresIn / 1_000_000_000
+		authInfo.ExpiresIn = &expiresInSeconds
+	}
+	return authInfo, nil
+}
+
+func (o *AAPOAuth) authClientCredentialsFlow() (AuthInfo, error) {
+	authInfo, err := oauth2ClientCredentialsFlow(o.Spec.TokenUrl, o.ClientId, o.ClientSecret, strings.Join(o.Spec.Scopes, " "), o.CAFile, o.InsecureSkipVerify)
 	if err != nil {
 		return AuthInfo{}, err
 	}
@@ -133,6 +147,15 @@ func (o *AAPOAuth) Validate(args ValidateArgs) error {
 		return fmt.Errorf("AAP auth: missing Metadata.Name")
 	}
 
+	// Client credentials flow validation
+	if o.ClientId != "" && o.ClientSecret != "" {
+		if o.Spec.TokenUrl == "" {
+			return fmt.Errorf("AAP auth: missing Spec.TokenUrl")
+		}
+		return nil
+	}
+
+	// Web-based or password flow validation
 	if o.Spec.ClientId == "" {
 		return fmt.Errorf("AAP auth: missing Spec.ClientId")
 	}

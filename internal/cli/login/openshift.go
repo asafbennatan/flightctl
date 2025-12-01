@@ -9,28 +9,24 @@ import (
 )
 
 type OpenShift struct {
-	Metadata           api.ObjectMeta
-	Spec               api.OpenShiftProviderSpec
-	CAFile             string
-	InsecureSkipVerify bool
-	ApiServerURL       string
-	CallbackPort       int
-	Username           string
-	Password           string
-	Web                bool
+	AuthProviderBase[api.OpenShiftProviderSpec]
 }
 
-func NewOpenShiftConfig(metadata api.ObjectMeta, spec api.OpenShiftProviderSpec, caFile string, insecure bool, apiServerURL string, callbackPort int, username, password string, web bool) *OpenShift {
+func NewOpenShiftConfig(metadata api.ObjectMeta, spec api.OpenShiftProviderSpec, caFile string, insecure bool, apiServerURL string, callbackPort int, username, password string, clientId, clientSecret string, web bool) *OpenShift {
 	return &OpenShift{
-		Metadata:           metadata,
-		Spec:               spec,
-		CAFile:             caFile,
-		InsecureSkipVerify: insecure,
-		ApiServerURL:       apiServerURL,
-		CallbackPort:       callbackPort,
-		Username:           username,
-		Password:           password,
-		Web:                web,
+		AuthProviderBase: NewAuthProviderBase(
+			metadata,
+			spec,
+			caFile,
+			insecure,
+			apiServerURL,
+			callbackPort,
+			username,
+			password,
+			clientId,
+			clientSecret,
+			web,
+		),
 	}
 }
 
@@ -78,8 +74,12 @@ func (o *OpenShift) getOAuth2Client(callback string) (*osincli.Client, error) {
 }
 
 func (o *OpenShift) Auth() (AuthInfo, error) {
+	// Use client credentials flow if client ID and secret are provided
+	if o.HasClientCredentials() {
+		return o.authClientCredentialsFlow()
+	}
 	// Use password flow if username/password provided and web flag not set
-	if o.Username != "" && o.Password != "" && !o.Web {
+	if o.ShouldUsePasswordFlow() {
 		return o.authPasswordFlow()
 	}
 	// Default to auth code flow
@@ -100,6 +100,18 @@ func (o *OpenShift) authPasswordFlow() (AuthInfo, error) {
 	return authInfo, nil
 }
 
+func (o *OpenShift) authClientCredentialsFlow() (AuthInfo, error) {
+	if o.Spec.TokenUrl == nil {
+		return AuthInfo{}, fmt.Errorf("token URL is required for client credentials flow")
+	}
+	authInfo, err := oauth2ClientCredentialsFlow(*o.Spec.TokenUrl, o.ClientId, o.ClientSecret, "user:full", o.CAFile, o.InsecureSkipVerify)
+	if err != nil {
+		return AuthInfo{}, err
+	}
+	authInfo.TokenToUse = TokenToUseAccessToken
+	return authInfo, nil
+}
+
 func (o *OpenShift) Renew(refreshToken string) (AuthInfo, error) {
 	return oauth2RefreshTokenFlow(refreshToken, o.getOAuth2Client)
 }
@@ -111,6 +123,16 @@ func (o *OpenShift) Validate(args ValidateArgs) error {
 	if o.ApiServerURL == "" {
 		return fmt.Errorf("API server URL is required")
 	}
+
+	// Client credentials flow validation
+	if o.ClientId != "" && o.ClientSecret != "" {
+		if o.Spec.TokenUrl == nil {
+			return fmt.Errorf("token URL is required for client credentials flow")
+		}
+		return nil
+	}
+
+	// Web-based or password flow validation
 	if o.Spec.ClientId == nil {
 		return fmt.Errorf("client ID is required")
 	}

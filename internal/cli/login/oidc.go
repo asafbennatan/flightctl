@@ -17,28 +17,24 @@ type OIDCDirectResponse struct {
 }
 
 type OIDC struct {
-	Metadata           api.ObjectMeta
-	Spec               api.OIDCProviderSpec
-	CAFile             string
-	InsecureSkipVerify bool
-	ApiServerURL       string
-	CallbackPort       int
-	Username           string
-	Password           string
-	Web                bool
+	AuthProviderBase[api.OIDCProviderSpec]
 }
 
-func NewOIDCConfig(metadata api.ObjectMeta, spec api.OIDCProviderSpec, caFile string, insecure bool, apiServerURL string, callbackPort int, username, password string, web bool) *OIDC {
+func NewOIDCConfig(metadata api.ObjectMeta, spec api.OIDCProviderSpec, caFile string, insecure bool, apiServerURL string, callbackPort int, username, password string, clientId, clientSecret string, web bool) *OIDC {
 	return &OIDC{
-		Metadata:           metadata,
-		Spec:               spec,
-		CAFile:             caFile,
-		InsecureSkipVerify: insecure,
-		ApiServerURL:       apiServerURL,
-		CallbackPort:       callbackPort,
-		Username:           username,
-		Password:           password,
-		Web:                web,
+		AuthProviderBase: NewAuthProviderBase(
+			metadata,
+			spec,
+			caFile,
+			insecure,
+			apiServerURL,
+			callbackPort,
+			username,
+			password,
+			clientId,
+			clientSecret,
+			web,
+		),
 	}
 }
 
@@ -96,8 +92,12 @@ func (o *OIDC) Renew(refreshToken string) (AuthInfo, error) {
 }
 
 func (o *OIDC) Auth() (AuthInfo, error) {
+	// Use client credentials flow if client ID and secret are provided
+	if o.HasClientCredentials() {
+		return o.authClientCredentialsFlow()
+	}
 	// Use password flow if username/password provided and web flag not set
-	if o.Username != "" && o.Password != "" && !o.Web {
+	if o.ShouldUsePasswordFlow() {
 		return o.authPasswordFlow()
 	}
 	// Default to auth code flow
@@ -128,6 +128,22 @@ func (o *OIDC) authPasswordFlow() (AuthInfo, error) {
 	return authInfo, nil
 }
 
+func (o *OIDC) authClientCredentialsFlow() (AuthInfo, error) {
+	discoveryUrl := fmt.Sprintf("%s/.well-known/openid-configuration", o.Spec.Issuer)
+	oidcDiscovery, err := getOIDCDiscoveryConfig(discoveryUrl, o.CAFile, o.InsecureSkipVerify)
+	if err != nil {
+		return AuthInfo{}, err
+	}
+
+	authInfo, err := oauth2ClientCredentialsFlow(oidcDiscovery.TokenEndpoint, o.ClientId, o.ClientSecret, strings.Join(*o.Spec.Scopes, " "), o.CAFile, o.InsecureSkipVerify)
+	if err != nil {
+		return AuthInfo{}, err
+	}
+	// Client credentials always uses access token (no ID token issued)
+	authInfo.TokenToUse = TokenToUseAccessToken
+	return authInfo, nil
+}
+
 func (o *OIDC) Validate(args ValidateArgs) error {
 	if o.Metadata.Name == nil {
 		return fmt.Errorf("provider name is required")
@@ -138,6 +154,13 @@ func (o *OIDC) Validate(args ValidateArgs) error {
 	if o.Spec.Issuer == "" {
 		return fmt.Errorf("issuer URL is required")
 	}
+
+	// Client credentials flow validation
+	if o.ClientId != "" && o.ClientSecret != "" {
+		return nil
+	}
+
+	// Web-based or password flow validation
 	if o.Spec.ClientId == "" {
 		return fmt.Errorf("client ID is required")
 	}

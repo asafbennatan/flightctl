@@ -604,4 +604,179 @@ var _ = Describe("PAM Issuer Unit Tests", func() {
 			})
 		})
 	})
+
+	Context("Client Credentials Flow", func() {
+		Context("With ClientSecret configured", func() {
+			BeforeEach(func() {
+				config := &config.PAMOIDCIssuer{
+					Issuer:       "https://test.example.com",
+					Scopes:       []string{"openid", "profile", "email"},
+					ClientID:     "confidential-client",
+					ClientSecret: "super-secret-value",
+					RedirectURIs: []string{"https://example.com/callback"},
+					PAMService:   "other",
+				}
+
+				var err error
+				testProvider, err = NewPAMOIDCProviderWithAuthenticator(caClient, config, mockAuth)
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("should issue access token with valid client credentials", func() {
+				tokenReq := &pamapi.TokenRequest{
+					GrantType:    pamapi.ClientCredentials,
+					ClientId:     lo.ToPtr("confidential-client"),
+					ClientSecret: lo.ToPtr("super-secret-value"),
+					Scope:        lo.ToPtr("profile email"),
+				}
+
+				response, err := testProvider.Token(ctx, tokenReq)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+				Expect(response.AccessToken).ToNot(BeEmpty())
+				Expect(response.TokenType).To(Equal(pamapi.Bearer))
+				Expect(response.ExpiresIn).ToNot(BeNil())
+				Expect(*response.ExpiresIn).To(Equal(3600)) // 1 hour
+				Expect(response.RefreshToken).To(BeNil())   // No refresh token for client credentials
+				Expect(response.IdToken).To(BeNil())        // No ID token for client credentials
+			})
+
+			It("should reject request with wrong client_id", func() {
+				tokenReq := &pamapi.TokenRequest{
+					GrantType:    pamapi.ClientCredentials,
+					ClientId:     lo.ToPtr("wrong-client"),
+					ClientSecret: lo.ToPtr("super-secret-value"),
+				}
+
+				_, err := testProvider.Token(ctx, tokenReq)
+				Expect(err).To(HaveOccurred())
+				oauth2Err, ok := pamapi.IsOAuth2Error(err)
+				Expect(ok).To(BeTrue())
+				Expect(oauth2Err.Code).To(Equal(pamapi.InvalidClient))
+			})
+
+			It("should reject request with wrong client_secret", func() {
+				tokenReq := &pamapi.TokenRequest{
+					GrantType:    pamapi.ClientCredentials,
+					ClientId:     lo.ToPtr("confidential-client"),
+					ClientSecret: lo.ToPtr("wrong-secret"),
+				}
+
+				_, err := testProvider.Token(ctx, tokenReq)
+				Expect(err).To(HaveOccurred())
+				oauth2Err, ok := pamapi.IsOAuth2Error(err)
+				Expect(ok).To(BeTrue())
+				Expect(oauth2Err.Code).To(Equal(pamapi.InvalidClient))
+			})
+
+			It("should reject request with missing client_id", func() {
+				tokenReq := &pamapi.TokenRequest{
+					GrantType:    pamapi.ClientCredentials,
+					ClientSecret: lo.ToPtr("super-secret-value"),
+				}
+
+				_, err := testProvider.Token(ctx, tokenReq)
+				Expect(err).To(HaveOccurred())
+				oauth2Err, ok := pamapi.IsOAuth2Error(err)
+				Expect(ok).To(BeTrue())
+				Expect(oauth2Err.Code).To(Equal(pamapi.InvalidClient))
+			})
+
+			It("should reject request with missing client_secret", func() {
+				tokenReq := &pamapi.TokenRequest{
+					GrantType: pamapi.ClientCredentials,
+					ClientId:  lo.ToPtr("confidential-client"),
+				}
+
+				_, err := testProvider.Token(ctx, tokenReq)
+				Expect(err).To(HaveOccurred())
+				oauth2Err, ok := pamapi.IsOAuth2Error(err)
+				Expect(ok).To(BeTrue())
+				Expect(oauth2Err.Code).To(Equal(pamapi.InvalidClient))
+			})
+
+			It("should include client_id in token subject", func() {
+				tokenReq := &pamapi.TokenRequest{
+					GrantType:    pamapi.ClientCredentials,
+					ClientId:     lo.ToPtr("confidential-client"),
+					ClientSecret: lo.ToPtr("super-secret-value"),
+				}
+
+				response, err := testProvider.Token(ctx, tokenReq)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response).ToNot(BeNil())
+
+				// Validate the token to check subject
+				identity, err := testProvider.jwtGenerator.ValidateTokenWithType(response.AccessToken, TokenTypeAccess)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(identity.GetUsername()).To(Equal("confidential-client"))
+			})
+
+			It("should advertise client_credentials in OpenID configuration", func() {
+				config, err := testProvider.GetOpenIDConfiguration()
+				Expect(err).ToNot(HaveOccurred())
+				Expect(config).ToNot(BeNil())
+				Expect(config.GrantTypesSupported).ToNot(BeNil())
+				Expect(*config.GrantTypesSupported).To(ContainElement("client_credentials"))
+			})
+
+			It("should support UserInfo endpoint with client credentials token", func() {
+				tokenReq := &pamapi.TokenRequest{
+					GrantType:    pamapi.ClientCredentials,
+					ClientId:     lo.ToPtr("confidential-client"),
+					ClientSecret: lo.ToPtr("super-secret-value"),
+				}
+
+				response, err := testProvider.Token(ctx, tokenReq)
+				Expect(err).ToNot(HaveOccurred())
+
+				userInfo, err := testProvider.UserInfo(ctx, response.AccessToken)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(userInfo).ToNot(BeNil())
+				Expect(userInfo.Sub).To(Equal("confidential-client"))
+				Expect(*userInfo.PreferredUsername).To(Equal("confidential-client"))
+				Expect(userInfo.Roles).ToNot(BeNil())
+				Expect(*userInfo.Roles).To(BeEmpty()) // No roles for machine clients
+			})
+		})
+
+		Context("Without ClientSecret configured (public client)", func() {
+			BeforeEach(func() {
+				config := &config.PAMOIDCIssuer{
+					Issuer:       "https://test.example.com",
+					Scopes:       []string{"openid", "profile", "email"},
+					ClientID:     "public-client",
+					ClientSecret: "", // No secret = public client
+					RedirectURIs: []string{"https://example.com/callback"},
+					PAMService:   "other",
+				}
+
+				var err error
+				testProvider, err = NewPAMOIDCProviderWithAuthenticator(caClient, config, mockAuth)
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("should reject client_credentials grant when ClientSecret is not configured", func() {
+				tokenReq := &pamapi.TokenRequest{
+					GrantType:    pamapi.ClientCredentials,
+					ClientId:     lo.ToPtr("public-client"),
+					ClientSecret: lo.ToPtr("any-secret"),
+				}
+
+				_, err := testProvider.Token(ctx, tokenReq)
+				Expect(err).To(HaveOccurred())
+				oauth2Err, ok := pamapi.IsOAuth2Error(err)
+				Expect(ok).To(BeTrue())
+				Expect(oauth2Err.Code).To(Equal(pamapi.UnsupportedGrantType))
+			})
+
+			It("should not advertise client_credentials in OpenID configuration", func() {
+				config, err := testProvider.GetOpenIDConfiguration()
+				Expect(err).ToNot(HaveOccurred())
+				Expect(config).ToNot(BeNil())
+				Expect(config.GrantTypesSupported).ToNot(BeNil())
+				Expect(*config.GrantTypesSupported).ToNot(ContainElement("client_credentials"))
+			})
+		})
+	})
 })

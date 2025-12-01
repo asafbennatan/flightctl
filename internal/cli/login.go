@@ -158,6 +158,8 @@ type LoginOptions struct {
 	CallbackPort       int
 	Username           string
 	Password           string
+	ClientId           string
+	ClientSecret       string
 	Web                bool
 	ShowProviders      bool
 	authConfig         *v1beta1.AuthConfig
@@ -176,6 +178,8 @@ func DefaultLoginOptions() *LoginOptions {
 		CallbackPort:       8080,
 		Username:           "",
 		Password:           "",
+		ClientId:           "",
+		ClientSecret:       "",
 		Web:                false,
 		ShowProviders:      false,
 	}
@@ -229,6 +233,8 @@ func (o *LoginOptions) Bind(fs *pflag.FlagSet) {
 	fs.IntVarP(&o.CallbackPort, "callback-port", "", o.CallbackPort, "Port to use for OAuth callback")
 	fs.StringVarP(&o.Username, "username", "u", o.Username, "Username for password flow authentication")
 	fs.StringVarP(&o.Password, "password", "p", o.Password, "Password for password flow authentication")
+	fs.StringVarP(&o.ClientId, "client-id", "", o.ClientId, "Client ID for client credentials flow authentication")
+	fs.StringVarP(&o.ClientSecret, "client-secret", "", o.ClientSecret, "Client secret for client credentials flow authentication")
 	fs.BoolVarP(&o.Web, "web", "", o.Web, "Use web-based authorization code flow (default is password flow if username/password provided)")
 	fs.BoolVarP(&o.ShowProviders, "show-providers", "", o.ShowProviders, "List available authentication providers")
 }
@@ -265,10 +271,11 @@ func (o *LoginOptions) validateShowProvidersExclusion() error {
 	}
 
 	conflicts := map[bool]string{
-		!login.StrIsEmpty(o.AccessToken):                               "--token",
-		!login.StrIsEmpty(o.Provider):                                  "--provider",
-		!login.StrIsEmpty(o.AuthCAFile):                                "--auth-certificate-authority",
-		!login.StrIsEmpty(o.Username) || !login.StrIsEmpty(o.Password): "--username or --password",
+		!login.StrIsEmpty(o.AccessToken):                                   "--token",
+		!login.StrIsEmpty(o.Provider):                                      "--provider",
+		!login.StrIsEmpty(o.AuthCAFile):                                    "--auth-certificate-authority",
+		!login.StrIsEmpty(o.Username) || !login.StrIsEmpty(o.Password):     "--username or --password",
+		!login.StrIsEmpty(o.ClientId) || !login.StrIsEmpty(o.ClientSecret): "--client-id or --client-secret",
 		o.Web: "--web",
 	}
 
@@ -289,7 +296,7 @@ func (o *LoginOptions) Validate(args []string) error {
 		return err
 	}
 
-	// Validate mutual exclusion: --token cannot be used with --provider or --auth-certificate-authority
+	// Validate mutual exclusion: --token cannot be used with other auth methods
 	if !login.StrIsEmpty(o.AccessToken) {
 		if !login.StrIsEmpty(o.Provider) {
 			return fmt.Errorf("--token cannot be used with --provider")
@@ -300,12 +307,32 @@ func (o *LoginOptions) Validate(args []string) error {
 		if !login.StrIsEmpty(o.Username) || !login.StrIsEmpty(o.Password) {
 			return fmt.Errorf("--token cannot be used with --username or --password")
 		}
+		if !login.StrIsEmpty(o.ClientId) || !login.StrIsEmpty(o.ClientSecret) {
+			return fmt.Errorf("--token cannot be used with --client-id or --client-secret")
+		}
 	}
 
 	// Validate username/password are provided together
 	if (!login.StrIsEmpty(o.Username) && login.StrIsEmpty(o.Password)) ||
 		(login.StrIsEmpty(o.Username) && !login.StrIsEmpty(o.Password)) {
 		return fmt.Errorf("--username and --password must be used together")
+	}
+
+	// Validate client-id/client-secret are provided together
+	if (!login.StrIsEmpty(o.ClientId) && login.StrIsEmpty(o.ClientSecret)) ||
+		(login.StrIsEmpty(o.ClientId) && !login.StrIsEmpty(o.ClientSecret)) {
+		return fmt.Errorf("--client-id and --client-secret must be used together")
+	}
+
+	// Validate mutual exclusion: client credentials cannot be used with password flow
+	if (!login.StrIsEmpty(o.ClientId) || !login.StrIsEmpty(o.ClientSecret)) &&
+		(!login.StrIsEmpty(o.Username) || !login.StrIsEmpty(o.Password)) {
+		return fmt.Errorf("client credentials flow (--client-id/--client-secret) cannot be used with password flow (--username/--password)")
+	}
+
+	// Validate mutual exclusion: client credentials cannot be used with web flow
+	if (!login.StrIsEmpty(o.ClientId) || !login.StrIsEmpty(o.ClientSecret)) && o.Web {
+		return fmt.Errorf("client credentials flow (--client-id/--client-secret) cannot be used with --web")
 	}
 
 	// Validate --web cannot be used with username/password
@@ -366,7 +393,7 @@ func (o *LoginOptions) getAuthProvider(ctx context.Context) (login.AuthProvider,
 		},
 		OrganizationsEnabled: true,
 	}
-	authProvider, err := client.CreateAuthProviderWithCredentials(authInfo, o.InsecureSkipVerify, o.clientConfig.Service.Server, o.CallbackPort, o.Username, o.Password, o.Web)
+	authProvider, err := client.CreateAuthProviderWithCredentials(authInfo, o.InsecureSkipVerify, o.clientConfig.Service.Server, o.CallbackPort, o.Username, o.Password, o.ClientId, o.ClientSecret, o.Web)
 	if err != nil {
 		return nil, client.AuthInfo{}, fmt.Errorf("creating auth provider: %w", err)
 	}

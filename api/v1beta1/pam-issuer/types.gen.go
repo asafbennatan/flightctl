@@ -33,6 +33,7 @@ const (
 // Defines values for TokenRequestGrantType.
 const (
 	AuthorizationCode TokenRequestGrantType = "authorization_code"
+	ClientCredentials TokenRequestGrantType = "client_credentials"
 	RefreshToken      TokenRequestGrantType = "refresh_token"
 )
 

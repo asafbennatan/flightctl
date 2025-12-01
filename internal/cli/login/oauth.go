@@ -369,3 +369,81 @@ func oauth2PasswordFlow(tokenURL, clientID, username, password, scope, caFile st
 		ExpiresIn:    expiresIn,
 	}, nil
 }
+
+// oauth2ClientCredentialsFlow performs the client credentials grant flow
+func oauth2ClientCredentialsFlow(tokenURL, clientID, clientSecret, scope, caFile string, insecure bool) (AuthInfo, error) {
+	tlsConfig, err := getAuthClientTlsConfig(caFile, insecure)
+	if err != nil {
+		return AuthInfo{}, err
+	}
+
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: tlsConfig,
+		},
+	}
+
+	data := url.Values{}
+	data.Set("grant_type", "client_credentials")
+	data.Set("client_id", clientID)
+	data.Set("client_secret", clientSecret)
+	if scope != "" {
+		data.Set("scope", scope)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, tokenURL, strings.NewReader(data.Encode()))
+	if err != nil {
+		return AuthInfo{}, fmt.Errorf("failed to create token request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return AuthInfo{}, fmt.Errorf("failed to request token: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return AuthInfo{}, fmt.Errorf("failed to read token response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return AuthInfo{}, fmt.Errorf("token request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var tokenResponse map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &tokenResponse); err != nil {
+		return AuthInfo{}, fmt.Errorf("failed to parse token response: %w", err)
+	}
+
+	accessToken, _ := tokenResponse["access_token"].(string)
+	if accessToken == "" {
+		return AuthInfo{}, fmt.Errorf("no access token in response")
+	}
+
+	refreshToken, _ := tokenResponse["refresh_token"].(string)
+	idToken, _ := tokenResponse["id_token"].(string)
+
+	var expiresIn *int64
+	if expiresInRaw, ok := tokenResponse["expires_in"]; ok {
+		switch v := expiresInRaw.(type) {
+		case float64:
+			exp := int64(v)
+			expiresIn = &exp
+		case int64:
+			expiresIn = &v
+		case string:
+			if exp, err := strconv.ParseInt(v, 10, 64); err == nil {
+				expiresIn = &exp
+			}
+		}
+	}
+
+	return AuthInfo{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		IdToken:      idToken,
+		ExpiresIn:    expiresIn,
+	}, nil
+}

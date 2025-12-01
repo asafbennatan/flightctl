@@ -16,10 +16,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/flightctl/flightctl/api/v1beta1"
 	pamapi "github.com/flightctl/flightctl/api/v1beta1/pam-issuer"
 	"github.com/flightctl/flightctl/internal/auth/authn"
 	"github.com/flightctl/flightctl/internal/config"
 	fccrypto "github.com/flightctl/flightctl/internal/crypto"
+	"github.com/flightctl/flightctl/internal/org"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 )
@@ -175,10 +177,12 @@ func (s *PAMOIDCProvider) Token(ctx context.Context, req *pamapi.TokenRequest) (
 		return s.handleRefreshTokenGrant(ctx, req)
 	case pamapi.AuthorizationCode:
 		return s.handleAuthorizationCodeGrant(ctx, req)
+	case pamapi.ClientCredentials:
+		return s.handleClientCredentialsGrant(ctx, req)
 	default:
 		return nil, &pamapi.OAuth2Error{
 			Code:             pamapi.UnsupportedGrantType,
-			ErrorDescription: lo.ToPtr("Unsupported grant_type. Supported values: authorization_code, refresh_token"),
+			ErrorDescription: lo.ToPtr("Unsupported grant_type. Supported values: authorization_code, refresh_token, client_credentials"),
 		}
 	}
 }
@@ -469,6 +473,90 @@ func (s *PAMOIDCProvider) handleAuthorizationCodeGrant(ctx context.Context, req 
 		tokenResponse.RefreshToken = lo.ToPtr(refreshToken)
 	}
 
+	return tokenResponse, nil
+}
+
+// handleClientCredentialsGrant handles the client_credentials grant type
+// This is a machine-to-machine flow that doesn't involve user authentication
+// It's only available when ClientSecret is configured in the PAMOIDCIssuer config
+func (s *PAMOIDCProvider) handleClientCredentialsGrant(ctx context.Context, req *pamapi.TokenRequest) (*pamapi.TokenResponse, error) {
+	// Client credentials flow is only supported when ClientSecret is configured
+	if s.config.ClientSecret == "" {
+		s.log.Warnf("handleClientCredentialsGrant: client_credentials grant not supported - client secret not configured")
+		return nil, &pamapi.OAuth2Error{
+			Code:             pamapi.UnsupportedGrantType,
+			ErrorDescription: lo.ToPtr("Client credentials grant is not supported for this client"),
+		}
+	}
+
+	// Validate required fields - client_id and client_secret are required
+	if req.ClientId == nil || *req.ClientId == "" {
+		s.log.Warnf("handleClientCredentialsGrant: missing client ID")
+		return nil, &pamapi.OAuth2Error{
+			Code:             pamapi.InvalidClient,
+			ErrorDescription: lo.ToPtr("Missing required parameter: client_id"),
+		}
+	}
+
+	if req.ClientSecret == nil || *req.ClientSecret == "" {
+		s.log.Warnf("handleClientCredentialsGrant: missing client secret")
+		return nil, &pamapi.OAuth2Error{
+			Code:             pamapi.InvalidClient,
+			ErrorDescription: lo.ToPtr("Client authentication failed: missing client_secret"),
+		}
+	}
+
+	// Validate client credentials
+	if *req.ClientId != s.config.ClientID {
+		s.log.Warnf("handleClientCredentialsGrant: invalid client ID - expected=%s, got=%s", s.config.ClientID, *req.ClientId)
+		return nil, &pamapi.OAuth2Error{
+			Code:             pamapi.InvalidClient,
+			ErrorDescription: lo.ToPtr("Client authentication failed: invalid client_id"),
+		}
+	}
+
+	if *req.ClientSecret != s.config.ClientSecret {
+		s.log.Warnf("handleClientCredentialsGrant: invalid client secret")
+		return nil, &pamapi.OAuth2Error{
+			Code:             pamapi.InvalidClient,
+			ErrorDescription: lo.ToPtr("Client authentication failed: invalid client_secret"),
+		}
+	}
+
+	// Extract requested scopes (default to empty string for machine-to-machine)
+	scopes := lo.FromPtrOr(req.Scope, "")
+
+	// For client credentials flow, the subject is typically the client_id
+	// No user authentication is involved
+	tokenGenerationRequest := authn.TokenGenerationRequest{
+		Username:      *req.ClientId,                       // Use client_id as the username
+		UID:           *req.ClientId,                       // Use client_id as the UID
+		Organizations: []string{org.DefaultExternalID},     // No organizations for machine clients
+		Roles:         []string{v1beta1.ExternalRoleAdmin}, // No roles for machine clients by default
+		Audience:      []string{s.config.ClientID},
+		Issuer:        s.config.Issuer,
+		Scopes:        scopes,
+	}
+
+	// Generate access token with proper expiry (1 hour)
+	accessToken, err := s.jwtGenerator.GenerateTokenWithType(tokenGenerationRequest, time.Hour, TokenTypeAccess)
+	if err != nil {
+		s.log.Errorf("handleClientCredentialsGrant: server error when generating access token - %v", err)
+		return nil, &pamapi.OAuth2Error{
+			Code:             pamapi.ServerError,
+			ErrorDescription: lo.ToPtr("Failed to generate access token"),
+		}
+	}
+
+	// Create token response
+	// Note: client_credentials flow does not issue refresh tokens or ID tokens
+	tokenResponse := &pamapi.TokenResponse{
+		AccessToken: accessToken,
+		TokenType:   pamapi.Bearer,
+		ExpiresIn:   lo.ToPtr(int(time.Hour.Seconds())),
+	}
+
+	s.log.Debugf("handleClientCredentialsGrant: successfully issued access token for client %s", *req.ClientId)
 	return tokenResponse, nil
 }
 
@@ -782,8 +870,27 @@ func (s *PAMOIDCProvider) UserInfo(ctx context.Context, accessToken string) (*pa
 		}
 	}
 
-	// Get user information from NSS
-	systemUser, err := s.pamAuthenticator.LookupUser(identity.GetUsername())
+	username := identity.GetUsername()
+
+	// Check if this is a client credentials token (username equals client_id)
+	// Client credentials tokens are for machine-to-machine auth and don't have system users
+	if s.config != nil && username == s.config.ClientID {
+		// This is a client credentials token - return minimal info
+		roles := []string{}
+		organizations := []string{}
+		return &pamapi.UserInfoResponse{
+			Sub:               username,
+			PreferredUsername: lo.ToPtr(username),
+			Name:              lo.ToPtr(username),
+			Email:             lo.ToPtr(""),
+			EmailVerified:     lo.ToPtr(false),
+			Roles:             &roles,
+			Organizations:     &organizations,
+		}, nil
+	}
+
+	// Get user information from NSS for regular user tokens
+	systemUser, err := s.pamAuthenticator.LookupUser(username)
 	if err != nil {
 		return nil, &pamapi.OAuth2Error{
 			Code:             "invalid_token",
@@ -806,8 +913,8 @@ func (s *PAMOIDCProvider) UserInfo(ctx context.Context, accessToken string) (*pa
 
 	// Create user info response
 	userInfo := &pamapi.UserInfoResponse{
-		Sub:               identity.GetUsername(), // Required field
-		PreferredUsername: lo.ToPtr(identity.GetUsername()),
+		Sub:               username, // Required field
+		PreferredUsername: lo.ToPtr(username),
 		Name:              lo.ToPtr(systemUser.Name),
 		Email:             lo.ToPtr(""), // Email not available from system user
 		EmailVerified:     lo.ToPtr(false),
@@ -827,8 +934,12 @@ func (s *PAMOIDCProvider) GetOpenIDConfiguration() (*pamapi.OpenIDConfiguration,
 	issuer := s.config.Issuer
 
 	// Response types and grant types are determined by implementation
-	responseTypes := []string{"code"}                             // Support authorization code flow
-	grantTypes := []string{"authorization_code", "refresh_token"} // Support OIDC-compliant flows
+	responseTypes := []string{"code"} // Support authorization code flow
+	grantTypes := []string{"authorization_code", "refresh_token"}
+	// Add client_credentials grant type if ClientSecret is configured
+	if s.config != nil && s.config.ClientSecret != "" {
+		grantTypes = append(grantTypes, "client_credentials")
+	}
 
 	scopes := []string{"openid", "profile", "email", "roles"}
 	if s.config != nil && len(s.config.Scopes) > 0 {
