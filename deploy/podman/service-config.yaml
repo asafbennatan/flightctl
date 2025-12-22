@@ -14,9 +14,10 @@ global:
     insecureSkipTlsVerify: true
     aap:
       apiUrl:
-      externalApiUrl:
-      oAuthApplicationClientId:
-      oAuthToken:
+      authorizationUrl:
+      tokenUrl:
+      clientId:
+      clientSecret:
     oidc:
       clientId: flightctl-client
       clientSecret:  # Optional: Client secret for OIDC provider (injected by token proxy)
