@@ -10,6 +10,13 @@ import (
 
 func (v *TestVM) ParseCloudInit() error {
 	if v.hasCloudInit {
+		// If CloudInitISO is set, use it directly (pre-generated ISO)
+		if v.CloudInitISO != "" {
+			v.cloudInitArgs = v.CloudInitISO
+			return nil
+		}
+
+		// Otherwise, generate ISO from directory (legacy behavior)
 		if v.CloudInitDir == "" {
 			return errors.New("empty cloud init directory")
 		}

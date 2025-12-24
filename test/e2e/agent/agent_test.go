@@ -229,7 +229,16 @@ var _ = Describe("VM Agent behavior", func() {
 			err = harness.UpdateDeviceWithRetries(deviceId, func(device *v1beta1.Device) {
 				currentImage := device.Status.Os.Image
 				GinkgoWriter.Printf("Current image for %s is %s\n", deviceId, currentImage)
-				repo, _ := parseImageReference(currentImage)
+
+				var repo string
+				if currentImage != "" {
+					repo, _ = parseImageReference(currentImage)
+				}
+				// If current image is empty (e.g., cloud-init based golden image), use registry endpoint
+				if repo == "" {
+					repo = fmt.Sprintf("%s/flightctl-device", harness.RegistryEndpoint())
+				}
+
 				newImageReference = repo + ":not-existing"
 				device.Spec.Os = &v1beta1.DeviceOsSpec{Image: newImageReference}
 				GinkgoWriter.Printf("Updating %s to image %s\n", deviceId, device.Spec.Os.Image)

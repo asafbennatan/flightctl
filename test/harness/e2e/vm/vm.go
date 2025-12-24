@@ -12,7 +12,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-const sshWaitTimeout time.Duration = 60 * time.Second
+const sshWaitTimeout time.Duration = 180 * time.Second
 
 type TestVM struct {
 	TestDir        string
@@ -21,6 +21,7 @@ type TestVM struct {
 	DiskImagePath  string
 	VMUser         string //user to use when connecting to the VM
 	CloudInitDir   string
+	CloudInitISO   string // Path to pre-generated cloud-init ISO
 	NoCredentials  bool
 	CloudInitData  bool
 	SSHPassword    string
@@ -41,6 +42,7 @@ type TestVMInterface interface {
 	Delete() error
 	IsRunning() (bool, error)
 	WaitForSSHToBeReady() error
+	WaitForCloudInit() error
 	RunAndWaitForSSH() error
 	SSHCommand(inputArgs []string) *exec.Cmd
 	SSHCommandWithUser(nputArgs []string, user string) *exec.Cmd
@@ -98,6 +100,46 @@ func (v *TestVM) WaitForSSHToBeReady() error {
 	}
 
 	return fmt.Errorf("SSH did not become ready in %s seconds", sshWaitTimeout)
+}
+
+// WaitForCloudInit waits for cloud-init to complete.
+// This should be called after SSH is ready if the VM uses cloud-init.
+func (v *TestVM) WaitForCloudInit() error {
+	timeout := 5 * time.Minute
+	elapsed := 0 * time.Second
+	interval := 5 * time.Second
+
+	logrus.Info("Waiting for cloud-init to complete...")
+
+	for elapsed < timeout {
+		// Use cloud-init status to check completion
+		stdout, err := v.RunSSH([]string{"sudo", "cloud-init", "status"}, nil)
+		if err != nil {
+			logrus.Debugf("cloud-init status check failed: %s", err)
+			time.Sleep(interval)
+			elapsed += interval
+			continue
+		}
+
+		status := strings.TrimSpace(stdout.String())
+		logrus.Debugf("cloud-init status: %s", status)
+
+		if strings.Contains(status, "done") {
+			logrus.Info("Cloud-init completed successfully")
+			return nil
+		}
+
+		if strings.Contains(status, "error") || strings.Contains(status, "recoverable error") {
+			logrus.Warnf("Cloud-init completed with errors: %s", status)
+			// Still return nil - the VM is usable, just log the warning
+			return nil
+		}
+
+		time.Sleep(interval)
+		elapsed += interval
+	}
+
+	return fmt.Errorf("cloud-init did not complete within %s", timeout)
 }
 
 func (v *TestVM) SSHCommandWithUser(inputArgs []string, user string) *exec.Cmd {

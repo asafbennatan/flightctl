@@ -7,8 +7,9 @@
 # * Trust on our E2E CA Certificate
 # * flightctl-agent configured to talk to our e2e kind flightctl-server
 # * greenboot and podman-compose installed with podman service enabled
+# * Built on top of the golden base image
 
-FROM quay.io/centos-bootc/centos-bootc:stream9
+FROM localhost:5000/flightctl-device:golden
 
 ARG RPM_COPR=
 ARG RPM_PACKAGE=flightctl-agent
@@ -18,8 +19,10 @@ ARG BREW_BUILD_URL=
 # Fail early when the build argument is missing
 RUN test -n "${REGISTRY_ADDRESS}" || (echo "REGISTRY_ADDRESS build arg is required" >&2 && exit 1)
 
-# Copy entire bin directory to /tmp for build process
-COPY bin/ /tmp/bin/
+# Copy only the RPM directories needed for installation
+# Note: These directories must exist (can be empty) - created by prepare_agent_config.sh
+COPY bin/rpm/ /tmp/bin/rpm/
+COPY bin/brew-rpm/ /tmp/bin/brew-rpm/
 
 # E2E tmpfiles configuration for offline-injected files
 COPY test/scripts/agent-images/flightctl-e2e.tmpfiles.conf /usr/lib/tmpfiles.d/flightctl-e2e.tmpfiles.conf
@@ -38,36 +41,6 @@ RUN if [[ -n "$BREW_BUILD_URL" ]]; then \
     systemctl enable flightctl-agent.service && \
     echo "Cleaning up build files from /tmp/bin" && \
     rm -rf /tmp/bin
-
-RUN --mount=type=cache,target=/var/cache/dnf \
-    --mount=type=cache,target=/var/lib/dnf \
-    dnf install -y epel-release epel-next-release
-
-RUN --mount=type=cache,target=/var/cache/dnf \
-    --mount=type=cache,target=/var/lib/dnf \
-    dnf install -y python-dotenv
-
-RUN --mount=type=cache,target=/var/cache/dnf \
-    --mount=type=cache,target=/var/lib/dnf \
-    dnf install -y greenboot greenboot-default-health-checks podman-compose && \
-    dnf install -y firewalld && \
-    systemctl enable firewalld.service && \
-    systemctl enable podman.service
-
-
-RUN useradd -ms /bin/bash user && \
-    echo "user:user" | chpasswd && \
-    echo "user ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-
-# Create flightctl custom info directory
-RUN mkdir -p /usr/lib/flightctl/custom-info.d && \
-    chmod 755 /usr/lib/flightctl/custom-info.d
-
-# Add custom system info
-RUN echo -e '#!/bin/bash\necho "my site"' > /usr/lib/flightctl/custom-info.d/siteName && \
-    echo -e '#!/bin/bash\necho ""' > /usr/lib/flightctl/custom-info.d/emptyValue && \
-    echo -e '#!/bin/bash\necho "no-show"' > /usr/lib/flightctl/custom-info.d/keyNotShown && \
-    chmod 755 /usr/lib/flightctl/custom-info.d/*
 
 # Add the registry
 RUN mkdir -p /etc/containers/registries.conf.d/ && \

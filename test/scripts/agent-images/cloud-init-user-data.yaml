@@ -1,0 +1,155 @@
+#cloud-config
+# Cloud-init user-data configuration
+# This file is used to generate the cloud-init seed CDROM
+
+# Enable SSH password authentication
+ssh_pwauth: true
+
+# User configuration
+# Note: User already exists from Containerfile, cloud-init will update it
+users:
+  - name: ${CLOUD_USER_NAME}
+    groups: wheel
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: false
+    passwd: ${CLOUD_USER_PASSWORD}
+
+# Write files
+write_files:
+  # Registry configuration
+  - path: /etc/containers/registries.conf.d/custom-registry.conf
+    content: |
+      [[registry]]
+      location = "${REGISTRY_ADDRESS}"
+      insecure = true
+    permissions: '0644'
+    owner: root:root
+  # Flightctl configuration (content from provided config file)
+  - path: /etc/flightctl/config.yaml
+    content: |
+${FLIGHTCTL_CONFIG_CONTENT}
+    permissions: '0644'
+    owner: root:root
+
+# Run commands to configure the system
+runcmd:
+  # Find and mount the cloud-init seed CDROM to access RPMs
+  - |
+    set -x
+    echo "=== Looking for cloud-init seed CDROM ==="
+    # Find the CDROM device (check common devices and also /proc/mounts for already mounted)
+    CDROM_MOUNT=""
+    # Check if already mounted
+    if grep -q "iso9660" /proc/mounts 2>/dev/null; then
+      CDROM_MOUNT=$(grep "iso9660" /proc/mounts | awk '{print $2}' | head -1)
+      echo "Found already mounted CDROM at: ${CDROM_MOUNT}"
+    else
+      echo "CDROM not already mounted, trying to mount..."
+      # Try to find and mount CDROM device
+      CDROM_DEV=""
+      for dev in /dev/sr0 /dev/sda /dev/cdrom; do
+        if [ -b "$dev" ]; then
+          echo "Found CDROM device: $dev"
+          CDROM_DEV="$dev"
+          break
+        fi
+      done
+      if [ -n "$CDROM_DEV" ]; then
+        # Create mount point
+        mkdir -p /mnt/seed-cdrom
+        # Mount the CDROM
+        if mount -t iso9660 -o ro "$CDROM_DEV" /mnt/seed-cdrom 2>&1; then
+          CDROM_MOUNT="/mnt/seed-cdrom"
+          echo "Successfully mounted CDROM at: ${CDROM_MOUNT}"
+        else
+          echo "Failed to mount $CDROM_DEV"
+        fi
+      else
+        echo "No CDROM device found"
+      fi
+    fi
+    
+    # Check if we have a mount point and look for RPMs
+    if [ -n "$CDROM_MOUNT" ]; then
+      echo "CDROM mounted at: ${CDROM_MOUNT}"
+      echo "Contents of CDROM:"
+      ls -la "${CDROM_MOUNT}" || true
+      # Look for RPM files in the rpms subdirectory
+      RPM_DIR="${CDROM_MOUNT}/rpms"
+      if [ -d "${RPM_DIR}" ]; then
+        echo "Checking for RPMs in ${RPM_DIR}..."
+        ls -la "${RPM_DIR}" || true
+        RPM_FILES=$(find "${RPM_DIR}" -maxdepth 1 -name '*.rpm' 2>/dev/null)
+        RPM_COUNT=$(echo "$RPM_FILES" | grep -c '\.rpm$' || echo "0")
+        echo "Found ${RPM_COUNT} RPM file(s) in ${RPM_DIR}:"
+        echo "$RPM_FILES" | while read -r rpm; do
+          echo "  - $(basename "$rpm")"
+        done
+        if [ "${RPM_COUNT}" -gt 0 ]; then
+          # Enable flightctl-agent service before installing RPMs
+          # Create the systemd symlink manually so it's enabled after reboot
+          echo "Pre-enabling flightctl-agent.service before RPM install..."
+          mkdir -p /etc/systemd/system/multi-user.target.wants
+          ln -s /usr/lib/systemd/system/flightctl-agent.service /etc/systemd/system/multi-user.target.wants/flightctl-agent.service || true
+          
+          echo "Installing RPMs from seed CDROM (${RPM_DIR})..."
+          # Install all RPMs from the CDROM using rpm-ostree
+          # Pass all RPMs explicitly so dependencies between them are resolved
+          rpm-ostree install -y $(echo "$RPM_FILES" | tr '\n' ' ') 2>&1 || {
+            echo "rpm-ostree install failed with exit code: $?"
+            echo "Trying to list what was staged..."
+            rpm-ostree status || true
+          }
+        else
+          echo "No RPM files found in ${RPM_DIR}"
+        fi
+      else
+        echo "RPM directory ${RPM_DIR} not found"
+      fi
+      
+      # Copy certs directory if found
+      echo "Checking for certs directory at ${CDROM_MOUNT}/certs..."
+      if [ -d "${CDROM_MOUNT}/certs" ]; then
+        echo "Certs directory exists, checking contents..."
+        ls -la "${CDROM_MOUNT}/certs" || true
+        CERT_FILES=$(find "${CDROM_MOUNT}/certs" -type f 2>/dev/null | wc -l)
+        echo "Found ${CERT_FILES} cert file(s) in ${CDROM_MOUNT}/certs"
+        if [ "${CERT_FILES}" -gt 0 ]; then
+          echo "Copying certs from seed CDROM to /etc/flightctl/certs..."
+          mkdir -p /etc/flightctl/certs
+          cp -v "${CDROM_MOUNT}"/certs/* /etc/flightctl/certs/ 2>&1 || {
+            echo "Warning: Some cert files failed to copy"
+          }
+          chmod -R 644 /etc/flightctl/certs/* 2>&1 || true
+          echo "Verifying certs were copied:"
+          ls -la /etc/flightctl/certs/ || true
+          echo "Certs copied to /etc/flightctl/certs"
+        else
+          echo "Certs directory exists but is empty"
+        fi
+      else
+        echo "No certs directory found at ${CDROM_MOUNT}/certs"
+      fi
+      
+    else
+      echo "No CDROM mount point available"
+    fi
+    
+    # Unmount if we mounted it ourselves
+    if [ "$CDROM_MOUNT" = "/mnt/seed-cdrom" ]; then
+      umount /mnt/seed-cdrom 2>/dev/null || true
+      rmdir /mnt/seed-cdrom 2>/dev/null || true
+    fi
+    set +x
+  # Restart services if needed
+  - systemctl restart firewalld || true
+
+# Power state - reboot after cloud-init completes
+power_state:
+  mode: reboot
+  message: "Rebooting to apply Bootc/OSTree changes"
+  condition: True
+
+# Note: REGISTRY_ADDRESS will be replaced by the setup script
+

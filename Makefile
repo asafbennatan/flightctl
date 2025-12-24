@@ -374,8 +374,7 @@ clean: clean-agent-vm clean-e2e-agent-images clean-quadlets clean-swtpm-certs
 	- rm -rf obj-*-linux-gnu
 	- rm -rf debian
 	- rm -rf .output/stamps
-# Qcow2 disk depends on the touch file
-bin/output/qcow2/disk.qcow2: bin/.e2e-agent-images
+# Qcow2 disk is now golden-disk.qcow2 (no legacy symlink needed)
 
 # Full cleanup including bin directory and all artifacts
 clean-all: clean clean-containers

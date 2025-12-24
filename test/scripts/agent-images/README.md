@@ -3,23 +3,18 @@
 We generate multiple agent images for testing purposes, each with a different
 services running, but all connected to our flightctl service for management.
 
-This work is performed by the `create_agent_images.sh` script in this
-directory.
+Build from the top-level makefile with: `make e2e-agent-images`
 
-And can be triggered from the top-level makefile with: `make e2e-agent-images`
+## Build Scripts
 
-## Build Process
+- `build_image.sh` - Builds a container image from a Containerfile
+- `convert_to_qcow2.sh` - Converts a container image to a bootc qcow2 disk
 
-The script builds images in two phases:
-1. **Base image**: Built first since other images depend on it
-2. **Remaining images**: Built in parallel to speed up the process
+## Image Hierarchy
 
-The number of parallel build jobs can be controlled with the `PARALLEL_JOBS`
-environment variable (default: 4).
-
-Example:
-```bash
-PARALLEL_JOBS=8 make e2e-agent-images
+```
+golden -> base -> v2, v3, v4, v5, v6, v7, v8, v9, v10
+sleep-app:v1, sleep-app:v2, sleep-app:v3 (standalone)
 ```
 
 The images are built using the `Containerfile-*` files in this directory, functionality
@@ -28,9 +23,10 @@ additional transition images are required we should create and document new Cont
 
 | Name   | Image                         | Bootc Containers                 |
 |------  |-------------------------------|----------------------------------|
-| base   | `bin/output/qcow2/disk.qcow2` | ${IP}:5000/flightctl-device:base |
-| v2     | N/A                           | $(IP):5000/flightctl-device:v2   |
-| v3     | N/A                           | $(IP):5000/flightctl-device:v3   |
+| golden | `bin/output/qcow2/disk.qcow2` | flightctl-device:golden          |
+| base   | N/A                           | flightctl-device:base            |
+| v2     | N/A                           | flightctl-device:v2              |
+| v3     | N/A                           | flightctl-device:v3              |
 
 ## Credentials
 
@@ -39,6 +35,11 @@ All images are built with the following credentials:
 - password: `user`
 
 ## Image descriptions
+
+### golden
+Minimal bootc base image with cloud-init, greenboot, and podman-compose installed.
+Used as the base for qcow2 generation.
+
 ### base
 This image is the base image for all other images. It contains the following services:
 - `flightctl-agent` - The agent service that connects to the flightctl service configured

@@ -1,0 +1,48 @@
+# localhost:5000/flightctl-device:golden
+#     ${IP}:5000/flightctl-device:golden
+#
+# Golden base bootc image used for E2E testing - minimal image without agent configuration
+# This is the cached base that other images build upon
+#
+# Features:
+# * User/pw: user/user
+# * cloud-init installed and enabled
+# * greenboot and podman-compose installed with podman service enabled
+# * Basic packages for e2e testing
+
+FROM quay.io/centos-bootc/centos-bootc:stream9
+
+RUN --mount=type=cache,target=/var/cache/dnf \
+    --mount=type=cache,target=/var/lib/dnf \
+    dnf install -y epel-release epel-next-release
+
+RUN --mount=type=cache,target=/var/cache/dnf \
+    --mount=type=cache,target=/var/lib/dnf \
+    dnf install -y python-dotenv
+
+RUN --mount=type=cache,target=/var/cache/dnf \
+    --mount=type=cache,target=/var/lib/dnf \
+    dnf install -y greenboot greenboot-default-health-checks podman-compose && \
+    dnf install -y firewalld cloud-init && \
+    dnf install -y jq policycoreutils policycoreutils-python-utils container-selinux && \
+    systemctl enable firewalld.service && \
+    systemctl enable podman.service && \
+    ln -s ../cloud-init.target /usr/lib/systemd/system/default.target.wants || true
+
+RUN useradd -ms /bin/bash user && \
+    echo "user:user" | chpasswd && \
+    echo "user ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+# Create flightctl custom info directory
+RUN mkdir -p /usr/lib/flightctl/custom-info.d && \
+    chmod 755 /usr/lib/flightctl/custom-info.d
+
+# Add custom system info
+RUN echo -e '#!/bin/bash\necho "my site"' > /usr/lib/flightctl/custom-info.d/siteName && \
+    echo -e '#!/bin/bash\necho ""' > /usr/lib/flightctl/custom-info.d/emptyValue && \
+    echo -e '#!/bin/bash\necho "no-show"' > /usr/lib/flightctl/custom-info.d/keyNotShown && \
+    chmod 755 /usr/lib/flightctl/custom-info.d/*
+
+# Pre-populate repo metadata cache so rpm-ostree install is faster at runtime
+RUN dnf makecache
+

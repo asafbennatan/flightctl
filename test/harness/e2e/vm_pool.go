@@ -139,18 +139,41 @@ func (p *VMPool) createVMForWorker(workerID int) (vm.TestVMInterface, error) {
 
 	fmt.Printf("✅ [VMPool] Worker %d: Overlay disk created successfully\n", workerID)
 
+	// Find cloud-init ISO path (relative to project root)
+	// Get project root from base disk path (go up 3 levels from bin/output/qcow2/disk.qcow2)
+	baseDiskDir := filepath.Dir(p.config.BaseDiskPath)                   // bin/output/qcow2
+	projectRoot := filepath.Dir(filepath.Dir(filepath.Dir(baseDiskDir))) // Go up from bin/output/qcow2 to project root
+	cloudInitISO := filepath.Join(projectRoot, "bin/output/cloud-init-seed.iso")
+	hasCloudInitISO := false
+	if _, err := os.Stat(cloudInitISO); err == nil {
+		hasCloudInitISO = true
+		fmt.Printf("🔄 [VMPool] Worker %d: Found cloud-init ISO at %s\n", workerID, cloudInitISO)
+	} else {
+		// Cloud-init ISO not found - this is OK for backward compatibility
+		fmt.Printf("ℹ️  [VMPool] Worker %d: Cloud-init ISO not found at %s, VM will boot without cloud-init (legacy mode)\n", workerID, cloudInitISO)
+	}
+
 	// Create VM using the worker-specific overlay disk
-	newVM, err := vm.NewVM(vm.TestVM{
+	vmParams := vm.TestVM{
 		TestDir:       workerDir,
 		VMName:        vmName,
 		DiskImagePath: workerDiskPath, // Use worker-specific overlay disk
 		VMUser:        "user",
 		SSHPassword:   "user",
 		SSHPort:       p.config.SSHPortBase + workerID,
-	})
+	}
+
+	// Set cloud-init ISO if available
+	if hasCloudInitISO {
+		vmParams.CloudInitISO = cloudInitISO
+		vmParams.CloudInitData = true
+	}
+
+	newVM, err := vm.NewVM(vmParams)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create VM: %w", err)
 	}
+
 	fmt.Printf("✅ [VMPool] Worker %d: VM struct created\n", workerID)
 
 	// Start the VM and wait for SSH to be ready

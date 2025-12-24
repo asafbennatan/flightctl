@@ -5,6 +5,7 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 source "${SCRIPT_DIR}"/../functions
 
 mkdir -p bin/agent/etc/flightctl/certs
+mkdir -p bin/rpm bin/brew-rpm
 
 echo Requesting enrollment enrollment certificate/key and config for agent =====
 

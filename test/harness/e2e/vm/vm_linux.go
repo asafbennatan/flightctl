@@ -339,6 +339,11 @@ func (v *VMInLibvirt) parseDomainTemplate() (domainXML string, err error) {
 		DiskSize:      strconv.Itoa(diskSize),
 	}
 
+	// Set hasCloudInit if CloudInitData is true or CloudInitISO/CloudInitDir is set
+	if v.TestVM.CloudInitData || v.TestVM.CloudInitISO != "" || v.TestVM.CloudInitDir != "" {
+		v.hasCloudInit = true
+	}
+
 	err = v.ParseCloudInit()
 	if err != nil {
 		return "", fmt.Errorf("unable to set cloud-init: %w", err)
@@ -546,6 +551,18 @@ func (v *VMInLibvirt) RunAndWaitForSSH() error {
 		fmt.Println("========================================")
 		return fmt.Errorf("waiting for SSH: %w", err)
 	}
+
+	// If cloud-init is enabled, wait for it to complete
+	if v.hasCloudInit {
+		err = v.WaitForCloudInit()
+		if err != nil {
+			fmt.Println("============ Console output ============")
+			fmt.Println(v.GetConsoleOutput())
+			fmt.Println("========================================")
+			return fmt.Errorf("waiting for cloud-init: %w", err)
+		}
+	}
+
 	return nil
 }
 

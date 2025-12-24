@@ -131,8 +131,14 @@ clean-quadlets-vm:
 	@sudo rm -f /var/lib/libvirt/images/quadlets-vm_src.qcow2 2>/dev/null || true
 	@echo "quadlets-vm cleanup completed"
 
-prepare-e2e-qcow-config: bin/output/qcow2/disk.qcow2
-	QCOW=bin/output/qcow2/disk.qcow2 AGENT_DIR=bin/agent/etc/flightctl test/scripts/inject_agent_files_into_qcow.sh
+# Cloud-init seed ISO (generated on-demand with agent config, certs, and RPMs)
+# Depends on agent config (which requires flightctl CLI and e2e-certs)
+bin/output/cloud-init-seed.iso: bin/flightctl bin/e2e-certs/ca.pem
+	@./test/scripts/agent-images/prepare_agent_config.sh
+	@test/scripts/prepare_cloud_init_seed.sh
+
+prepare-e2e-qcow-config: golden-qcow2-image bin/output/cloud-init-seed.iso
+	@echo "Golden qcow2 and cloud-init ISO are ready"
 
 prepare-e2e-test: RPM_MOCK_ROOT=centos-stream+epel-next-9-x86_64
 prepare-e2e-test: deploy-e2e-extras build-e2e-containers prepare-e2e-qcow-config
@@ -151,9 +157,7 @@ git-server-container: bin/e2e-certs/ca.pem
 		source test/scripts/functions && kind_load_image localhost/git-server:latest; \
 	fi
 
-# Build E2E agent images with proper caching
-e2e-agent-images: bin/.e2e-agent-images
-	@echo "E2E agent images already built and up to date"
+# e2e-agent-images target is defined in test/scripts/agent-images/agent-images.mk
 
 in-cluster-e2e-test: prepare-e2e-test
 	$(MAKE) _e2e_test

@@ -243,7 +243,16 @@ func (h *Harness) WaitForBootstrapAndUpdateToVersion(deviceId string, version st
 	err = h.UpdateDeviceWithRetries(deviceId, func(device *v1beta1.Device) {
 		currentImage := device.Status.Os.Image
 		logrus.Infof("current image for %s is %s", deviceId, currentImage)
-		repo, _ := h.parseImageReference(currentImage)
+
+		var repo string
+		if currentImage != "" {
+			repo, _ = h.parseImageReference(currentImage)
+		}
+		// If current image is empty (e.g., cloud-init based golden image), use registry endpoint
+		if repo == "" {
+			repo = fmt.Sprintf("%s/flightctl-device:", h.RegistryEndpoint())
+		}
+
 		newImageReference = repo + version
 		device.Spec.Os = &v1beta1.DeviceOsSpec{Image: newImageReference}
 		logrus.Infof("updating %s to image %s", deviceId, device.Spec.Os.Image)
