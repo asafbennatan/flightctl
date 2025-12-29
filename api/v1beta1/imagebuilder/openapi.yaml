@@ -192,6 +192,55 @@ paths:
             application/json:
               schema:
                 $ref: '../openapi.yaml#/components/schemas/Status'
+  /api/v1/imagebuilds/with-tasks:
+    post:
+      tags:
+        - imagebuild
+      description: Create an ImageBuild and optionally an ImageExport atomically in a single transaction.
+      operationId: createImageBuildWithTasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageBuildWithTasksRequest'
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageBuildWithTasksResponse'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Status'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Status'
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Status'
+        "429":
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Status'
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Status'
   /api/v1/imageexports:
     get:
       tags:
@@ -825,3 +874,25 @@ components:
         - ImageExportFormatPhasePushing
         - ImageExportFormatPhaseComplete
         - ImageExportFormatPhaseFailed
+    # Atomic Build-with-Tasks schemas
+    ImageBuildWithTasksRequest:
+      type: object
+      description: Request to create an ImageBuild and optionally an ImageExport atomically. If imageExport is provided, the server will override its source to reference the created ImageBuild.
+      properties:
+        imageBuild:
+          $ref: '#/components/schemas/ImageBuild'
+        imageExport:
+          $ref: '#/components/schemas/ImageExport'
+      required:
+        - imageBuild
+
+    ImageBuildWithTasksResponse:
+      type: object
+      description: Response containing the created ImageBuild and optionally ImageExport resources.
+      properties:
+        imageBuild:
+          $ref: '#/components/schemas/ImageBuild'
+        imageExport:
+          $ref: '#/components/schemas/ImageExport'
+      required:
+        - imageBuild

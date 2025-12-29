@@ -21,6 +21,9 @@ type ServerInterface interface {
 	// (POST /api/v1/imagebuilds)
 	CreateImageBuild(w http.ResponseWriter, r *http.Request)
 
+	// (POST /api/v1/imagebuilds/with-tasks)
+	CreateImageBuildWithTasks(w http.ResponseWriter, r *http.Request)
+
 	// (DELETE /api/v1/imagebuilds/{name})
 	DeleteImageBuild(w http.ResponseWriter, r *http.Request, name string)
 
@@ -51,6 +54,11 @@ func (_ Unimplemented) ListImageBuilds(w http.ResponseWriter, r *http.Request, p
 
 // (POST /api/v1/imagebuilds)
 func (_ Unimplemented) CreateImageBuild(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /api/v1/imagebuilds/with-tasks)
+func (_ Unimplemented) CreateImageBuildWithTasks(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -151,6 +159,21 @@ func (siw *ServerInterfaceWrapper) CreateImageBuild(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateImageBuild(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// CreateImageBuildWithTasks operation middleware
+func (siw *ServerInterfaceWrapper) CreateImageBuildWithTasks(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateImageBuildWithTasks(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -449,6 +472,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/imagebuilds", wrapper.CreateImageBuild)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/imagebuilds/with-tasks", wrapper.CreateImageBuildWithTasks)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/api/v1/imagebuilds/{name}", wrapper.DeleteImageBuild)

@@ -120,6 +120,7 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/net v0.46.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
+	gorm.io/driver/sqlite v1.5.5
 )
 
 require (
@@ -275,6 +276,7 @@ require (
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/mdlayher/socket v0.4.1 // indirect
 	github.com/mdlayher/vsock v1.2.1 // indirect
 	github.com/miekg/dns v1.1.66 // indirect
@@ -429,7 +431,6 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gorm.io/driver/sqlite v1.5.5 // indirect
 	k8s.io/apiserver v0.28.2 // indirect
 	k8s.io/cli-runtime v0.32.3 // indirect
 	k8s.io/kube-openapi v0.32.3 // indirect

@@ -13,11 +13,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
 
 // ImageExportService handles business logic for ImageExport resources
 type ImageExportService interface {
 	Create(ctx context.Context, orgId uuid.UUID, imageExport api.ImageExport) (*api.ImageExport, v1beta1.Status)
+	CreateWithTx(ctx context.Context, tx *gorm.DB, orgId uuid.UUID, imageExport api.ImageExport, skipSourceValidation bool) (*api.ImageExport, v1beta1.Status)
 	Get(ctx context.Context, orgId uuid.UUID, name string) (*api.ImageExport, v1beta1.Status)
 	List(ctx context.Context, orgId uuid.UUID, params api.ListImageExportsParams) (*api.ImageExportList, v1beta1.Status)
 	Delete(ctx context.Context, orgId uuid.UUID, name string) v1beta1.Status
@@ -45,16 +47,26 @@ func NewImageExportService(imageExportStore store.ImageExportStore, imageBuildSt
 }
 
 func (s *imageExportService) Create(ctx context.Context, orgId uuid.UUID, imageExport api.ImageExport) (*api.ImageExport, v1beta1.Status) {
+	return s.CreateWithTx(ctx, nil, orgId, imageExport, false)
+}
+
+func (s *imageExportService) CreateWithTx(ctx context.Context, tx *gorm.DB, orgId uuid.UUID, imageExport api.ImageExport, skipSourceValidation bool) (*api.ImageExport, v1beta1.Status) {
 	// Don't set fields that are managed by the service
 	imageExport.Status = nil
 	NilOutManagedObjectMetaProperties(&imageExport.Metadata)
 
 	// Validate input
-	if errs := s.validate(ctx, orgId, &imageExport); len(errs) > 0 {
+	if errs := s.validate(ctx, orgId, &imageExport, skipSourceValidation); len(errs) > 0 {
 		return nil, StatusBadRequest(errors.Join(errs...).Error())
 	}
 
-	result, err := s.imageExportStore.Create(ctx, orgId, &imageExport)
+	var result *api.ImageExport
+	var err error
+	if tx != nil {
+		result, err = s.imageExportStore.CreateWithTx(ctx, tx, orgId, &imageExport)
+	} else {
+		result, err = s.imageExportStore.Create(ctx, orgId, &imageExport)
+	}
 	return result, StoreErrorToApiStatus(err, true, api.ImageExportKind, imageExport.Metadata.Name)
 }
 
@@ -107,49 +119,52 @@ func (s *imageExportService) ListPendingRetry(ctx context.Context, orgId uuid.UU
 }
 
 // validate performs validation on an ImageExport resource
-func (s *imageExportService) validate(ctx context.Context, orgId uuid.UUID, imageExport *api.ImageExport) []error {
+// skipSourceValidation is used when the source is auto-set (e.g., in CreateWithTasks)
+func (s *imageExportService) validate(ctx context.Context, orgId uuid.UUID, imageExport *api.ImageExport, skipSourceValidation bool) []error {
 	var errs []error
 
 	if lo.FromPtr(imageExport.Metadata.Name) == "" {
 		errs = append(errs, errors.New("metadata.name is required"))
 	}
 
-	// Validate source - uses discriminator pattern
-	sourceType, err := imageExport.Spec.Source.Discriminator()
-	if err != nil {
-		errs = append(errs, errors.New("spec.source.type is required"))
-	} else {
-		switch sourceType {
-		case string(api.ImageExportSourceTypeImageBuild):
-			source, err := imageExport.Spec.Source.AsImageBuildRefSource()
-			if err != nil {
-				errs = append(errs, errors.New("invalid imageBuild source"))
-			} else if source.ImageBuildRef == "" {
-				errs = append(errs, errors.New("spec.source.imageBuildRef is required for imageBuild source type"))
-			} else {
-				// Check that the referenced ImageBuild exists
-				_, err = s.imageBuildStore.Get(ctx, orgId, source.ImageBuildRef)
+	// Validate source - uses discriminator pattern (skip if source is auto-set)
+	if !skipSourceValidation {
+		sourceType, err := imageExport.Spec.Source.Discriminator()
+		if err != nil {
+			errs = append(errs, errors.New("spec.source.type is required"))
+		} else {
+			switch sourceType {
+			case string(api.ImageExportSourceTypeImageBuild):
+				source, err := imageExport.Spec.Source.AsImageBuildRefSource()
 				if err != nil {
-					errs = append(errs, fmt.Errorf("spec.source.imageBuildRef: ImageBuild %q not found", source.ImageBuildRef))
+					errs = append(errs, errors.New("invalid imageBuild source"))
+				} else if source.ImageBuildRef == "" {
+					errs = append(errs, errors.New("spec.source.imageBuildRef is required for imageBuild source type"))
+				} else {
+					// Check that the referenced ImageBuild exists
+					_, err = s.imageBuildStore.Get(ctx, orgId, source.ImageBuildRef)
+					if err != nil {
+						errs = append(errs, fmt.Errorf("spec.source.imageBuildRef: ImageBuild %q not found", source.ImageBuildRef))
+					}
 				}
+			case string(api.ImageExportSourceTypeImageReference):
+				source, err := imageExport.Spec.Source.AsImageReferenceSource()
+				if err != nil {
+					errs = append(errs, errors.New("invalid imageReference source"))
+				} else {
+					if source.Repository == "" {
+						errs = append(errs, errors.New("spec.source.repository is required for imageReference source type"))
+					}
+					if source.ImageName == "" {
+						errs = append(errs, errors.New("spec.source.imageName is required for imageReference source type"))
+					}
+					if source.ImageTag == "" {
+						errs = append(errs, errors.New("spec.source.imageTag is required for imageReference source type"))
+					}
+				}
+			default:
+				errs = append(errs, errors.New("spec.source.type must be 'imageBuild' or 'imageReference'"))
 			}
-		case string(api.ImageExportSourceTypeImageReference):
-			source, err := imageExport.Spec.Source.AsImageReferenceSource()
-			if err != nil {
-				errs = append(errs, errors.New("invalid imageReference source"))
-			} else {
-				if source.Repository == "" {
-					errs = append(errs, errors.New("spec.source.repository is required for imageReference source type"))
-				}
-				if source.ImageName == "" {
-					errs = append(errs, errors.New("spec.source.imageName is required for imageReference source type"))
-				}
-				if source.ImageTag == "" {
-					errs = append(errs, errors.New("spec.source.imageTag is required for imageReference source type"))
-				}
-			}
-		default:
-			errs = append(errs, errors.New("spec.source.type must be 'imageBuild' or 'imageReference'"))
 		}
 	}
 

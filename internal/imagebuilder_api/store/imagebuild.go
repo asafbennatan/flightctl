@@ -18,6 +18,7 @@ import (
 // ImageBuildStore is the store interface for ImageBuild resources
 type ImageBuildStore interface {
 	Create(ctx context.Context, orgId uuid.UUID, imageBuild *api.ImageBuild) (*api.ImageBuild, error)
+	CreateWithTx(ctx context.Context, tx *gorm.DB, orgId uuid.UUID, imageBuild *api.ImageBuild) (*api.ImageBuild, error)
 	Get(ctx context.Context, orgId uuid.UUID, name string) (*api.ImageBuild, error)
 	List(ctx context.Context, orgId uuid.UUID, listParams flightctlstore.ListParams) (*api.ImageBuildList, error)
 	Delete(ctx context.Context, orgId uuid.UUID, name string) error
@@ -47,6 +48,11 @@ func (s *imageBuildStore) InitialMigration(ctx context.Context) error {
 
 // Create creates a new ImageBuild resource
 func (s *imageBuildStore) Create(ctx context.Context, orgId uuid.UUID, imageBuild *api.ImageBuild) (*api.ImageBuild, error) {
+	return s.CreateWithTx(ctx, s.db, orgId, imageBuild)
+}
+
+// CreateWithTx creates a new ImageBuild resource within a transaction
+func (s *imageBuildStore) CreateWithTx(ctx context.Context, tx *gorm.DB, orgId uuid.UUID, imageBuild *api.ImageBuild) (*api.ImageBuild, error) {
 	if imageBuild == nil || imageBuild.Metadata.Name == nil {
 		return nil, flterrors.ErrResourceNameIsNil
 	}
@@ -57,7 +63,7 @@ func (s *imageBuildStore) Create(ctx context.Context, orgId uuid.UUID, imageBuil
 	}
 	m.OrgID = orgId
 
-	result := s.db.WithContext(ctx).Create(m)
+	result := tx.WithContext(ctx).Create(m)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
 			return nil, flterrors.ErrDuplicateName

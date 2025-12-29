@@ -8,9 +8,11 @@ import (
 
 	api "github.com/flightctl/flightctl/api/v1beta1/imagebuilder"
 	"github.com/flightctl/flightctl/internal/flterrors"
+	"github.com/flightctl/flightctl/internal/imagebuilder_api/store"
 	flightctlstore "github.com/flightctl/flightctl/internal/store"
 	"github.com/google/uuid"
 	"github.com/samber/lo"
+	"gorm.io/gorm"
 )
 
 // DummyImageBuildStore is a mock implementation of store.ImageBuildStore
@@ -25,6 +27,10 @@ func NewDummyImageBuildStore() *DummyImageBuildStore {
 }
 
 func (s *DummyImageBuildStore) Create(ctx context.Context, orgId uuid.UUID, imageBuild *api.ImageBuild) (*api.ImageBuild, error) {
+	return s.CreateWithTx(ctx, nil, orgId, imageBuild)
+}
+
+func (s *DummyImageBuildStore) CreateWithTx(ctx context.Context, tx *gorm.DB, orgId uuid.UUID, imageBuild *api.ImageBuild) (*api.ImageBuild, error) {
 	// Check for duplicate
 	for _, ib := range *s.imageBuilds {
 		if lo.FromPtr(ib.Metadata.Name) == lo.FromPtr(imageBuild.Metadata.Name) {
@@ -120,6 +126,10 @@ func NewDummyImageExportStore() *DummyImageExportStore {
 }
 
 func (s *DummyImageExportStore) Create(ctx context.Context, orgId uuid.UUID, imageExport *api.ImageExport) (*api.ImageExport, error) {
+	return s.CreateWithTx(ctx, nil, orgId, imageExport)
+}
+
+func (s *DummyImageExportStore) CreateWithTx(ctx context.Context, tx *gorm.DB, orgId uuid.UUID, imageExport *api.ImageExport) (*api.ImageExport, error) {
 	// Check for duplicate
 	for _, ie := range *s.imageExports {
 		if lo.FromPtr(ie.Metadata.Name) == lo.FromPtr(imageExport.Metadata.Name) {
@@ -243,4 +253,61 @@ func deepCopy(src, dst interface{}) {
 	if err = json.Unmarshal(data, dst); err != nil {
 		panic(fmt.Sprintf("deepCopy failed in test: %v", err))
 	}
+}
+
+// DummyStore is a mock implementation of store.Store for unit testing
+type DummyStore struct {
+	imageBuildStore  *DummyImageBuildStore
+	imageExportStore *DummyImageExportStore
+	db               *gorm.DB
+}
+
+func NewDummyStore() *DummyStore {
+	return &DummyStore{
+		imageBuildStore:  NewDummyImageBuildStore(),
+		imageExportStore: NewDummyImageExportStore(),
+	}
+}
+
+func (s *DummyStore) ImageBuild() store.ImageBuildStore {
+	return s.imageBuildStore
+}
+
+func (s *DummyStore) ImageExport() store.ImageExportStore {
+	return s.imageExportStore
+}
+
+func (s *DummyStore) RunMigrations(ctx context.Context) error {
+	return nil
+}
+
+func (s *DummyStore) Ping() error {
+	return nil
+}
+
+func (s *DummyStore) Close() error {
+	return nil
+}
+
+// DB returns a dummy gorm.DB that will execute transaction callbacks immediately
+// For unit tests, we use a fake transaction that just executes the callback
+func (s *DummyStore) DB() *gorm.DB {
+	return s.db
+}
+
+// SetDB allows setting a real gorm.DB for integration tests
+func (s *DummyStore) SetDB(db *gorm.DB) {
+	s.db = db
+}
+
+// DummyDB is a helper for unit tests that simulates transactions
+// by just executing the callback immediately without actual DB
+type DummyDB struct{}
+
+func (d *DummyDB) WithContext(ctx context.Context) *gorm.DB {
+	return nil
+}
+
+func (d *DummyDB) Transaction(fc func(tx *gorm.DB) error) error {
+	return fc(nil)
 }

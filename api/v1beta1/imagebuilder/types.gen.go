@@ -216,6 +216,24 @@ type ImageBuildStatus struct {
 	StartedAt *time.Time `json:"startedAt,omitempty"`
 }
 
+// ImageBuildWithTasksRequest Request to create an ImageBuild and optionally an ImageExport atomically. If imageExport is provided, the server will override its source to reference the created ImageBuild.
+type ImageBuildWithTasksRequest struct {
+	// ImageBuild ImageBuild represents a build request for a container image.
+	ImageBuild ImageBuild `json:"imageBuild"`
+
+	// ImageExport ImageExport represents an export request to convert and push images to different formats.
+	ImageExport *ImageExport `json:"imageExport,omitempty"`
+}
+
+// ImageBuildWithTasksResponse Response containing the created ImageBuild and optionally ImageExport resources.
+type ImageBuildWithTasksResponse struct {
+	// ImageBuild ImageBuild represents a build request for a container image.
+	ImageBuild ImageBuild `json:"imageBuild"`
+
+	// ImageExport ImageExport represents an export request to convert and push images to different formats.
+	ImageExport *ImageExport `json:"imageExport,omitempty"`
+}
+
 // ImageExport ImageExport represents an export request to convert and push images to different formats.
 type ImageExport struct {
 	// ApiVersion APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources.
@@ -403,6 +421,9 @@ type ListImageExportsParams struct {
 
 // CreateImageBuildJSONRequestBody defines body for CreateImageBuild for application/json ContentType.
 type CreateImageBuildJSONRequestBody = ImageBuild
+
+// CreateImageBuildWithTasksJSONRequestBody defines body for CreateImageBuildWithTasks for application/json ContentType.
+type CreateImageBuildWithTasksJSONRequestBody = ImageBuildWithTasksRequest
 
 // CreateImageExportJSONRequestBody defines body for CreateImageExport for application/json ContentType.
 type CreateImageExportJSONRequestBody = ImageExport

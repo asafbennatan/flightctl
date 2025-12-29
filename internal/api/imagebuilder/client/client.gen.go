@@ -99,6 +99,11 @@ type ClientInterface interface {
 
 	CreateImageBuild(ctx context.Context, body CreateImageBuildJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// CreateImageBuildWithTasksWithBody request with any body
+	CreateImageBuildWithTasksWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateImageBuildWithTasks(ctx context.Context, body CreateImageBuildWithTasksJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DeleteImageBuild request
 	DeleteImageBuild(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -146,6 +151,30 @@ func (c *Client) CreateImageBuildWithBody(ctx context.Context, contentType strin
 
 func (c *Client) CreateImageBuild(ctx context.Context, body CreateImageBuildJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateImageBuildRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateImageBuildWithTasksWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateImageBuildWithTasksRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateImageBuildWithTasks(ctx context.Context, body CreateImageBuildWithTasksJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateImageBuildWithTasksRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -358,6 +387,46 @@ func NewCreateImageBuildRequestWithBody(server string, contentType string, body 
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/imagebuilds")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCreateImageBuildWithTasksRequest calls the generic CreateImageBuildWithTasks builder with application/json body
+func NewCreateImageBuildWithTasksRequest(server string, body CreateImageBuildWithTasksJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateImageBuildWithTasksRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateImageBuildWithTasksRequestWithBody generates requests for CreateImageBuildWithTasks with any type of body
+func NewCreateImageBuildWithTasksRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/imagebuilds/with-tasks")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -701,6 +770,11 @@ type ClientWithResponsesInterface interface {
 
 	CreateImageBuildWithResponse(ctx context.Context, body CreateImageBuildJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateImageBuildResponse, error)
 
+	// CreateImageBuildWithTasksWithBodyWithResponse request with any body
+	CreateImageBuildWithTasksWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateImageBuildWithTasksResponse, error)
+
+	CreateImageBuildWithTasksWithResponse(ctx context.Context, body CreateImageBuildWithTasksJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateImageBuildWithTasksResponse, error)
+
 	// DeleteImageBuildWithResponse request
 	DeleteImageBuildWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteImageBuildResponse, error)
 
@@ -767,6 +841,33 @@ func (r CreateImageBuildResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r CreateImageBuildResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateImageBuildWithTasksResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *ImageBuildWithTasksResponse
+	JSON400      *externalRef0.Status
+	JSON401      *externalRef0.Status
+	JSON409      *externalRef0.Status
+	JSON429      *externalRef0.Status
+	JSON500      *externalRef0.Status
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateImageBuildWithTasksResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateImageBuildWithTasksResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -950,6 +1051,23 @@ func (c *ClientWithResponses) CreateImageBuildWithResponse(ctx context.Context, 
 	return ParseCreateImageBuildResponse(rsp)
 }
 
+// CreateImageBuildWithTasksWithBodyWithResponse request with arbitrary body returning *CreateImageBuildWithTasksResponse
+func (c *ClientWithResponses) CreateImageBuildWithTasksWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateImageBuildWithTasksResponse, error) {
+	rsp, err := c.CreateImageBuildWithTasksWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateImageBuildWithTasksResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateImageBuildWithTasksWithResponse(ctx context.Context, body CreateImageBuildWithTasksJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateImageBuildWithTasksResponse, error) {
+	rsp, err := c.CreateImageBuildWithTasks(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateImageBuildWithTasksResponse(rsp)
+}
+
 // DeleteImageBuildWithResponse request returning *DeleteImageBuildResponse
 func (c *ClientWithResponses) DeleteImageBuildWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteImageBuildResponse, error) {
 	rsp, err := c.DeleteImageBuild(ctx, name, reqEditors...)
@@ -1107,6 +1225,67 @@ func ParseCreateImageBuildResponse(rsp *http.Response) (*CreateImageBuildRespons
 			return nil, err
 		}
 		response.JSON429 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateImageBuildWithTasksResponse parses an HTTP response from a CreateImageBuildWithTasksWithResponse call
+func ParseCreateImageBuildWithTasksResponse(rsp *http.Response) (*CreateImageBuildWithTasksResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateImageBuildWithTasksResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ImageBuildWithTasksResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest externalRef0.Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest externalRef0.Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest externalRef0.Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest externalRef0.Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest externalRef0.Status
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	}
 

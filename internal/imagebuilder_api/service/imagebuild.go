@@ -12,11 +12,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
 
 // ImageBuildService handles business logic for ImageBuild resources
 type ImageBuildService interface {
 	Create(ctx context.Context, orgId uuid.UUID, imageBuild api.ImageBuild) (*api.ImageBuild, v1beta1.Status)
+	CreateWithTx(ctx context.Context, tx *gorm.DB, orgId uuid.UUID, imageBuild api.ImageBuild) (*api.ImageBuild, v1beta1.Status)
 	Get(ctx context.Context, orgId uuid.UUID, name string) (*api.ImageBuild, v1beta1.Status)
 	List(ctx context.Context, orgId uuid.UUID, params api.ListImageBuildsParams) (*api.ImageBuildList, v1beta1.Status)
 	Delete(ctx context.Context, orgId uuid.UUID, name string) v1beta1.Status
@@ -40,6 +42,10 @@ func NewImageBuildService(s store.ImageBuildStore, log logrus.FieldLogger) Image
 }
 
 func (s *imageBuildService) Create(ctx context.Context, orgId uuid.UUID, imageBuild api.ImageBuild) (*api.ImageBuild, v1beta1.Status) {
+	return s.CreateWithTx(ctx, nil, orgId, imageBuild)
+}
+
+func (s *imageBuildService) CreateWithTx(ctx context.Context, tx *gorm.DB, orgId uuid.UUID, imageBuild api.ImageBuild) (*api.ImageBuild, v1beta1.Status) {
 	// Don't set fields that are managed by the service
 	imageBuild.Status = nil
 	NilOutManagedObjectMetaProperties(&imageBuild.Metadata)
@@ -49,7 +55,13 @@ func (s *imageBuildService) Create(ctx context.Context, orgId uuid.UUID, imageBu
 		return nil, StatusBadRequest(errors.Join(errs...).Error())
 	}
 
-	result, err := s.store.Create(ctx, orgId, &imageBuild)
+	var result *api.ImageBuild
+	var err error
+	if tx != nil {
+		result, err = s.store.CreateWithTx(ctx, tx, orgId, &imageBuild)
+	} else {
+		result, err = s.store.Create(ctx, orgId, &imageBuild)
+	}
 	return result, StoreErrorToApiStatus(err, true, ImageBuildKind, imageBuild.Metadata.Name)
 }
 

@@ -14,6 +14,8 @@ type Store interface {
 	RunMigrations(ctx context.Context) error
 	Ping() error
 	Close() error
+	// DB returns the underlying database connection for transaction management
+	DB() *gorm.DB
 }
 
 // storeImpl is the concrete implementation of the imagebuilder Store interface
@@ -68,4 +70,9 @@ func (s *storeImpl) Close() error {
 		return err
 	}
 	return sqlDB.Close()
+}
+
+// DB returns the underlying database connection for transaction management
+func (s *storeImpl) DB() *gorm.DB {
+	return s.db
 }

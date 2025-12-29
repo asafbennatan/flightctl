@@ -281,6 +281,12 @@ func applyResourceByKind(ctx context.Context, client *apiclient.ClientWithRespon
 		}
 		response, err := ibClient.CreateImageExportWithBodyWithResponse(ctx, "application/json", bytes.NewReader(buf))
 		return extractApplyResult(response, err)
+	case ImageExportKind:
+		if ibClient == nil {
+			return applyResult{err: fmt.Errorf("imagebuilder service is not configured. Please configure 'imageBuilderService.server' in your client config")}
+		}
+		response, err := ibClient.ReplaceImageExportWithBodyWithResponse(ctx, resourceName, "application/json", bytes.NewReader(buf))
+		return extractApplyResult(response, err)
 	default:
 		return applyResult{err: fmt.Errorf("skipping resource of unknown kind %q", kind)}
 	}
@@ -314,6 +320,8 @@ func extractApplyResult(response interface{}, err error) applyResult {
 	case *imagebuilderclient.CreateImageBuildResponse:
 		return applyResult{httpResponse: r.HTTPResponse, message: string(r.Body)}
 	case *imagebuilderclient.CreateImageExportResponse:
+		return applyResult{httpResponse: r.HTTPResponse, message: string(r.Body)}
+	case *imagebuilderclient.ReplaceImageExportResponse:
 		return applyResult{httpResponse: r.HTTPResponse, message: string(r.Body)}
 	default:
 		return applyResult{}

@@ -18,6 +18,7 @@ import (
 // ImageExportStore is the store interface for ImageExport resources
 type ImageExportStore interface {
 	Create(ctx context.Context, orgId uuid.UUID, imageExport *api.ImageExport) (*api.ImageExport, error)
+	CreateWithTx(ctx context.Context, tx *gorm.DB, orgId uuid.UUID, imageExport *api.ImageExport) (*api.ImageExport, error)
 	Get(ctx context.Context, orgId uuid.UUID, name string) (*api.ImageExport, error)
 	List(ctx context.Context, orgId uuid.UUID, listParams flightctlstore.ListParams) (*api.ImageExportList, error)
 	Delete(ctx context.Context, orgId uuid.UUID, name string) error
@@ -49,6 +50,11 @@ func (s *imageExportStore) InitialMigration(ctx context.Context) error {
 
 // Create creates a new ImageExport resource
 func (s *imageExportStore) Create(ctx context.Context, orgId uuid.UUID, imageExport *api.ImageExport) (*api.ImageExport, error) {
+	return s.CreateWithTx(ctx, s.db, orgId, imageExport)
+}
+
+// CreateWithTx creates a new ImageExport resource within a transaction
+func (s *imageExportStore) CreateWithTx(ctx context.Context, tx *gorm.DB, orgId uuid.UUID, imageExport *api.ImageExport) (*api.ImageExport, error) {
 	if imageExport == nil || imageExport.Metadata.Name == nil {
 		return nil, flterrors.ErrResourceNameIsNil
 	}
@@ -59,7 +65,7 @@ func (s *imageExportStore) Create(ctx context.Context, orgId uuid.UUID, imageExp
 	}
 	m.OrgID = orgId
 
-	result := s.db.WithContext(ctx).Create(m)
+	result := tx.WithContext(ctx).Create(m)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
 			return nil, flterrors.ErrDuplicateName
