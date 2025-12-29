@@ -8,9 +8,9 @@ metadata:
   namespace: {{ default .Release.Namespace .Values.global.internalNamespace }}
 spec:
   ports:
-    - name: http
-      port: 8080
+    - name: https
+      port: 8443
       protocol: TCP
-      targetPort: 8080
+      targetPort: 8443
   selector:
     flightctl.service: flightctl-imagebuilder-api

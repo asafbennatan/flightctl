@@ -280,6 +280,3 @@ type CreateImageBuildJSONRequestBody = ImageBuild
 
 // ReplaceImageBuildJSONRequestBody defines body for ReplaceImageBuild for application/json ContentType.
 type ReplaceImageBuildJSONRequestBody = ImageBuild
-
-// ReplaceImageBuildStatusJSONRequestBody defines body for ReplaceImageBuildStatus for application/json ContentType.
-type ReplaceImageBuildStatusJSONRequestBody = ImageBuild

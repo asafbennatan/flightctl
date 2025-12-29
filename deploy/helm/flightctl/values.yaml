@@ -260,18 +260,6 @@ worker:
   # -- Allow flightctl-worker to access secrets at the cluster level for embedding in device configs
   clusterLevelSecretAccess: false
 
-# -- ImageBuilder API Configuration
-imageBuilderApi:
-  # -- Enable ImageBuilder API deployment
-  enabled: true
-  image:
-    # -- ImageBuilder API container image
-    image: quay.io/flightctl/flightctl-imagebuilder-api
-    # -- ImageBuilder API image tag
-    tag: ""
-    # -- Image pull policy for ImageBuilder API container
-    pullPolicy: ""
-
 # -- Periodic Configuration
 periodic:
   image:
@@ -307,7 +295,19 @@ alertmanagerProxy:
     tag: ""
     # -- Image pull policy for Alertmanager proxy container
     pullPolicy: ""
-  
+
+# -- ImageBuilder API Configuration
+imageBuilderApi:
+  # -- Enable imagebuilder API service
+  enabled: true
+  image:
+    # -- ImageBuilder API container image
+    image: quay.io/flightctl/flightctl-imagebuilder-api
+    # -- ImageBuilder API image tag
+    tag: ""
+    # -- Image pull policy for ImageBuilder API container
+    pullPolicy: ""
+
 telemetryGateway:
   image:
     # -- Telemetry gateway container image

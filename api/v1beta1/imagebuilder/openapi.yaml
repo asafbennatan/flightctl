@@ -243,56 +243,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Status'
-  /api/v1/imagebuilds/{name}/status:
-    put:
-      tags:
-        - imagebuild
-      description: Update the status of an ImageBuild resource.
-      operationId: replaceImageBuildStatus
-      parameters:
-        - name: name
-          in: path
-          description: The name of the ImageBuild resource.
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ImageBuild'
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ImageBuild'
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Status'
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Status'
-        "404":
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Status'
-        "429":
-          description: Too Many Requests
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Status'
 components:
   schemas:
     ImageBuild:

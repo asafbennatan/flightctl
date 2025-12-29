@@ -13,6 +13,12 @@ import (
 	"gorm.io/gorm"
 )
 
+// runImageBuildMigrations runs migrations for the ImageBuild store
+func runImageBuildMigrations(ctx context.Context, db *gorm.DB, log logrus.FieldLogger) error {
+	imageBuildStore := store.NewImageBuild(db, log.WithField("pkg", "imagebuild-migration"))
+	return imageBuildStore.InitialMigration(ctx)
+}
+
 // errDryRunComplete signals that migrations validated successfully in dry-run mode.
 var errDryRunComplete = errors.New("dry-run complete")
 
@@ -79,6 +85,15 @@ func main() {
 		})).RunMigrations(ctx); err != nil {
 			return err // rollback
 		}
+
+		// Run ImageBuild migrations (separate store for imagebuilder-api)
+		if err = runImageBuildMigrations(ctx, tx, log.WithFields(logrus.Fields{
+			"pkg":     "imagebuild-migration-tx",
+			"dry_run": *dryRun,
+		})); err != nil {
+			return err // rollback
+		}
+
 		if *dryRun {
 			return errDryRunComplete // rollback but indicate success
 		}
