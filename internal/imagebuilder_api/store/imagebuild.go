@@ -46,6 +46,7 @@ func (s *imageBuildStore) InitialMigration(ctx context.Context) error {
 }
 
 // Create creates a new ImageBuild resource
+// If a transaction exists in the context (via WithTx), it will be used automatically
 func (s *imageBuildStore) Create(ctx context.Context, orgId uuid.UUID, imageBuild *api.ImageBuild) (*api.ImageBuild, error) {
 	if imageBuild == nil || imageBuild.Metadata.Name == nil {
 		return nil, flterrors.ErrResourceNameIsNil
@@ -57,7 +58,8 @@ func (s *imageBuildStore) Create(ctx context.Context, orgId uuid.UUID, imageBuil
 	}
 	m.OrgID = orgId
 
-	result := s.db.WithContext(ctx).Create(m)
+	db := getDB(ctx, s.db)
+	result := db.WithContext(ctx).Create(m)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
 			return nil, flterrors.ErrDuplicateName
