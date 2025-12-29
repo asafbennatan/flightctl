@@ -1,0 +1,608 @@
+openapi: 3.0.1
+info:
+  title: Flight Control Image Builder API
+  version: v1beta1
+  description: |
+    Image Builder service for Flight Control.
+    This service manages image build resources for building and pushing container images.
+  contact:
+    name: The Flight Control Team
+    url: https://flightctl.io
+    email: team@flightctl.io
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+servers:
+  - url: /
+tags:
+  - name: imagebuild
+    description: Operations on ImageBuild resources.
+paths:
+  /api/v1/imagebuilds:
+    get:
+      tags:
+        - imagebuild
+      description: List ImageBuild resources.
+      operationId: listImageBuilds
+      parameters:
+        - name: labelSelector
+          in: query
+          description: A selector to restrict the list of returned objects by their labels.
+          schema:
+            type: string
+        - name: fieldSelector
+          in: query
+          description: A selector to restrict the list of returned objects by their fields.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: The maximum number of results returned in the list response.
+          schema:
+            type: integer
+            format: int32
+        - name: continue
+          in: query
+          description: An optional parameter to query more results from the server.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageBuildList'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "429":
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+    post:
+      tags:
+        - imagebuild
+      description: Create an ImageBuild resource.
+      operationId: createImageBuild
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageBuild'
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageBuild'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "429":
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+  /api/v1/imagebuilds/{name}:
+    get:
+      tags:
+        - imagebuild
+      description: Get an ImageBuild resource.
+      operationId: readImageBuild
+      parameters:
+        - name: name
+          in: path
+          description: The name of the ImageBuild resource.
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageBuild'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "429":
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+    put:
+      tags:
+        - imagebuild
+      description: Update an ImageBuild resource.
+      operationId: replaceImageBuild
+      parameters:
+        - name: name
+          in: path
+          description: The name of the ImageBuild resource.
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageBuild'
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageBuild'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "429":
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+    delete:
+      tags:
+        - imagebuild
+      description: Delete an ImageBuild resource.
+      operationId: deleteImageBuild
+      parameters:
+        - name: name
+          in: path
+          description: The name of the ImageBuild resource.
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageBuild'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "429":
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+  /api/v1/imagebuilds/{name}/status:
+    put:
+      tags:
+        - imagebuild
+      description: Update the status of an ImageBuild resource.
+      operationId: replaceImageBuildStatus
+      parameters:
+        - name: name
+          in: path
+          description: The name of the ImageBuild resource.
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageBuild'
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageBuild'
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "429":
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+components:
+  schemas:
+    ImageBuild:
+      type: object
+      description: ImageBuild represents a build request for a container image.
+      properties:
+        apiVersion:
+          type: string
+          description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources.'
+        kind:
+          type: string
+          description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds.'
+        metadata:
+          $ref: '#/components/schemas/ObjectMeta'
+        spec:
+          $ref: '#/components/schemas/ImageBuildSpec'
+        status:
+          $ref: '#/components/schemas/ImageBuildStatus'
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+
+    ImageBuildList:
+      type: object
+      description: ImageBuildList is a list of ImageBuild resources.
+      properties:
+        apiVersion:
+          type: string
+          description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources.'
+        kind:
+          type: string
+          description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds.'
+        metadata:
+          $ref: '#/components/schemas/ListMeta'
+        items:
+          type: array
+          description: 'List of ImageBuild resources.'
+          items:
+            $ref: '#/components/schemas/ImageBuild'
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - items
+
+    ImageBuildSpec:
+      type: object
+      description: ImageBuildSpec describes the specification for an image build.
+      properties:
+        input:
+          $ref: '#/components/schemas/ImageBuildInput'
+        output:
+          $ref: '#/components/schemas/ImageBuildOutput'
+        binding:
+          $ref: '#/components/schemas/ImageBuildBinding'
+      required:
+        - input
+        - output
+
+    ImageBuildInput:
+      type: object
+      description: ImageBuildInput specifies the source image for the build.
+      properties:
+        registryName:
+          type: string
+          description: The name of the registry resource containing the source image.
+        imageName:
+          type: string
+          description: The name of the source image.
+        imageTag:
+          type: string
+          description: The tag of the source image.
+      required:
+        - registryName
+        - imageName
+        - imageTag
+
+    ImageBuildOutput:
+      type: object
+      description: ImageBuildOutput specifies the destination for the built image.
+      properties:
+        registryName:
+          type: string
+          description: The name of the registry resource to push the built image to.
+        imageName:
+          type: string
+          description: The name of the output image.
+        tag:
+          type: string
+          description: The tag of the output image.
+      required:
+        - registryName
+        - imageName
+        - tag
+
+    ImageBuildBinding:
+      type: object
+      description: ImageBuildBinding specifies binding configuration for the build.
+      properties:
+        type:
+          $ref: '#/components/schemas/BindingType'
+        cert:
+          type: string
+          description: Certificate used for binding.
+        ttl:
+          type: string
+          description: 'Time-to-live for the binding. Format: positive integer followed by s/m/h.'
+          pattern: '^[1-9]\d*[smh]$'
+
+    BindingType:
+      type: string
+      description: The type of binding for the image build.
+      enum:
+        - early
+        - late
+      x-enum-varnames:
+        - BindingTypeEarly
+        - BindingTypeLate
+
+    ImageBuildStatus:
+      type: object
+      description: ImageBuildStatus represents the current status of an ImageBuild.
+      properties:
+        phase:
+          $ref: '#/components/schemas/ImageBuildPhase'
+        registryName:
+          type: string
+          description: The registry name where the built image is stored.
+        imageName:
+          type: string
+          description: The name of the built image.
+        imageTag:
+          type: string
+          description: The tag of the built image.
+        architecture:
+          type: string
+          description: The architecture of the built image.
+        manifestDigest:
+          type: string
+          description: The digest of the built image manifest.
+        conditions:
+          type: array
+          description: Current conditions of the ImageBuild.
+          items:
+            $ref: '#/components/schemas/Condition'
+        startedAt:
+          type: string
+          format: date-time
+          description: The time the build started.
+        completedAt:
+          type: string
+          format: date-time
+          description: The time the build completed.
+        lastSeen:
+          type: string
+          format: date-time
+          description: The last time the build was seen (heartbeat).
+        error:
+          type: string
+          description: Error message if the build failed.
+
+    ImageBuildPhase:
+      type: string
+      description: The phase of the image build process.
+      enum:
+        - queued
+        - building
+        - pushing
+        - complete
+        - failed
+      x-enum-varnames:
+        - ImageBuildPhaseQueued
+        - ImageBuildPhaseBuilding
+        - ImageBuildPhasePushing
+        - ImageBuildPhaseComplete
+        - ImageBuildPhaseFailed
+
+    # Shared schemas (simplified versions - in production these would reference the main API)
+    ObjectMeta:
+      type: object
+      properties:
+        creationTimestamp:
+          type: string
+          description: The time the object was created.
+          format: date-time
+        deletionTimestamp:
+          type: string
+          description: The time the object will be deleted.
+          format: date-time
+        name:
+          type: string
+          description: The name of the object.
+        labels:
+          type: object
+          description: Map of string keys and values that can be used to organize and categorize (scope and select) objects.
+          additionalProperties:
+            type: string
+        generation:
+          type: integer
+          description: A sequence number representing a specific generation of the desired state. Populated by the system. Read-only.
+          format: int64
+        owner:
+          type: string
+          description: A resource that owns this resource, in "kind/name" format.
+        annotations:
+          type: object
+          additionalProperties:
+            type: string
+          description: Properties set by the service.
+        resourceVersion:
+          type: string
+          description: An opaque string that identifies the server's internal version of an object.
+      description: ObjectMeta is metadata that all persisted resources must have, which includes all objects users must create.
+
+    ListMeta:
+      type: object
+      properties:
+        continue:
+          type: string
+          description: An opaque token used to issue another List request and retrieve the next set of results.
+        remainingItemCount:
+          type: integer
+          format: int64
+          description: The number of remaining items in the list.
+      description: ListMeta is metadata about a list response.
+
+    Condition:
+      type: object
+      properties:
+        type:
+          type: string
+          description: Type of condition.
+        status:
+          type: string
+          description: Status of the condition.
+          enum:
+            - "True"
+            - "False"
+            - Unknown
+        reason:
+          type: string
+          description: A brief reason for the condition.
+        message:
+          type: string
+          description: A human-readable message for the condition.
+        lastTransitionTime:
+          type: string
+          format: date-time
+          description: The last time the condition transitioned.
+      required:
+        - type
+        - status
+      description: Condition represents a status condition of a resource.
+
+    Status:
+      type: object
+      properties:
+        kind:
+          type: string
+          description: Kind is a string value representing the REST resource.
+        apiVersion:
+          type: string
+          description: APIVersion defines the versioned schema.
+        metadata:
+          $ref: '#/components/schemas/ListMeta'
+        status:
+          type: string
+          description: Status of the operation.
+        message:
+          type: string
+          description: A human-readable description of the status.
+        reason:
+          type: string
+          description: A machine-readable reason for the status.
+        details:
+          $ref: '#/components/schemas/StatusDetails'
+        code:
+          type: integer
+          format: int32
+          description: HTTP status code for the operation.
+      description: Status is a return value for calls that don't return other objects.
+
+    StatusDetails:
+      type: object
+      properties:
+        name:
+          type: string
+          description: The name of the resource associated with the status.
+        kind:
+          type: string
+          description: The kind of resource associated with the status.
+        causes:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatusCause'
+          description: The causes of the status.
+      description: StatusDetails provides additional details about a status.
+
+    StatusCause:
+      type: object
+      properties:
+        type:
+          type: string
+          description: The type of cause.
+        message:
+          type: string
+          description: A human-readable message for the cause.
+        field:
+          type: string
+          description: The field that caused the status.
+      description: StatusCause represents a cause of a status.
