@@ -21,18 +21,19 @@ const (
 )
 
 type Config struct {
-	Database         *dbConfig               `json:"database,omitempty"`
-	Service          *svcConfig              `json:"service,omitempty"`
-	KV               *kvConfig               `json:"kv,omitempty"`
-	Alertmanager     *alertmanagerConfig     `json:"alertmanager,omitempty"`
-	Auth             *authConfig             `json:"auth,omitempty"`
-	Metrics          *metricsConfig          `json:"metrics,omitempty"`
-	CA               *ca.Config              `json:"ca,omitempty"`
-	Tracing          *tracingConfig          `json:"tracing,omitempty"`
-	GitOps           *gitOpsConfig           `json:"gitOps,omitempty"`
-	Periodic         *periodicConfig         `json:"periodic,omitempty"`
-	Organizations    *organizationsConfig    `json:"organizations,omitempty"`
-	TelemetryGateway *telemetryGatewayConfig `json:"telemetrygateway,omitempty"`
+	Database            *dbConfig                  `json:"database,omitempty"`
+	Service             *svcConfig                 `json:"service,omitempty"`
+	ImageBuilderService *imageBuilderServiceConfig `json:"imageBuilderService,omitempty"`
+	KV                  *kvConfig                  `json:"kv,omitempty"`
+	Alertmanager        *alertmanagerConfig        `json:"alertmanager,omitempty"`
+	Auth                *authConfig                `json:"auth,omitempty"`
+	Metrics             *metricsConfig             `json:"metrics,omitempty"`
+	CA                  *ca.Config                 `json:"ca,omitempty"`
+	Tracing             *tracingConfig             `json:"tracing,omitempty"`
+	GitOps              *gitOpsConfig              `json:"gitOps,omitempty"`
+	Periodic            *periodicConfig            `json:"periodic,omitempty"`
+	Organizations       *organizationsConfig       `json:"organizations,omitempty"`
+	TelemetryGateway    *telemetryGatewayConfig    `json:"telemetrygateway,omitempty"`
 }
 
 type RateLimitConfig struct {
@@ -97,6 +98,17 @@ type healthChecks struct {
 	ReadinessPath    string        `json:"readinessPath,omitempty"`
 	LivenessPath     string        `json:"livenessPath,omitempty"`
 	ReadinessTimeout util.Duration `json:"readinessTimeout,omitempty"`
+}
+
+type imageBuilderServiceConfig struct {
+	Address               string           `json:"address,omitempty"`
+	LogLevel              string           `json:"logLevel,omitempty"`
+	HttpReadTimeout       util.Duration    `json:"httpReadTimeout,omitempty"`
+	HttpReadHeaderTimeout util.Duration    `json:"httpReadHeaderTimeout,omitempty"`
+	HttpWriteTimeout      util.Duration    `json:"httpWriteTimeout,omitempty"`
+	HttpIdleTimeout       util.Duration    `json:"httpIdleTimeout,omitempty"`
+	RateLimit             *RateLimitConfig `json:"rateLimit,omitempty"`
+	HealthChecks          *healthChecks    `json:"healthChecks,omitempty"`
 }
 
 type kvConfig struct {
@@ -412,6 +424,20 @@ func NewDefault(opts ...ConfigOption) *Config {
 				ReadinessTimeout: util.Duration(2 * time.Second),
 			},
 			// Rate limiting is disabled by default - set RateLimit to enable
+		},
+		ImageBuilderService: &imageBuilderServiceConfig{
+			Address:               ":8080",
+			LogLevel:              "info",
+			HttpReadTimeout:       util.Duration(5 * time.Minute),
+			HttpReadHeaderTimeout: util.Duration(5 * time.Minute),
+			HttpWriteTimeout:      util.Duration(5 * time.Minute),
+			HttpIdleTimeout:       util.Duration(5 * time.Minute),
+			HealthChecks: &healthChecks{
+				Enabled:          true,
+				ReadinessPath:    "/readyz",
+				LivenessPath:     "/healthz",
+				ReadinessTimeout: util.Duration(2 * time.Second),
+			},
 		},
 		KV: &kvConfig{
 			Hostname: "localhost",
