@@ -9,8 +9,8 @@ const (
 	GrpcSelectedProtocolKey = "selected-protocol"
 
 	// Tasks
-	TaskQueue            = "task-queue"
-	ImageBuildTaskQueue  = "imagebuild-queue"
+	TaskQueue           = "task-queue"
+	ImageBuildTaskQueue = "imagebuild-queue"
 
 	// Checkpoints
 	CheckpointConsumerEventProcessor = "event_processor"
