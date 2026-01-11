@@ -1,7 +1,11 @@
 package service
 
 import (
+	"context"
+
+	"github.com/flightctl/flightctl/internal/consts"
 	"github.com/flightctl/flightctl/internal/imagebuilder_api/store"
+	"github.com/flightctl/flightctl/pkg/queues"
 	"github.com/sirupsen/logrus"
 )
 
@@ -21,8 +25,18 @@ type service struct {
 }
 
 // NewService creates a new aggregate Service with all sub-services
-func NewService(s store.Store, log logrus.FieldLogger) Service {
-	imageBuildSvc := NewImageBuildService(s.ImageBuild(), log)
+func NewService(ctx context.Context, s store.Store, queuesProvider queues.Provider, log logrus.FieldLogger) Service {
+	// Create queue producer for imagebuild queue
+	var queueProducer queues.QueueProducer
+	if queuesProvider != nil {
+		var err error
+		queueProducer, err = queuesProvider.NewQueueProducer(ctx, consts.ImageBuildTaskQueue)
+		if err != nil {
+			log.WithError(err).Error("failed to create imagebuild queue producer, jobs will not be enqueued")
+		}
+	}
+
+	imageBuildSvc := NewImageBuildService(s.ImageBuild(), queueProducer, log)
 	imageExportSvc := NewImageExportService(s.ImageExport(), s.ImageBuild(), log)
 	return &service{
 		imageBuild:    imageBuildSvc,

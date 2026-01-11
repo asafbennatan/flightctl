@@ -55,15 +55,16 @@ func New(
 	kvStore kvstore.KVStore,
 	queuesProvider queues.Provider,
 ) *Server {
-	return &Server{
-		log:               log,
-		cfg:               cfg,
-		imageBuilderStore: imageBuilderStore,
-		mainStore:         mainStore,
-		kvStore:           kvStore,
-		queuesProvider:    queuesProvider,
-		service:           service.NewService(imageBuilderStore, log),
-	}
+		ctx := context.Background()
+		return &Server{
+			log:               log,
+			cfg:               cfg,
+			imageBuilderStore: imageBuilderStore,
+			mainStore:         mainStore,
+			kvStore:           kvStore,
+			queuesProvider:    queuesProvider,
+			service:           service.NewService(ctx, imageBuilderStore, queuesProvider, log),
+		}
 }
 
 func oapiErrorHandler(w http.ResponseWriter, message string, statusCode int) {

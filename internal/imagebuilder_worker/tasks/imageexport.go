@@ -15,14 +15,9 @@ import (
 )
 
 // processImageExport processes an imageExport job by loading the ImageExport resource
-// and converting/pushing the image to the target format
-func processImageExport(
-	ctx context.Context,
-	store imagebuilderstore.Store,
-	kvStore kvstore.KVStore,
-	job Job,
-	log logrus.FieldLogger,
-) error {
+// and converting/pushing the image to the target format.
+// This method is part of the Consumer type defined in consumer.go.
+func (c *Consumer) processImageExport(ctx context.Context, job Job, log logrus.FieldLogger) error {
 	log = log.WithField("job", job.Name).WithField("orgId", job.OrgID)
 	log.Info("Processing imageExport job")
 
@@ -33,7 +28,7 @@ func processImageExport(
 	}
 
 	// Load the ImageExport resource from the database
-	imageExport, err := store.ImageExport().Get(ctx, orgID, job.Name)
+	imageExport, err := c.store.ImageExport().Get(ctx, orgID, job.Name)
 	if err != nil {
 		return fmt.Errorf("failed to load ImageExport %q: %w", job.Name, err)
 	}
@@ -63,7 +58,7 @@ func processImageExport(
 	setImageExportCondition(imageExport, api.ImageExportConditionTypeReady, v1beta1.ConditionStatusFalse, api.ImageExportConditionReasonConverting, "Export conversion in progress", now)
 	imageExport.Status.LastSeen = lo.ToPtr(now)
 
-	_, err = store.ImageExport().UpdateStatus(ctx, orgID, imageExport)
+	_, err = c.store.ImageExport().UpdateStatus(ctx, orgID, imageExport)
 	if err != nil {
 		return fmt.Errorf("failed to update ImageExport status to Converting: %w", err)
 	}
@@ -80,12 +75,12 @@ func processImageExport(
 	// 5. Update the ImageExport status with the result
 
 	// Placeholder: Execute the export
-	if err := executeExport(ctx, store, kvStore, imageExport, orgID, log); err != nil {
+	if err := executeExport(ctx, c.store, c.kvStore, imageExport, orgID, log); err != nil {
 		// Update status to Failed
 		failedTime := time.Now().UTC()
 		setImageExportCondition(imageExport, api.ImageExportConditionTypeReady, v1beta1.ConditionStatusFalse, api.ImageExportConditionReasonFailed, err.Error(), failedTime)
 
-		if _, updateErr := store.ImageExport().UpdateStatus(ctx, orgID, imageExport); updateErr != nil {
+		if _, updateErr := c.store.ImageExport().UpdateStatus(ctx, orgID, imageExport); updateErr != nil {
 			log.WithError(updateErr).Error("failed to update ImageExport status to Failed")
 		}
 		return err

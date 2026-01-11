@@ -2,13 +2,17 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/flightctl/flightctl/api/v1beta1"
 	api "github.com/flightctl/flightctl/api/v1beta1/imagebuilder"
 	"github.com/flightctl/flightctl/internal/imagebuilder_api/store"
+	"github.com/flightctl/flightctl/internal/imagebuilder_worker/tasks"
 	"github.com/flightctl/flightctl/internal/store/selector"
+	"github.com/flightctl/flightctl/pkg/queues"
 	"github.com/google/uuid"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
@@ -27,15 +31,17 @@ type ImageBuildService interface {
 
 // imageBuildService is the concrete implementation of ImageBuildService
 type imageBuildService struct {
-	store store.ImageBuildStore
-	log   logrus.FieldLogger
+	store         store.ImageBuildStore
+	queueProducer queues.QueueProducer
+	log           logrus.FieldLogger
 }
 
 // NewImageBuildService creates a new ImageBuildService
-func NewImageBuildService(s store.ImageBuildStore, log logrus.FieldLogger) ImageBuildService {
+func NewImageBuildService(s store.ImageBuildStore, queueProducer queues.QueueProducer, log logrus.FieldLogger) ImageBuildService {
 	return &imageBuildService{
-		store: s,
-		log:   log,
+		store:         s,
+		queueProducer: queueProducer,
+		log:           log,
 	}
 }
 
@@ -50,6 +56,18 @@ func (s *imageBuildService) Create(ctx context.Context, orgId uuid.UUID, imageBu
 	}
 
 	result, err := s.store.Create(ctx, orgId, &imageBuild)
+	if err != nil {
+		return result, StoreErrorToApiStatus(err, true, ImageBuildKind, imageBuild.Metadata.Name)
+	}
+
+	// Enqueue the build job after successful creation
+	if s.queueProducer != nil {
+		if err := s.enqueueImageBuildJob(ctx, orgId, result); err != nil {
+			s.log.WithError(err).WithField("orgId", orgId).WithField("name", lo.FromPtr(result.Metadata.Name)).Error("failed to enqueue imageBuild job")
+			// Don't fail the creation if enqueue fails - the job can be retried later
+		}
+	}
+
 	return result, StoreErrorToApiStatus(err, true, ImageBuildKind, imageBuild.Metadata.Name)
 }
 
@@ -126,4 +144,30 @@ func (s *imageBuildService) validate(imageBuild *api.ImageBuild) []error {
 	// - LateBinding has no additional required fields
 
 	return errs
+}
+
+// enqueueImageBuildJob enqueues an imageBuild job to the imagebuild-queue
+func (s *imageBuildService) enqueueImageBuildJob(ctx context.Context, orgId uuid.UUID, imageBuild *api.ImageBuild) error {
+	if imageBuild == nil || imageBuild.Metadata.Name == nil {
+		return errors.New("imageBuild or name is nil")
+	}
+
+	job := tasks.Job{
+		Type:      tasks.TaskTypeImageBuild,
+		OrgID:     orgId.String(),
+		Name:      lo.FromPtr(imageBuild.Metadata.Name),
+		Timestamp: time.Now().UnixMicro(),
+	}
+
+	payload, err := json.Marshal(job)
+	if err != nil {
+		return fmt.Errorf("failed to marshal job: %w", err)
+	}
+
+	if err := s.queueProducer.Enqueue(ctx, payload, job.Timestamp); err != nil {
+		return fmt.Errorf("failed to enqueue job: %w", err)
+	}
+
+	s.log.WithField("orgId", orgId).WithField("name", job.Name).Info("enqueued imageBuild job")
+	return nil
 }
