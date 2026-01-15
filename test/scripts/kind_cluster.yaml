@@ -8,6 +8,12 @@ kubeadmConfigPatches:
       "service-node-port-range": "3000-32767"
 nodes:
 - role: control-plane
+  extraMounts:
+  - hostPath: /dev
+    containerPath: /dev
+  - hostPath: /lib/modules
+    containerPath: /lib/modules
+    readOnly: true
   extraPortMappings:
   - containerPort: 3222 # local git server for E2E testing
     hostPort: 3222
