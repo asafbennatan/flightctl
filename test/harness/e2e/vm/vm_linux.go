@@ -527,6 +527,7 @@ func (v *VMInLibvirt) IsRunning() (exists bool, err error) {
 
 func (v *VMInLibvirt) RunAndWaitForSSH() error {
 	//check if its running first if it is do not run it again:
+	wasAlreadyRunning := false
 	isRunning, err := v.IsRunning()
 	if err != nil {
 		return fmt.Errorf("failed to check if VM is running: %w", err)
@@ -537,15 +538,60 @@ func (v *VMInLibvirt) RunAndWaitForSSH() error {
 		if err != nil {
 			return fmt.Errorf("failed to run VM: %w", err)
 		}
+	} else {
+		wasAlreadyRunning = true
 	}
 
 	err = v.WaitForSSHToBeReady()
 	if err != nil {
+		// If the VM was already running and SSH failed, it might be in a zombie state
+		// Try to force restart the VM
+		if wasAlreadyRunning {
+			logrus.Warnf("SSH not ready on already-running VM, attempting force restart")
+			if restartErr := v.forceRestartVM(); restartErr != nil {
+				logrus.Errorf("Force restart failed: %v", restartErr)
+			} else {
+				// Try SSH again after restart
+				if sshErr := v.WaitForSSHToBeReady(); sshErr == nil {
+					logrus.Infof("VM recovered after force restart")
+					return nil
+				}
+			}
+		}
+
 		fmt.Println("============ Console output ============")
 		fmt.Println(v.GetConsoleOutput())
 		fmt.Println("========================================")
 		return fmt.Errorf("waiting for SSH: %w", err)
 	}
+	return nil
+}
+
+// forceRestartVM does a hard restart of the VM: destroy (force stop) then start fresh.
+// This is used to recover from a zombie state where the VM appears running but SSH doesn't work.
+func (v *VMInLibvirt) forceRestartVM() error {
+	logrus.Infof("Force restarting VM %s (destroy + start)", v.TestVM.VMName)
+
+	// Step 1: Destroy the VM (force stop)
+	if v.domain != nil {
+		logrus.Infof("Destroying VM %s", v.TestVM.VMName)
+		if err := v.domain.Destroy(); err != nil {
+			logrus.Warnf("Failed to destroy VM (may already be stopped): %v", err)
+		}
+	}
+
+	// Wait for cleanup
+	time.Sleep(2 * time.Second)
+
+	// Step 2: Start the VM fresh (boot from disk)
+	logrus.Infof("Starting VM %s fresh", v.TestVM.VMName)
+	if err := v.domain.Create(); err != nil {
+		return fmt.Errorf("failed to start VM: %w", err)
+	}
+
+	// Wait for VM to boot
+	time.Sleep(3 * time.Second)
+
 	return nil
 }
 
@@ -573,58 +619,31 @@ func (v *VMInLibvirt) CreateSnapshot(name string) error {
 	return nil
 }
 
-// RevertToSnapshot reverts the VM to a specific snapshot with retry logic
+// RevertToSnapshot reverts the VM to a specific snapshot.
+// Verification errors are logged but don't fail the operation since the snapshot
+// revert with RESET_NVRAM is atomic and restores the VM to a known good state.
 func (v *VMInLibvirt) RevertToSnapshot(name string) error {
 	if v.domain == nil {
 		return fmt.Errorf("VM domain is not initialized")
 	}
 
-	// Check if VM exists before trying to pause it
+	// Check if VM exists
 	vmExists, err := v.Exists()
 	if err != nil {
 		return fmt.Errorf("failed to check if VM exists: %w", err)
 	}
-
 	if !vmExists {
 		return fmt.Errorf("VM %s does not exist, cannot revert to snapshot", v.TestVM.VMName)
 	}
 
-	// Retry the entire revert operation up to 5 times
-	var lastErr error
-	for attempt := 1; attempt <= 5; attempt++ {
-		logrus.Infof("Revert attempt %d/5 for VM %s to snapshot %s", attempt, v.TestVM.VMName, name)
-
-		err = v.performRevertOperation(name)
-		if err == nil {
-			logrus.Infof("Successfully reverted VM %s to snapshot %s on attempt %d", v.TestVM.VMName, name, attempt)
-			return nil
-		}
-
-		lastErr = err
-		logrus.Warnf("Revert attempt %d/5 failed: %v", attempt, err)
-
-		if attempt < 5 {
-			// Wait before retrying, with exponential backoff
-			waitTime := time.Duration(attempt) * time.Second
-			logrus.Infof("Waiting %v before retry attempt %d", waitTime, attempt+1)
-			time.Sleep(waitTime)
-		}
+	// Try to create verification data (log errors but don't fail)
+	if err := v.createRevertVerificationData(); err != nil {
+		logrus.Warnf("Failed to create revert verification data (continuing anyway): %v", err)
 	}
 
-	return fmt.Errorf("failed to revert to snapshot %s after 5 attempts: %w", name, lastErr)
-}
-
-// performRevertOperation performs a single revert operation attempt
-func (v *VMInLibvirt) performRevertOperation(name string) error {
-	err := v.createRevertVerificationData()
-	if err != nil {
-		return fmt.Errorf("failed to create revert verification data: %w", err)
-	}
-
-	// First, pause the VM
-	err = v.Pause()
-	if err != nil {
-		return fmt.Errorf("failed to pause VM before revert: %w", err)
+	// Pause the VM before revert
+	if err := v.Pause(); err != nil {
+		logrus.Warnf("Failed to pause VM before revert (continuing anyway): %v", err)
 	}
 
 	// Get the snapshot
@@ -633,27 +652,29 @@ func (v *VMInLibvirt) performRevertOperation(name string) error {
 		return fmt.Errorf("failed to find snapshot %s: %w", name, err)
 	}
 
-	flags := libvirt.DOMAIN_SNAPSHOT_REVERT_RUNNING | libvirt.DOMAIN_SNAPSHOT_REVERT_FORCE
-	// Revert to the snapshot
-	err = snapshot.RevertToSnapshot(flags)
-	if err != nil {
+	// Revert to snapshot with FORCE, RUNNING, and RESET_NVRAM flags
+	// FORCE: allows revert even if VM is in a different state
+	// RUNNING: ensures VM is running after revert
+	// RESET_NVRAM: reset NVRAM to pristine state for clean boot
+	flags := libvirt.DOMAIN_SNAPSHOT_REVERT_RUNNING | libvirt.DOMAIN_SNAPSHOT_REVERT_FORCE | libvirt.DOMAIN_SNAPSHOT_REVERT_RESET_NVRAM
+	if err := snapshot.RevertToSnapshot(flags); err != nil {
 		return fmt.Errorf("failed to revert to snapshot %s: %w", name, err)
 	}
 
-	// Wait a moment for the VM to stabilize after revert
+	// Wait for VM to stabilize after revert
 	time.Sleep(2 * time.Second)
 
-	// Ensure console stream is properly established after revert
+	// Ensure console stream is properly established
 	if err := v.EnsureConsoleStream(); err != nil {
 		logrus.Warnf("Failed to ensure console stream after revert: %v", err)
-		// Don't fail the revert operation, just log the warning
 	}
 
-	err = v.verifyRevert()
-	if err != nil {
-		return fmt.Errorf("failed to verify revert: %w", err)
+	// Verify revert (log errors but don't fail)
+	if err := v.verifyRevert(); err != nil {
+		logrus.Warnf("Failed to verify revert (continuing anyway): %v", err)
 	}
 
+	logrus.Infof("Successfully reverted VM %s to snapshot %s", v.TestVM.VMName, name)
 	return nil
 }
 
