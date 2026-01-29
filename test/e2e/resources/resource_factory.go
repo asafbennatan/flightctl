@@ -154,6 +154,47 @@ func CreateRepository(harness *e2e.Harness, name, url string, labels *map[string
 	return repository, applyToCreateFromText(harness, yamlStr)
 }
 
+// CreateOCIRepository creates an OCI repository with the given name, registry, and access mode.
+// The scheme parameter specifies http or https (use nil for default https).
+// The accessMode parameter specifies Read or ReadWrite access (use nil for default Read).
+func CreateOCIRepository(harness *e2e.Harness, name, registry string, scheme *api.OciRepoSpecScheme, accessMode *api.OciRepoSpecAccessMode, labels *map[string]string) (*api.Repository, error) {
+	ociSpec := api.OciRepoSpec{
+		Registry:   registry,
+		Type:       api.OciRepoSpecTypeOci,
+		Scheme:     scheme,
+		AccessMode: accessMode,
+	}
+
+	spec := api.RepositorySpec{}
+	if err := spec.FromOciRepoSpec(ociSpec); err != nil {
+		return nil, fmt.Errorf("failed to create OCI repo spec: %w", err)
+	}
+
+	repository := &api.Repository{
+		ApiVersion: api.RepositoryAPIVersion,
+		Kind:       api.RepositoryKind,
+		Metadata:   api.ObjectMeta{Name: &name},
+		Spec:       spec,
+	}
+
+	setLabelsOrDefault(harness.SetLabelsForRepositoryMetadata, &repository.Metadata, labels)
+
+	yamlStr, err := marshalToString(repository)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal OCI repository: %w", err)
+	}
+	return repository, applyToCreateFromText(harness, yamlStr)
+}
+
+// CreateOCIRepositories creates multiple OCI repositories with names formatted as "{namePrefix}-{index}-{testID}".
+// Returns the list of created repository names.
+func CreateOCIRepositories(harness *e2e.Harness, count int, namePrefix, registry string, scheme *api.OciRepoSpecScheme, accessMode *api.OciRepoSpecAccessMode, labels *map[string]string) ([]string, error) {
+	return createMultiple(harness, count, namePrefix, func(name string) error {
+		_, err := CreateOCIRepository(harness, name, registry, scheme, accessMode, labels)
+		return err
+	})
+}
+
 // CreateRepositories creates multiple repositories with names formatted as "{namePrefix}-{index}-{testID}".
 // Returns the list of created repository names.
 func CreateRepositories(harness *e2e.Harness, count int, namePrefix, url string, labels *map[string]string) ([]string, error) {
