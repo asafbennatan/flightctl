@@ -23,13 +23,12 @@ COPY ./hack ./hack
 COPY ./internal ./internal
 COPY ./pkg ./pkg
 COPY ./test ./test
-COPY ./packaging/containers/cli-artifacts/nginx.conf ./packaging/containers/cli-artifacts/nginx.conf
-COPY ./packaging/containers/cli-artifacts/entrypoint.sh ./packaging/containers/cli-artifacts/entrypoint.sh
+COPY ./packaging ./packaging
 
 # Use BuildKit cache mounts for dnf package caching
 RUN --mount=type=cache,target=/var/cache/dnf \
     --mount=type=cache,target=/var/lib/dnf \
-    dnf install --nodocs -y jq
+    dnf install --nodocs -y jq rpm-build
 
 # Define version info ARGs right before build
 ARG SOURCE_GIT_TAG
@@ -44,7 +43,9 @@ ENV SOURCE_GIT_COMMIT=${SOURCE_GIT_COMMIT}
 # Use BuildKit cache mounts for Go caching
 RUN --mount=type=cache,target=/opt/app-root/src/.cache/go-build \
     --mount=type=cache,target=/opt/app-root/src/go/pkg/mod \
-    make build-multiarch-clis
+    make build-multiarch-clis && \
+    make build-agent-rpms && \
+    make build-cli-artifacts-index
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7-1763362218
 # Use BuildKit cache mounts for dnf package caching
@@ -86,12 +87,12 @@ WORKDIR ${HOME}/src
 
 LABEL \
   com.redhat.component="flightctl-cli-artifacts-container" \
-  description="Container image exposing multi-arch Flight Control CLI binaries over HTTP" \
-  io.k8s.description="Container image exposing multi-arch Flight Control CLI binaries over HTTP" \
+  description="Container image exposing multi-arch Flight Control CLI binaries and agent RPMs over HTTP" \
+  io.k8s.description="Container image exposing multi-arch Flight Control CLI binaries and agent RPMs over HTTP" \
   io.k8s.display-name="Flight Control CLI multiarch artifacts with server" \
   io.openshift.tags="flightctl,cli-artifacts" \
   name="flightctl-cli-artifacts" \
-  summary="Container image exposing multi-arch Flight Control CLI binaries over HTTP"
+  summary="Container image exposing multi-arch Flight Control CLI binaries and agent RPMs over HTTP"
 EXPOSE 8090
 
 ENTRYPOINT ${ENTRYPOINT_PATH}

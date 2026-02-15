@@ -166,6 +166,12 @@ build-cli: bin
 build-multiarch-clis: bin
 	./hack/build_multiarch_clis.sh
 
+build-agent-rpms: bin
+	./hack/build_agent_rpms.sh
+
+build-cli-artifacts-index: bin
+	./hack/build_cli_artifacts_index.sh
+
 build-agent: bin
 	$(GOENV) GOOS=$(GOOS) GOARCH=$(GOARCH) go build -buildvcs=false $(GO_BUILD_FLAGS) -o $(GOBIN) ./cmd/flightctl-agent
 
@@ -355,7 +361,7 @@ bundle-containers:
 		--image-pattern 'quay.io/flightctl/.*:$(SOURCE_GIT_TAG)' \
 		--output-path 'bin/flightctl-images-bundle.tar'
 
-.PHONY: build-containers bundle-containers build-cli build-multiarch-clis
+.PHONY: build-containers bundle-containers build-cli build-multiarch-clis build-agent-rpms build-cli-artifacts-index
 
 
 bin:

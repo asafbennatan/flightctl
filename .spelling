@@ -308,6 +308,9 @@ networkless
  builder-worker.container
  imageBuilderWorker
  bool
+ imagebuilder
+ filenames
+ repos
  - docs/user/references/api-resources.md
 CertificateSigningRequest
 AuthConfig

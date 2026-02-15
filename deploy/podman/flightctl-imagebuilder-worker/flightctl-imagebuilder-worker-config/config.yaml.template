@@ -33,3 +33,9 @@ imageBuilderWorker:
   {{- if .imagebuilderWorker.rpmRepoUrl}}
   rpmRepoUrl: {{.imagebuilderWorker.rpmRepoUrl}}
   {{- end}}
+  {{- if kindIs "bool" .imagebuilderWorker.rpmRepoAdd}}
+  rpmRepoAdd: {{.imagebuilderWorker.rpmRepoAdd}}
+  {{- end}}
+  {{- if .imagebuilderWorker.rpmRepoEnable}}
+  rpmRepoEnable: {{.imagebuilderWorker.rpmRepoEnable}}
+  {{- end}}
