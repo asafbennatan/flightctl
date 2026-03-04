@@ -74,6 +74,33 @@ if [[ -z "${E2E_ENVIRONMENT}" ]]; then
 fi
 export E2E_ENVIRONMENT
 
+# Ensure container runtime (Podman/Docker) is visible to testcontainers and ginkgo.
+# When unset (e.g. SSH), XDG_RUNTIME_DIR is set so the Podman socket can be found.
+# DOCKER_HOST is set so testcontainers does not try to detect it and panic.
+if [[ -z "${DOCKER_HOST:-}" ]]; then
+    if [[ -z "${XDG_RUNTIME_DIR:-}" ]] && [[ $(id -u) -ne 0 ]]; then
+        export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    fi
+    SOCKET=""
+    if command -v podman &>/dev/null; then
+        SOCKET=$(podman info --format '{{.Host.RemoteSocket.Path}}' 2>/dev/null)
+    fi
+    if [[ -z "${SOCKET}" ]] || [[ ! -S "${SOCKET}" ]]; then
+        for p in "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock" /run/podman/podman.sock /var/run/docker.sock; do
+            if [[ -S "${p}" ]]; then
+                SOCKET="${p}"
+                break
+            fi
+        done
+    fi
+    if [[ -n "${SOCKET}" ]] && [[ -S "${SOCKET}" ]]; then
+        export DOCKER_HOST="unix://${SOCKET}"
+    else
+        echo "ERROR: No container socket found. E2E needs Podman (or Docker). Ensure Podman is running (e.g. 'podman system service' or a login session), or set DOCKER_HOST to a valid unix socket (e.g. unix:///run/user/$(id -u)/podman/podman.sock)."
+        exit 1
+    fi
+fi
+
 # Set API_ENDPOINT based on environment
 if [[ -z "${API_ENDPOINT:-}" ]]; then
     case "${E2E_ENVIRONMENT}" in

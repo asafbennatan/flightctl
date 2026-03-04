@@ -17,10 +17,15 @@ func init() {
 }
 
 // ConfigureDockerHost sets up the container runtime environment for testcontainers.
+// When XDG_RUNTIME_DIR is unset (e.g. SSH or non-interactive), sets it to /run/user/UID
+// so socket detection and testcontainers can find the Podman socket.
 func ConfigureDockerHost() {
 	if existing := os.Getenv("DOCKER_HOST"); existing != "" {
 		configureProviderSettings(existing)
 		return
+	}
+	if os.Getenv("XDG_RUNTIME_DIR") == "" && os.Getuid() != 0 {
+		_ = os.Setenv("XDG_RUNTIME_DIR", fmt.Sprintf("/run/user/%d", os.Getuid()))
 	}
 	socketPath := detectContainerSocket()
 	if socketPath == "" {
@@ -55,6 +60,9 @@ func detectContainerSocket() string {
 	if uid != 0 {
 		paths = append(paths, fmt.Sprintf("/run/user/%d/podman/podman.sock", uid))
 	}
+	if uid == 0 {
+		paths = append(paths, "/run/user/0/podman/podman.sock")
+	}
 	if homeDir != "" {
 		paths = append(paths,
 			filepath.Join(homeDir, ".local", "share", "containers", "podman", "machine", "podman.sock"),
@@ -65,6 +73,22 @@ func detectContainerSocket() string {
 		if isSocket(p) {
 			return p
 		}
+	}
+	if p := detectContainerSocketFromPodman(); p != "" {
+		return p
+	}
+	return ""
+}
+
+func detectContainerSocketFromPodman() string {
+	cmd := exec.Command("podman", "info", "--format", "{{.Host.RemoteSocket.Path}}")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	p := strings.TrimSpace(string(out))
+	if p != "" && isSocket(p) {
+		return p
 	}
 	return ""
 }
