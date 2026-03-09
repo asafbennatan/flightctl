@@ -189,6 +189,7 @@ The following parameters are supported for AAP authentication configuration:
 | `token` | Admin token for app creation | No | None |
 | `displayName` | Provider display name in UI | No | "AAP Provider" |
 | `enabled` | Enable AAP authentication | No | true |
+| `organizationNamePrefix` | Prefix for AAP organization names. When set, each AAP organization is exposed in Flight Control as prefix + organization name (e.g. `aap-` + `MyOrg` → `aap-MyOrg`). | No | None |
 
 **Note:** The `clientId` is automatically generated when using the automated approach, or manually configured when using the manual approach.
 

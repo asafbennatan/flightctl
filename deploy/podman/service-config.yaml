@@ -20,6 +20,8 @@ global:
       clientId:
       clientSecret:
       token:
+      # Optional prefix for org names from this provider (e.g. "aap-")
+      organizationNamePrefix:
       scopes:
         - read
         - write

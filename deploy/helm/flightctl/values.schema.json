@@ -91,6 +91,10 @@
                 "createAdminUser": {
                   "type": "boolean",
                   "description": "Create default flightctl-admin ServiceAccount with admin access"
+                },
+                "organizationNamePrefix": {
+                  "type": "string",
+                  "description": "Optional prefix for organization names from this provider."
                 }
               }
             },
@@ -140,7 +144,8 @@
               "additionalProperties": false,
               "properties": {
                 "apiUrl": { "type": "string", "description": "The URL of the AAP Gateway API endpoint" },
-                "externalApiUrl": { "type": "string", "description": "The URL of the AAP Gateway API endpoint that is reachable by clients" }
+                "externalApiUrl": { "type": "string", "description": "The URL of the AAP Gateway API endpoint that is reachable by clients" },
+                "organizationNamePrefix": { "type": "string", "description": "Optional prefix for organization names from this provider." }
               }
             },
             "openshift": {
@@ -158,7 +163,8 @@
                 "authorizationUrl": { "type": "string", "description": "OAuth authorization URL (leave empty to auto-detect from OpenShift cluster)" },
                 "tokenUrl": { "type": "string", "description": "OAuth token URL (leave empty to auto-detect from OpenShift cluster)" },
                 "issuer": { "type": "string", "description": "OAuth issuer URL (defaults to authorizationUrl if not specified)" },
-                "projectLabelFilter": { "type": "string", "description": "Project label filter for OpenShift projects (leave empty to use default: io.flightctl/instance=<releaseName>)" }
+                "projectLabelFilter": { "type": "string", "description": "Project label filter for OpenShift projects (leave empty to use default: io.flightctl/instance=<releaseName>)" },
+                "organizationNamePrefix": { "type": "string", "description": "Optional prefix for organization names from this provider." }
               }
             }
           }

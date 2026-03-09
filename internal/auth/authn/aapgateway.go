@@ -185,6 +185,9 @@ func (a *AapGatewayAuth) GetIdentity(ctx context.Context, token string) (common.
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user organizations: %w", err)
 	}
+	for i := range organizations {
+		organizations[i] = ApplyOrgPrefix(organizations[i], a.spec.OrganizationNamePrefix)
+	}
 
 	// Map AAP permissions to roles
 	// Superuser and platform auditor are global roles that apply to all orgs
@@ -208,7 +211,7 @@ func (a *AapGatewayAuth) GetIdentity(ctx context.Context, token string) (common.
 	}
 
 	// Build organization-specific role mappings
-	orgSpecificRoles := a.mapRoleAssignmentsToOrgRoles(roleAssignments)
+	orgSpecificRoles := a.mapRoleAssignmentsToOrgRoles(roleAssignments, a.spec.OrganizationNamePrefix)
 	for orgName, roles := range orgSpecificRoles {
 		orgRoles[orgName] = append(orgRoles[orgName], roles...)
 	}
@@ -305,7 +308,7 @@ func (a *AapGatewayAuth) getUserRoleAssignments(ctx context.Context, token strin
 }
 
 // mapRoleAssignmentsToOrgRoles converts AAP role assignments to organization-specific role mappings
-func (a *AapGatewayAuth) mapRoleAssignmentsToOrgRoles(roleAssignments []*aap.AAPRoleUserAssignment) map[string][]string {
+func (a *AapGatewayAuth) mapRoleAssignmentsToOrgRoles(roleAssignments []*aap.AAPRoleUserAssignment, prefix *string) map[string][]string {
 	orgRoles := make(map[string][]string)
 
 	for _, assignment := range roleAssignments {
@@ -314,7 +317,7 @@ func (a *AapGatewayAuth) mapRoleAssignmentsToOrgRoles(roleAssignments []*aap.AAP
 			continue
 		}
 
-		orgName := assignment.SummaryFields.ContentObject.Name
+		orgName := ApplyOrgPrefix(assignment.SummaryFields.ContentObject.Name, prefix)
 		roleName := assignment.SummaryFields.RoleDefinition.Name
 
 		// Add role to organization if not already present
