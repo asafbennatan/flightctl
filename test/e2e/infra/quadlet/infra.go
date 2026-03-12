@@ -213,6 +213,12 @@ func (p *InfraProvider) serviceToHostConfigPath(service infra.ServiceName) strin
 	return filepath.Join(p.configDir, info.ContainerName, "config.yaml")
 }
 
+// serviceConfigPath returns the host path for the main service-config.yaml that
+// the template engine uses to generate per-service configs.
+func (p *InfraProvider) serviceConfigPath() string {
+	return filepath.Join(p.configDir, "service-config.yaml")
+}
+
 // GetSecretValue retrieves a secret value from secret files or environment.
 func (p *InfraProvider) GetSecretValue(name, key string) (string, error) {
 	// Try environment variable first
@@ -490,17 +496,56 @@ func (p *InfraProvider) GetExternalNamespace() string {
 }
 
 // SetServiceConfig writes the config key content to the service's config file on the host.
+// For services with a section mapping (see service_config_mapping.go), the content is
+// transformed and merged into /etc/flightctl/service-config.yaml so it persists across
+// restarts when the template re-renders. For other services, the content is written
+// to the per-service config file at /etc/flightctl/<container-name>/config.yaml.
 func (p *InfraProvider) SetServiceConfig(service infra.ServiceName, configKey, content string) error {
-	if configKey != "config.yaml" {
-		return fmt.Errorf("Quadlet SetServiceConfig only supports config.yaml key, got %q", configKey)
+	// Quadlet only has one config file per service; configKey is ignored.
+
+	updates, err := applyServiceConfigMappings(service, content)
+	if err != nil {
+		return fmt.Errorf("apply service-config mapping: %w", err)
 	}
+	if updates != nil {
+		return p.mergeAndWriteServiceConfig(updates)
+	}
+
 	hostPath := p.serviceToHostConfigPath(service)
 	b64 := base64.StdEncoding.EncodeToString([]byte(content))
 	escaped := strings.ReplaceAll(b64, "'", "'\"'\"'")
 	script := fmt.Sprintf("printf '%%s' '%s' | base64 -d > %s", escaped, hostPath)
-	_, err := p.runCommand("sh", "-c", script)
+	_, err = p.runCommand("sh", "-c", script)
 	if err != nil {
 		return fmt.Errorf("write config to %s: %w", hostPath, err)
+	}
+	return nil
+}
+
+// mergeAndWriteServiceConfig reads service-config.yaml from the host, merges the
+// given updates (service-config key -> value), and writes it back.
+func (p *InfraProvider) mergeAndWriteServiceConfig(updates map[string]interface{}) error {
+	path := p.serviceConfigPath()
+	existing, err := p.runCommand("cat", path)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	var serviceConfig map[string]interface{}
+	if err := yaml.Unmarshal([]byte(existing), &serviceConfig); err != nil {
+		return fmt.Errorf("parse %s: %w", path, err)
+	}
+	for k, v := range updates {
+		serviceConfig[k] = v
+	}
+	out, err := yaml.Marshal(serviceConfig)
+	if err != nil {
+		return fmt.Errorf("marshal service-config: %w", err)
+	}
+	b64 := base64.StdEncoding.EncodeToString(out)
+	escaped := strings.ReplaceAll(b64, "'", "'\"'\"'")
+	script := fmt.Sprintf("printf '%%s' '%s' | base64 -d > %s", escaped, path)
+	if _, err := p.runCommand("sh", "-c", script); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil
 }
