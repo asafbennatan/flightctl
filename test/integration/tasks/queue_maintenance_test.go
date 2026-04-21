@@ -13,6 +13,7 @@ import (
 	"github.com/flightctl/flightctl/internal/tasks"
 	"github.com/flightctl/flightctl/internal/worker_client"
 	"github.com/flightctl/flightctl/pkg/queues"
+	testutil "github.com/flightctl/flightctl/test/util"
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -133,7 +134,7 @@ var _ = Describe("Queue Maintenance Integration Tests", func() {
 
 		// Create a Redis provider - skip test if Redis is not available
 		var err error
-		provider, err = queues.NewRedisProvider(ctx, log, processID, "localhost", 6379, api.SecureString("adminpass"), queues.RetryConfig{
+		provider, err = queues.NewRedisProvider(ctx, log, processID, testutil.IntegrationRedisHost(), testutil.IntegrationRedisPort(), api.SecureString("adminpass"), queues.RetryConfig{
 			BaseDelay:    100 * time.Millisecond,
 			MaxRetries:   3,
 			MaxDelay:     500 * time.Millisecond,
@@ -145,7 +146,7 @@ var _ = Describe("Queue Maintenance Integration Tests", func() {
 
 		// Clean up Redis keys from previous tests
 		redisClient := redis.NewClient(&redis.Options{
-			Addr:     "localhost:6379",
+			Addr:     testutil.IntegrationRedisAddr(),
 			Password: "adminpass",
 			DB:       0,
 		})
@@ -277,7 +278,7 @@ var _ = Describe("Queue Maintenance Integration Tests", func() {
 
 				// Verify that events were republished by checking the Redis stream directly
 				redisClient := redis.NewClient(&redis.Options{
-					Addr:     "localhost:6379",
+					Addr:     testutil.IntegrationRedisAddr(),
 					Password: "adminpass",
 					DB:       0,
 				})

@@ -26,11 +26,13 @@ import (
 	"github.com/flightctl/flightctl/internal/service"
 	"github.com/flightctl/flightctl/internal/store"
 	"github.com/flightctl/flightctl/internal/store/model"
+	storetestutil "github.com/flightctl/flightctl/internal/store/testutil"
 	"github.com/flightctl/flightctl/internal/util"
 	"github.com/flightctl/flightctl/internal/worker_client"
 	workerserver "github.com/flightctl/flightctl/internal/worker_server"
 	"github.com/flightctl/flightctl/pkg/k8sclient"
 	"github.com/flightctl/flightctl/pkg/log"
+	"github.com/flightctl/flightctl/test/integration/integrationstack"
 	testutil "github.com/flightctl/flightctl/test/util"
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
@@ -139,7 +141,12 @@ func NewTestHarness(ctx context.Context, testDirPath string, goRoutineErrorHandl
 		return nil, fmt.Errorf("NewTestHarness failed adding mock route table: %w", err)
 	}
 
+	if err := integrationstack.EnsureRunning(ctx); err != nil {
+		return nil, fmt.Errorf("NewTestHarness: %w", err)
+	}
+
 	serverCfg := *config.NewDefault()
+	storetestutil.ApplyIntegrationConnectionOverrides(&serverCfg)
 	serverLog := log.InitLogs("debug")
 	serverLog.SetOutput(os.Stdout)
 

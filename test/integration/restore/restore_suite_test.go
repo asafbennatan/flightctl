@@ -87,7 +87,7 @@ func (s *RestoreTestSuite) Setup() {
 	workerClient := worker_client.NewWorkerClient(mockQueueProducer, s.Log)
 	mockQueueProducer.EXPECT().Enqueue(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
-	kvStore, err := kvstore.NewKVStore(s.Ctx, s.Log, "localhost", 6379, "adminpass")
+	kvStore, err := kvstore.NewKVStore(s.Ctx, s.Log, testutil.IntegrationRedisHost(), testutil.IntegrationRedisPort(), "adminpass")
 	Expect(err).ToNot(HaveOccurred())
 
 	testDirPath := GinkgoT().TempDir()

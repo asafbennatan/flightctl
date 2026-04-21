@@ -50,7 +50,7 @@ var _ = Describe("DeviceConnection", func() {
 		deviceStore = storeInst.Device()
 		ctrl = gomock.NewController(GinkgoT())
 		var err error
-		kvStore, err = kvstore.NewKVStore(ctx, log, "localhost", 6379, "adminpass")
+		kvStore, err = kvstore.NewKVStore(ctx, log, testutil.IntegrationRedisHost(), testutil.IntegrationRedisPort(), "adminpass")
 		workerClient = worker_client.NewMockWorkerClient(ctrl)
 		Expect(err).ToNot(HaveOccurred())
 		serviceHandler = service.NewServiceHandler(storeInst, workerClient, kvStore, nil, log, "", "", []string{})

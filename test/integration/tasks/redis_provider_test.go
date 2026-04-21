@@ -10,6 +10,7 @@ import (
 
 	api "github.com/flightctl/flightctl/api/core/v1beta1"
 	"github.com/flightctl/flightctl/pkg/queues"
+	testutil "github.com/flightctl/flightctl/test/util"
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -20,7 +21,7 @@ import (
 // Redis state polling helpers to replace fixed time.Sleep() calls
 func waitForRedisConsumerGroupReady(ctx context.Context, queueName string, timeout time.Duration) bool {
 	redisClient := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
+		Addr:     testutil.IntegrationRedisAddr(),
 		Password: "adminpass",
 		DB:       0,
 	})
@@ -46,7 +47,7 @@ func waitForRedisConsumerGroupReady(ctx context.Context, queueName string, timeo
 
 func waitForRedisFailedMessagesState(ctx context.Context, queueName string, expectedCount int, timeout time.Duration) bool {
 	redisClient := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
+		Addr:     testutil.IntegrationRedisAddr(),
 		Password: "adminpass",
 		DB:       0,
 	})
@@ -67,7 +68,7 @@ func waitForRedisFailedMessagesState(ctx context.Context, queueName string, expe
 
 func waitForRedisInFlightTasksState(ctx context.Context, queueName string, expectedCompleted, expectedIncomplete int, timeout time.Duration) bool {
 	redisClient := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
+		Addr:     testutil.IntegrationRedisAddr(),
 		Password: "adminpass",
 		DB:       0,
 	})
@@ -105,7 +106,7 @@ func waitForRedisInFlightTasksState(ctx context.Context, queueName string, expec
 
 func waitForRedisConsumerStopped(ctx context.Context, queueName string, timeout time.Duration) bool {
 	redisClient := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
+		Addr:     testutil.IntegrationRedisAddr(),
 		Password: "adminpass",
 		DB:       0,
 	})
@@ -155,7 +156,7 @@ var _ = Describe("Redis Provider Integration Tests", FlakeAttempts(5), func() {
 
 		// Create a Redis provider with a short retry config for testing - this will skip the test if Redis is not available
 		var err error
-		provider, err = queues.NewRedisProvider(ctx, log, processID, "localhost", 6379, api.SecureString("adminpass"), queues.RetryConfig{
+		provider, err = queues.NewRedisProvider(ctx, log, processID, testutil.IntegrationRedisHost(), testutil.IntegrationRedisPort(), api.SecureString("adminpass"), queues.RetryConfig{
 			BaseDelay:    100 * time.Millisecond, // Short delays for testing
 			MaxRetries:   3,
 			MaxDelay:     500 * time.Millisecond,
@@ -167,7 +168,7 @@ var _ = Describe("Redis Provider Integration Tests", FlakeAttempts(5), func() {
 
 		// Clean up global Redis keys from previous tests
 		redisClient := redis.NewClient(&redis.Options{
-			Addr:     "localhost:6379",
+			Addr:     testutil.IntegrationRedisAddr(),
 			Password: "adminpass",
 			DB:       0,
 		})
@@ -314,7 +315,7 @@ var _ = Describe("Redis Provider Integration Tests", FlakeAttempts(5), func() {
 
 			// Simulate Redis restart: delete the stream (removes stream and consumer group)
 			redisClient := redis.NewClient(&redis.Options{
-				Addr:     "localhost:6379",
+				Addr:     testutil.IntegrationRedisAddr(),
 				Password: "adminpass",
 				DB:       0,
 			})

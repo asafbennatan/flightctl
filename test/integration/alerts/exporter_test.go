@@ -69,7 +69,7 @@ var _ = Describe("Alert Exporter", func() {
 		mockProducer = queues.NewMockQueueProducer(ctrl)
 		workerClient = worker_client.NewWorkerClient(mockProducer, log)
 		mockProducer.EXPECT().Enqueue(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-		kvStore, err := kvstore.NewKVStore(ctx, log, "localhost", 6379, "adminpass")
+		kvStore, err := kvstore.NewKVStore(ctx, log, testutil.IntegrationRedisHost(), testutil.IntegrationRedisPort(), "adminpass")
 		Expect(err).ToNot(HaveOccurred())
 		serviceHandler = service.NewServiceHandler(storeInst, workerClient, kvStore, nil, log, "", "", []string{})
 		checkpointManager = alert_exporter.NewCheckpointManager(log, serviceHandler)

@@ -55,7 +55,7 @@ var _ = Describe("FleetSelector", func() {
 		producer := queues.NewMockQueueProducer(ctrl)
 		producer.EXPECT().Enqueue(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		workerClient = worker_client.NewWorkerClient(producer, log)
-		kvStore, err := kvstore.NewKVStore(ctx, log, "localhost", 6379, "adminpass")
+		kvStore, err := kvstore.NewKVStore(ctx, log, testutil.IntegrationRedisHost(), testutil.IntegrationRedisPort(), "adminpass")
 		Expect(err).ToNot(HaveOccurred())
 		serviceHandler = service.NewServiceHandler(storeInst, workerClient, kvStore, nil, log, "", "", []string{})
 		event := api.Event{

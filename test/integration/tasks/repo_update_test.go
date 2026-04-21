@@ -42,7 +42,7 @@ var _ = Describe("RepoUpdate", func() {
 		storeInst, cfg, dbName, _ = store.PrepareDBForUnitTests(ctx, log)
 		ctrl = gomock.NewController(GinkgoT())
 		workerClient = worker_client.NewMockWorkerClient(ctrl)
-		kvStore, err := kvstore.NewKVStore(ctx, log, "localhost", 6379, "adminpass")
+		kvStore, err := kvstore.NewKVStore(ctx, log, testutil.IntegrationRedisHost(), testutil.IntegrationRedisPort(), "adminpass")
 		Expect(err).ToNot(HaveOccurred())
 		serviceHandler = service.NewServiceHandler(storeInst, workerClient, kvStore, nil, log, "", "", []string{})
 

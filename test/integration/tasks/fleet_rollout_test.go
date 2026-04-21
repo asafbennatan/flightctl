@@ -76,7 +76,7 @@ var _ = Describe("FleetRollout", func() {
 		mockQueueProducer = queues.NewMockQueueProducer(ctrl)
 		mockQueueProducer.EXPECT().Enqueue(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 		workerClient = worker_client.NewWorkerClient(mockQueueProducer, log)
-		kvStore, err := kvstore.NewKVStore(ctx, log, "localhost", 6379, "adminpass")
+		kvStore, err := kvstore.NewKVStore(ctx, log, testutil.IntegrationRedisHost(), testutil.IntegrationRedisPort(), "adminpass")
 		Expect(err).ToNot(HaveOccurred())
 		serviceHandler = service.NewServiceHandler(storeInst, workerClient, kvStore, nil, log, "", "", []string{})
 	})

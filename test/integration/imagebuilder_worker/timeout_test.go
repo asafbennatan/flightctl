@@ -99,11 +99,12 @@ var _ = Describe("Timeout Check Integration Tests", func() {
 
 		// Create kvStore for Redis operations
 		var kvErr error
-		kvStoreInst, kvErr = kvstore.NewKVStore(ctx, log, "localhost", 6379, domain.SecureString("adminpass"))
+		kvStoreInst, kvErr = kvstore.NewKVStore(ctx, log, testutilpkg.IntegrationRedisHost(), testutilpkg.IntegrationRedisPort(), domain.SecureString("adminpass"))
 		Expect(kvErr).ToNot(HaveOccurred())
 
-		// Create config with defaults
+		// Create config with defaults (must keep integration DB/KV endpoints, not localhost:5432)
 		cfg = config.NewDefault()
+		testutil.ApplyIntegrationConnectionOverrides(cfg)
 
 		// Create imagebuilder service
 		imageBuilderService = service.NewService(ctx, cfg, imageBuilderStore, mainStore, nil, kvStoreInst, log)

@@ -8,6 +8,7 @@ import (
 	"github.com/flightctl/flightctl/internal/store"
 	"github.com/flightctl/flightctl/internal/store/model"
 	"github.com/flightctl/flightctl/internal/store/selector"
+	storetestutil "github.com/flightctl/flightctl/internal/store/testutil"
 	flightlog "github.com/flightctl/flightctl/pkg/log"
 	testutil "github.com/flightctl/flightctl/test/util"
 	"github.com/google/uuid"
@@ -220,6 +221,7 @@ var _ = Describe("OrganizationStore Integration Tests", func() {
 
 			// Use testutil directly to create a fresh database without migrations
 			freshCfg := config.NewDefault()
+			storetestutil.ApplyIntegrationConnectionOverrides(freshCfg)
 			freshDbName := "test_org_race_" + uuid.New().String()[:8]
 			freshCfg.Database.Name = "flightctl"
 			adminDB, err := store.InitDB(freshCfg, freshLog)

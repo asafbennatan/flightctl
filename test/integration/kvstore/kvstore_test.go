@@ -39,7 +39,7 @@ var _ = Describe("FleetSelector", func() {
 		orgId, _ = uuid.NewUUID()
 		log = flightlog.InitLogs()
 		var err error
-		kvStore, err = kvstore.NewKVStore(ctx, log, "localhost", 6379, "adminpass")
+		kvStore, err = kvstore.NewKVStore(ctx, log, testutil.IntegrationRedisHost(), testutil.IntegrationRedisPort(), "adminpass")
 		Expect(err).ToNot(HaveOccurred())
 	})
 

@@ -15,7 +15,7 @@ INTEGRATION_GINKGO_FOCUS ?=
 
 GO_UNITTEST_FLAGS 		 = $(GO_TESTING_FLAGS) $(GO_UNITTEST_DIRS)        -coverprofile=$(REPORTS)/unit-coverage.out
 # Always -count=1 so Ginkgo-based integration packages are valid; use INTEGRATION_TEST_COUNT to repeat the whole run.
-GO_INTEGRATIONTEST_FLAGS = -race $(GO_BUILD_FLAGS) -count=1 -p 1 \
+GO_INTEGRATIONTEST_FLAGS = -race $(GO_BUILD_FLAGS) -tags=integration -count=1 -p 1 \
 	$(if $(TEST_DIR),$(TEST_DIR),$(GO_INTEGRATIONTEST_DIRS)) \
 	$(if $(TESTS),-run $(TESTS)) \
 	$(if $(strip $(INTEGRATION_GINKGO_FOCUS)),-ginkgo.focus="$(INTEGRATION_GINKGO_FOCUS)") \
@@ -75,6 +75,13 @@ unit-test:
 run-integration-test:
 	$(ENV_TRACE_FLAGS) $(MAKE) _integration_test TEST="$(or $(TEST),$(shell go list $(if $(TEST_DIR),$(TEST_DIR),./test/integration/...)))"
 
+# Start integration testcontainers (Postgres, Redis, Alertmanager). Tests discover host ports via podman port.
+start-integration-services:
+	@cd "$(ROOT_DIR)" && go run ./test/integration/preflight start
+
+# Stop integration testcontainers.
+stop-integration-services:
+	@cd "$(ROOT_DIR)" && go run ./test/integration/preflight stop || true
 
 integration-test: export FLIGHTCTL_KV_PASSWORD=adminpass
 integration-test: export FLIGHTCTL_POSTGRESQL_MASTER_PASSWORD=adminpass
@@ -82,32 +89,30 @@ integration-test: export FLIGHTCTL_POSTGRESQL_USER_PASSWORD=adminpass
 integration-test: export FLIGHTCTL_POSTGRESQL_MIGRATOR_PASSWORD=adminpass
 integration-test: export FLIGHTCTL_TEST_DB_STRATEGY?=local
 
+# UID model (e.g. GitHub Actions ubuntu-24.04 job = unprivileged "runner", same as `whoami` for the step):
+#   - This recipe, start-integration-services, run-integration-test, gotestsum/go test: the user that
+#     invoked `make integration-test` (never root on GHA unless you literally `sudo make ...`).
+#   - .github/workflows integration-tests "Build db-migrator": sudo make / sudo podman -> root's image store.
+#   - _run_template_migration: outer bash is still the make caller; sudo podman / sudo -E run_migration.sh
+#     run as root. sudo -E keeps the caller's env (e.g. HOME, XDG_RUNTIME_DIR) so run_migration.sh can
+#     resolve the same rootless Podman API path the runner used for preflight/tests when applicable.
 integration-test:
 	@bash -euo pipefail -c '\
-	  trap "set +e; $(MAKE) -k kill-alertmanager kill-kv kill-db || true" EXIT; \
+	  trap "set +e; $(MAKE) -C \"$(ROOT_DIR)\" stop-integration-services || true" EXIT; \
 	  echo "Using $(FLIGHTCTL_TEST_DB_STRATEGY) database strategy..."; \
-	  $(MAKE) deploy-db deploy-kv deploy-alertmanager; \
-	  $(MAKE) _wait_for_db; \
-	  sudo podman exec flightctl-db psql -U admin -d postgres -c "ALTER USER flightctl_app CREATEDB;"; \
+	  $(MAKE) -C "$(ROOT_DIR)" start-integration-services; \
 	  if [[ "$(FLIGHTCTL_TEST_DB_STRATEGY)" == "template" ]]; then \
-	    $(MAKE) _run_template_migration; \
+	    $(MAKE) -C "$(ROOT_DIR)" _run_template_migration; \
 	  else \
 	    echo "Local strategy: skipping migration image — tests will run local migrations..."; \
 	  fi; \
 	  echo "##################################################"; \
 	  echo "Running integration tests: $(FLIGHTCTL_TEST_DB_STRATEGY)"; \
 	  echo "##################################################"; \
-	  $(MAKE) run-integration-test \
+	  $(MAKE) -C "$(ROOT_DIR)" run-integration-test \
 	'
 
-_wait_for_db:
-	@echo "Waiting for database to be ready..."
-	@timeout --foreground 60s bash -euo pipefail -c '\
-	  while ! sudo podman exec flightctl-db psql -U admin -d postgres -c "SELECT 1" >/dev/null 2>&1; do \
-	    echo "  ...still waiting"; \
-	    sleep 2; \
-	  done' || { echo "ERROR: Database did not become ready within 60s"; exit 1; }
-
+# See comment on integration-test: sudo here is intentional (root podman store for MIGRATION_IMAGE).
 _run_template_migration:
 	@MIGRATION_IMAGE="$(MIGRATION_IMAGE)" bash -euo pipefail -c '\
 	  echo "Template strategy: resolving migration image..."; \
@@ -276,7 +281,7 @@ stop-aux:
 	go run ./cmd/aux-service stop all
 
 .PHONY: start-registry stop-registry start-git-server stop-git-server start-prometheus stop-prometheus start-tracing stop-tracing start-keycloak stop-keycloak start-aux stop-aux
-.PHONY: unit-test prepare-integration-test integration-test run-integration-test view-coverage prepare-e2e-test deploy-e2e-ocp-test-vm _wait_for_db _run_template_migration _ensure_db_setup_image prepare-swtpm-certs clean-swtpm-certs
+.PHONY: unit-test prepare-integration-test integration-test run-integration-test start-integration-services stop-integration-services view-coverage prepare-e2e-test deploy-e2e-ocp-test-vm _run_template_migration _ensure_db_setup_image prepare-swtpm-certs clean-swtpm-certs
 
 # Schemathesis API testing
 SCHEMATHESIS_IMAGE ?= flightctl-schemathesis:latest

@@ -344,7 +344,7 @@ var _ = Describe("Rollout batch sequence test", func() {
 		mockWorkerClient = worker_client.NewMockWorkerClient(ctrl)
 		publisher := queues.NewMockQueueProducer(ctrl)
 		publisher.EXPECT().Enqueue(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-		kvStore, err := kvstore.NewKVStore(ctx, log, "localhost", 6379, "adminpass")
+		kvStore, err := kvstore.NewKVStore(ctx, log, testutil.IntegrationRedisHost(), testutil.IntegrationRedisPort(), "adminpass")
 		Expect(err).ToNot(HaveOccurred())
 		serviceHandler = service.NewServiceHandler(storeInst, mockWorkerClient, kvStore, nil, log, "", "", []string{})
 	})

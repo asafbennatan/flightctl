@@ -199,7 +199,7 @@ var _ = Describe("Rollout disruption budget test", func() {
 		storeInst, cfg, dbName, _ = store.PrepareDBForUnitTests(ctx, log)
 		ctrl = gomock.NewController(GinkgoT())
 		mockWorkerClient = worker_client.NewMockWorkerClient(ctrl)
-		kvStore, err := kvstore.NewKVStore(ctx, log, "localhost", 6379, "adminpass")
+		kvStore, err := kvstore.NewKVStore(ctx, log, testutil.IntegrationRedisHost(), testutil.IntegrationRedisPort(), "adminpass")
 		Expect(err).ToNot(HaveOccurred())
 
 		serviceHandler = service.NewServiceHandler(storeInst, mockWorkerClient, kvStore, nil, log, "", "", []string{})

@@ -15,9 +15,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
+	"github.com/flightctl/flightctl/test/harness/containers"
 	"github.com/flightctl/flightctl/test/util"
 	"github.com/sirupsen/logrus"
 	"github.com/testcontainers/testcontainers-go"
@@ -59,15 +59,6 @@ type Registry struct {
 	container testcontainers.Container
 }
 
-// containerExistsByName returns true if a container with the given name exists (running or stopped).
-func containerExistsByName(name string) bool {
-	cli := containerRuntimeCLIName()
-	filter := containerNamePSFilter(cli, name)
-	cmd := exec.Command(cli, "ps", "-a", "--filter", filter, "-q")
-	out, err := cmd.CombinedOutput()
-	return err == nil && strings.TrimSpace(string(out)) != ""
-}
-
 func getContainerLogs(name string) (string, error) {
 	cmd := exec.Command("podman", "logs", name)
 	out, err := cmd.CombinedOutput()
@@ -85,7 +76,7 @@ func getContainerLogs(name string) (string, error) {
 // Start starts the TLS registry container, then the authenticated (nginx + basic auth) endpoint, and sets URL, Host, Port, Reused, Authenticated.
 func (r *Registry) Start(ctx context.Context, network string, reuse bool) error {
 	logrus.Infof("Starting registry container (reuse=%v)", reuse)
-	r.Reused = reuse && containerExistsByName(registryContainerName)
+	r.Reused = reuse && containers.ContainerExistsByName(registryContainerName)
 	certDir, err := ensureRegistryCerts()
 	if err != nil {
 		return fmt.Errorf("failed to ensure registry certs: %w", err)

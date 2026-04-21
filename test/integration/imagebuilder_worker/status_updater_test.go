@@ -91,7 +91,7 @@ var _ = Describe("Status Updater Integration Tests", func() {
 
 		// Setup Redis KVStore (skip test if Redis not available)
 		var kvErr error
-		kvStoreInst, kvErr = kvstore.NewKVStore(ctx, log, "localhost", 6379, domain.SecureString("adminpass"))
+		kvStoreInst, kvErr = kvstore.NewKVStore(ctx, log, testutilpkg.IntegrationRedisHost(), testutilpkg.IntegrationRedisPort(), domain.SecureString("adminpass"))
 		if kvErr != nil {
 			Skip(fmt.Sprintf("Redis not available, skipping test: %v", kvErr))
 		}

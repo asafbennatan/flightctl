@@ -28,7 +28,10 @@ func CreateTestDB(ctx context.Context, log *logrus.Logger, prefix string, initDB
 	ctx, span := tracing.StartSpan(ctx, "flightctl/store/testutil", "CreateTestDB")
 	defer span.End()
 
+	ensureIntegrationStackIfNeeded(ctx)
+
 	cfg := config.NewDefault()
+	ApplyIntegrationConnectionOverrides(cfg)
 	randomDBName := generateRandomDBName(prefix)
 	log.Debugf("Test DB name: %s", randomDBName)
 

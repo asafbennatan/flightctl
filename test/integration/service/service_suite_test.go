@@ -86,7 +86,7 @@ func (s *ServiceTestSuite) Setup() {
 	s.workerClient = worker_client.NewWorkerClient(s.mockQueueProducer, s.Log)
 	s.mockQueueProducer.EXPECT().Enqueue(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
-	kvStore, err := kvstore.NewKVStore(s.Ctx, s.Log, "localhost", 6379, "adminpass")
+	kvStore, err := kvstore.NewKVStore(s.Ctx, s.Log, testutil.IntegrationRedisHost(), testutil.IntegrationRedisPort(), "adminpass")
 	Expect(err).ToNot(HaveOccurred())
 
 	// Setup CA for CSR tests

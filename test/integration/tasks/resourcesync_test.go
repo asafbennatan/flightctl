@@ -50,7 +50,7 @@ var _ = Describe("ResourceSync Task Integration Tests", func() {
 		ctrl = gomock.NewController(GinkgoT())
 		mockQueueProducer = queues.NewMockQueueProducer(ctrl)
 		workerClient = worker_client.NewWorkerClient(mockQueueProducer, log)
-		kvStore, err := kvstore.NewKVStore(ctx, log, "localhost", 6379, "adminpass")
+		kvStore, err := kvstore.NewKVStore(ctx, log, testutil.IntegrationRedisHost(), testutil.IntegrationRedisPort(), "adminpass")
 		Expect(err).ToNot(HaveOccurred())
 		serviceHandler = service.NewServiceHandler(storeInst, workerClient, kvStore, nil, log, "", "", []string{})
 		resourceSync = tasks.NewResourceSync(serviceHandler, log, nil, nil)

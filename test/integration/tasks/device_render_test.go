@@ -101,7 +101,7 @@ var _ = Describe("DeviceRender", func() {
 		mockQueueProducer.EXPECT().Enqueue(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 		workerClient = worker_client.NewWorkerClient(mockQueueProducer, log)
 		var err error
-		kvStoreInst, err = kvstore.NewKVStore(ctx, log, "localhost", 6379, "adminpass")
+		kvStoreInst, err = kvstore.NewKVStore(ctx, log, testutil.IntegrationRedisHost(), testutil.IntegrationRedisPort(), "adminpass")
 		Expect(err).ToNot(HaveOccurred())
 		serviceHandler = service.NewServiceHandler(storeInst, workerClient, kvStoreInst, nil, log, "", "", []string{})
 
@@ -109,7 +109,7 @@ var _ = Describe("DeviceRender", func() {
 		// Only initialize once (singleton pattern), subsequent calls are no-ops
 		if queuesProvider == nil {
 			processID := fmt.Sprintf("device-render-test-%s", uuid.New().String())
-			queuesProvider, err = queues.NewRedisProvider(ctx, log, processID, "localhost", 6379, api.SecureString("adminpass"), queues.DefaultRetryConfig())
+			queuesProvider, err = queues.NewRedisProvider(ctx, log, processID, testutil.IntegrationRedisHost(), testutil.IntegrationRedisPort(), api.SecureString("adminpass"), queues.DefaultRetryConfig())
 			Expect(err).ToNot(HaveOccurred())
 			err = rendered.Bus.Initialize(ctx, kvStoreInst, queuesProvider, 10*time.Second, log)
 			Expect(err).ToNot(HaveOccurred())
