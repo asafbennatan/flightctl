@@ -15,11 +15,11 @@ const E2EAuxHostEnv = "E2E_AUX_HOST"
 
 // GetDockerNetwork returns the network name for testcontainers (kind, host, podman, bridge).
 func GetDockerNetwork() string {
-	if isKindCluster() {
-		return "kind"
-	}
 	if os.Getenv("FLIGHTCTL_QUADLETS") != "" {
 		return "host"
+	}
+	if isKindCluster() {
+		return "kind"
 	}
 	if IsPodman() {
 		return "podman"
@@ -27,8 +27,10 @@ func GetDockerNetwork() string {
 	return "bridge"
 }
 
-// IsPodman reports whether the project expects Podman as the container runtime for tests.
-func IsPodman() bool { return true }
+// IsPodman reports whether the selected container runtime is Podman (same rule as RuntimeCLIName / DOCKER_HOST).
+func IsPodman() bool {
+	return RuntimeCLIName() == "podman"
+}
 
 func isKindCluster() bool {
 	cmd := exec.Command("kind", "get", "clusters")

@@ -30,10 +30,15 @@ func WithNetwork(network string) ContainerRequestOption {
 // WithHostAccess adds host.containers.internal for Podman.
 func WithHostAccess() ContainerRequestOption {
 	return func(req *testcontainers.ContainerRequest) {
-		if IsPodman() {
-			req.HostConfigModifier = func(hc *container.HostConfig) {
-				hc.ExtraHosts = append(hc.ExtraHosts, "host.containers.internal:host-gateway")
+		if !IsPodman() {
+			return
+		}
+		old := req.HostConfigModifier
+		req.HostConfigModifier = func(hc *container.HostConfig) {
+			if old != nil {
+				old(hc)
 			}
+			hc.ExtraHosts = append(hc.ExtraHosts, "host.containers.internal:host-gateway")
 		}
 	}
 }

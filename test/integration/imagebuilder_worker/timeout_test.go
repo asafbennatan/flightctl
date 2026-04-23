@@ -10,7 +10,6 @@ import (
 	v1beta1 "github.com/flightctl/flightctl/api/core/v1beta1"
 	apiimagebuilder "github.com/flightctl/flightctl/api/imagebuilder/v1alpha1"
 	"github.com/flightctl/flightctl/internal/config"
-	"github.com/flightctl/flightctl/internal/domain"
 	"github.com/flightctl/flightctl/internal/imagebuilder_api/service"
 	imagebuilderstore "github.com/flightctl/flightctl/internal/imagebuilder_api/store"
 	"github.com/flightctl/flightctl/internal/imagebuilder_worker/tasks"
@@ -99,7 +98,7 @@ var _ = Describe("Timeout Check Integration Tests", func() {
 
 		// Create kvStore for Redis operations
 		var kvErr error
-		kvStoreInst, kvErr = kvstore.NewKVStore(ctx, log, testutilpkg.IntegrationRedisHost(), testutilpkg.IntegrationRedisPort(), domain.SecureString("adminpass"))
+		kvStoreInst, kvErr = kvstore.NewKVStore(ctx, log, testutilpkg.IntegrationRedisHost(), testutilpkg.IntegrationRedisPort(), testutilpkg.IntegrationRedisPassword())
 		Expect(kvErr).ToNot(HaveOccurred())
 
 		// Create config with defaults (must keep integration DB/KV endpoints, not localhost:5432)

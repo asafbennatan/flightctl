@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/flightctl/flightctl/internal/config"
+	"github.com/flightctl/flightctl/internal/domain"
 	"github.com/sirupsen/logrus"
 )
 
@@ -123,4 +124,17 @@ func IntegrationRedisPort() uint {
 		logrus.Fatalf("integration Redis container %q is not running or has no published port 6379/tcp (start with: make start-integration-services)", IntegrationRedisContainer)
 	}
 	return p
+}
+
+// IntegrationRedisPassword returns the Redis password for integration tests.
+// Reads KV_PASSWORD, then FLIGHTCTL_KV_PASSWORD (same as make integration-test), else adminpass
+// to match test/integration/integrationstack Redis --requirepass.
+func IntegrationRedisPassword() domain.SecureString {
+	if p := strings.TrimSpace(os.Getenv("KV_PASSWORD")); p != "" {
+		return domain.SecureString(p)
+	}
+	if p := strings.TrimSpace(os.Getenv("FLIGHTCTL_KV_PASSWORD")); p != "" {
+		return domain.SecureString(p)
+	}
+	return domain.SecureString("adminpass")
 }

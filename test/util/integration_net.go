@@ -4,6 +4,7 @@ import (
 	"net"
 	"strconv"
 
+	"github.com/flightctl/flightctl/internal/domain"
 	storetestutil "github.com/flightctl/flightctl/internal/store/testutil"
 )
 
@@ -16,6 +17,11 @@ func IntegrationRedisHost() string {
 // IntegrationRedisPort returns the Redis port for integration tests.
 func IntegrationRedisPort() uint {
 	return storetestutil.IntegrationRedisPort()
+}
+
+// IntegrationRedisPassword returns the Redis password for integration tests.
+func IntegrationRedisPassword() domain.SecureString {
+	return storetestutil.IntegrationRedisPassword()
 }
 
 // IntegrationRedisAddr returns host:port for Redis.

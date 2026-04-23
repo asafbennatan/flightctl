@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/flightctl/flightctl/test/harness/containers"
@@ -28,14 +29,9 @@ const (
 	postgresImage     = "docker.io/library/postgres:16-alpine"
 	redisImage        = "docker.io/library/redis:7-alpine"
 	alertmanagerImage = "docker.io/prom/alertmanager:v0.27.0"
+	// defaultIntegrationPassword matches test/test.mk when integration env vars are unset (e.g. go run preflight alone).
+	defaultIntegrationPassword = "adminpass"
 )
-
-const postgresInitSQL = `
-CREATE USER flightctl_app WITH PASSWORD 'adminpass' CREATEDB;
-CREATE USER flightctl_migrator WITH PASSWORD 'adminpass';
-CREATE DATABASE flightctl OWNER flightctl_app;
-GRANT ALL PRIVILEGES ON DATABASE flightctl TO flightctl_migrator;
-`
 
 const alertmanagerYAML = `
 route:
@@ -43,6 +39,27 @@ route:
 receivers:
   - name: default
 `
+
+func envOrDefault(key, fallback string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func sqlStringLiteral(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
+// postgresInitSQLScript matches credentials from test/test.mk (FLIGHTCTL_POSTGRESQL_*).
+func postgresInitSQLScript(appUserPassword, migratorPassword string) string {
+	return fmt.Sprintf(`
+CREATE USER flightctl_app WITH PASSWORD %s CREATEDB;
+CREATE USER flightctl_migrator WITH PASSWORD %s;
+CREATE DATABASE flightctl OWNER flightctl_app;
+GRANT ALL PRIVILEGES ON DATABASE flightctl TO flightctl_migrator;
+`, sqlStringLiteral(appUserPassword), sqlStringLiteral(migratorPassword))
+}
 
 func integrationStackAlreadyRunning() bool {
 	for _, n := range []string{postgresContainerName, redisContainerName, alertmanagerContainerName} {
@@ -70,8 +87,13 @@ func EnsureRunning(ctx context.Context) error {
 		return fmt.Errorf("temp dir for postgres init: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(initDir) }()
+	appUserPW := envOrDefault("FLIGHTCTL_POSTGRESQL_USER_PASSWORD", defaultIntegrationPassword)
+	migratorPW := envOrDefault("FLIGHTCTL_POSTGRESQL_MIGRATOR_PASSWORD", defaultIntegrationPassword)
+	masterPW := envOrDefault("FLIGHTCTL_POSTGRESQL_MASTER_PASSWORD", defaultIntegrationPassword)
+	kvPW := envOrDefault("FLIGHTCTL_KV_PASSWORD", defaultIntegrationPassword)
+
 	initPath := filepath.Join(initDir, "01-flightctl.sql")
-	if err := os.WriteFile(initPath, []byte(postgresInitSQL), 0600); err != nil {
+	if err := os.WriteFile(initPath, []byte(postgresInitSQLScript(appUserPW, migratorPW)), 0600); err != nil {
 		return fmt.Errorf("write postgres init: %w", err)
 	}
 
@@ -90,7 +112,7 @@ func EnsureRunning(ctx context.Context) error {
 		Name:         postgresContainerName,
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
-			"POSTGRES_PASSWORD": "adminpass",
+			"POSTGRES_PASSWORD": masterPW,
 		},
 		Files: []testcontainers.ContainerFile{
 			{HostFilePath: initPath, ContainerFilePath: "/docker-entrypoint-initdb.d/01-flightctl.sql", FileMode: 0644},
@@ -107,7 +129,7 @@ func EnsureRunning(ctx context.Context) error {
 		Image:        redisImage,
 		Name:         redisContainerName,
 		ExposedPorts: []string{"6379/tcp"},
-		Cmd:          []string{"redis-server", "--requirepass", "adminpass"},
+		Cmd:          []string{"redis-server", "--requirepass", kvPW},
 		WaitingFor:   wait.ForListeningPort("6379/tcp").WithStartupTimeout(60 * time.Second),
 		SkipReaper:   reuse,
 	}

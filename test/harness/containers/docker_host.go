@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -42,11 +43,10 @@ func RuntimeCLIName() string {
 }
 
 // NamePSFilter returns a docker|podman ps --filter value for an exact container name.
+// Both use an anchored pattern and regexp.QuoteMeta so metacharacters in name match literally.
 func NamePSFilter(runtimeCLI, name string) string {
-	if runtimeCLI == "podman" {
-		return "name=^" + name + "$"
-	}
-	return "name=" + name
+	_ = runtimeCLI
+	return "name=^" + regexp.QuoteMeta(name) + "$"
 }
 
 func logContainerRuntime(dockerHost string) {
