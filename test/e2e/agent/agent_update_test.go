@@ -270,7 +270,7 @@ var _ = Describe("VM Agent behavior during updates", Label("agent-update"), func
 				return device.Status.Updated.Status == v1beta1.DeviceUpdatedStatusOutOfDate
 			}, TIMEOUT)
 		})
-		It("Should trigger greenboot rollback when agent fails to start", Label("greenboot-rollback", "87279", "greenboot-rollback-recovery", "sanity", "agent"), func() {
+		It("Should trigger greenboot rollback when agent fails to start", Label("greenboot-rollback", "87279", "greenboot-rollback-recovery", "sanity", "agent", "slow"), func() {
 			harness := e2e.GetWorkerHarness()
 			initialStatusImage, postRollbackBootID := waitForGreenbootOSRollbackFromV11BrokenAgent(harness, deviceId, false)
 

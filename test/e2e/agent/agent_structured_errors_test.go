@@ -76,7 +76,7 @@ var _ = Describe("Agent structured error messages", Ordered, func() {
 			Expect(cond.Status).To(Equal(v1beta1.ConditionStatusFalse), "should set Status to False")
 		})
 
-		It("Verifies element name truncation keeps message under MaxMessageLength", Label("87808", "sanity", "agent"), func() {
+		It("Verifies element name truncation keeps message under MaxMessageLength", Label("87808", "sanity", "agent", "slow"), func() {
 			By("Apply application with an image name exceeding MaxElementLength")
 			Expect(len(LongImage)).To(BeNumerically(">", MaxElementLength),
 				"test precondition: image name must exceed MaxElementLength")

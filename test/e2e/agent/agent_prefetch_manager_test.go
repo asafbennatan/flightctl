@@ -117,7 +117,7 @@ var _ = Describe("Non-blocking OCI dependency prefetch manager", func() {
 		}, LONGTIMEOUT, LONGPOLLING).Should(BeTrue(), "expected image to be present after increasing pull-timeout")
 	})
 
-	It("Prefetch manager pulls OCI artifacts (IfNotPresent vs Always)", Label("83847", "sanity", "agent"), func() {
+	It("Prefetch manager pulls OCI artifacts (IfNotPresent vs Always)", Label("83847", "sanity", "agent", "slow"), func() {
 		serviceImageRef := AlpineImage
 		artifactRef := defaultArtifactRef
 
