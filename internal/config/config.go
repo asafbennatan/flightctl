@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -750,6 +751,18 @@ func Load(cfgFile string) (*Config, error) {
 func applyEnvVarOverrides(c *Config) {
 	if kvPass := os.Getenv("KV_PASSWORD"); kvPass != "" {
 		c.KV.Password = api.SecureString(kvPass)
+	}
+	if dbHost := os.Getenv("DB_HOST"); dbHost != "" {
+		c.Database.Hostname = dbHost
+	}
+	if dbPort := os.Getenv("DB_PORT"); dbPort != "" {
+		p, err := strconv.ParseUint(dbPort, 10, 32)
+		if err == nil {
+			c.Database.Port = uint(p)
+		}
+	}
+	if dbName := os.Getenv("DB_NAME"); dbName != "" {
+		c.Database.Name = dbName
 	}
 	if dbUser := os.Getenv("DB_USER"); dbUser != "" {
 		c.Database.User = dbUser

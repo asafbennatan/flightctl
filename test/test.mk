@@ -132,7 +132,7 @@ _run_template_migration:
 	    echo "No MIGRATION_IMAGE provided; building a fresh one ..."; \
 	    echo "##################################################"; \
 	    $(MAKE) --no-print-directory -B flightctl-db-setup-container; \
-	    img="flightctl-db-setup:latest"; \
+	    img="flightctl-db-setup-$(OS):latest"; \
 	    if ! sudo podman image exists "$$img"; then \
 	      echo "Error: build did not produce $$img" >&2; exit 1; \
 	    fi; \
