@@ -1124,14 +1124,32 @@ components:
 
     ImageBuildCondition:
       description: Condition for ImageBuild resources.
-      allOf:
-        - $ref: '../../core/v1beta1/openapi.yaml#/components/schemas/ConditionBase'
-        - type: object
-          required:
-            - type
-          properties:
-            type:
-              $ref: '#/components/schemas/ImageBuildConditionType'
+      type: object
+      required:
+        - type
+        - status
+        - lastTransitionTime
+        - reason
+        - message
+      properties:
+        type:
+          $ref: '#/components/schemas/ImageBuildConditionType'
+        status:
+          $ref: '../../core/v1beta1/openapi.yaml#/components/schemas/ConditionStatus'
+        observedGeneration:
+          type: integer
+          format: int64
+          description: The .metadata.generation that the condition was set based upon.
+        lastTransitionTime:
+          type: string
+          format: date-time
+          description: The last time the condition transitioned from one status to another.
+        message:
+          type: string
+          description: Human readable message indicating details about last transition.
+        reason:
+          type: string
+          description: A (brief) reason for the condition's last transition.
     ImageBuildConditionType:
       type: string
       description: Type of ImageBuild condition.
@@ -1292,14 +1310,32 @@ components:
 
     ImageExportCondition:
       description: Condition for ImageExport resources.
-      allOf:
-        - $ref: '../../core/v1beta1/openapi.yaml#/components/schemas/ConditionBase'
-        - type: object
-          required:
-            - type
-          properties:
-            type:
-              $ref: '#/components/schemas/ImageExportConditionType'
+      type: object
+      required:
+        - type
+        - status
+        - lastTransitionTime
+        - reason
+        - message
+      properties:
+        type:
+          $ref: '#/components/schemas/ImageExportConditionType'
+        status:
+          $ref: '../../core/v1beta1/openapi.yaml#/components/schemas/ConditionStatus'
+        observedGeneration:
+          type: integer
+          format: int64
+          description: The .metadata.generation that the condition was set based upon.
+        lastTransitionTime:
+          type: string
+          format: date-time
+          description: The last time the condition transitioned from one status to another.
+        message:
+          type: string
+          description: Human readable message indicating details about last transition.
+        reason:
+          type: string
+          description: A (brief) reason for the condition's last transition.
     ImageExportConditionType:
       type: string
       description: Type of ImageExport condition.

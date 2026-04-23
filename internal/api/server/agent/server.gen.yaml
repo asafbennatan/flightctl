@@ -1,0 +1,11 @@
+package: server
+output: server.gen.go
+generation:
+  server: chi
+  models-package:
+    path: github.com/flightctl/flightctl/api/agent/v1beta1
+    alias: apiv1agent
+import-mapping:
+  ../../core/v1beta1/openapi.yaml: github.com/flightctl/flightctl/api/core/v1beta1
+output-options:
+  prune-unreferenced-schemas: false

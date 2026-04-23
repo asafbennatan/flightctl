@@ -61,21 +61,13 @@ func (t EventDetails) HasData() bool {
 
 // Type returns the type of the action.
 func (t HookAction) Type() (HookActionType, error) {
-	var data map[HookActionType]interface{}
-	if err := json.Unmarshal(t.union, &data); err != nil {
-		return "", err
+	if t.HookActionAllOf1 == nil {
+		return "", fmt.Errorf("hook action missing payload")
 	}
-
-	types := []HookActionType{
-		HookActionTypeRun,
+	if _, err := t.HookActionAllOf1.AsHookActionRun(); err == nil {
+		return HookActionTypeRun, nil
 	}
-	for _, t := range types {
-		if _, exists := data[t]; exists {
-			return t, nil
-		}
-	}
-
-	return "", fmt.Errorf("unable to determine hook action type: %+v", data)
+	return "", fmt.Errorf("unable to determine hook action type")
 }
 
 // Type returns the type of the condition.
@@ -125,12 +117,18 @@ func (c ConfigProviderSpec) Type() (ConfigProviderType, error) {
 
 // Type returns the provider type (image or inline) for compose applications.
 func (c ComposeApplication) Type() (ApplicationProviderType, error) {
-	return getApplicationProviderType(c.union)
+	if c.ComposeApplicationAllOf3 == nil {
+		return "", fmt.Errorf("compose application missing provider payload")
+	}
+	return getApplicationProviderType(c.ComposeApplicationAllOf3.union)
 }
 
 // Type returns the provider type (image or inline) for quadlet applications.
 func (q QuadletApplication) Type() (ApplicationProviderType, error) {
-	return getApplicationProviderType(q.union)
+	if q.QuadletApplicationAllOf4 == nil {
+		return "", fmt.Errorf("quadlet application missing provider payload")
+	}
+	return getApplicationProviderType(q.QuadletApplicationAllOf4.union)
 }
 
 func getApplicationProviderType(union json.RawMessage) (ApplicationProviderType, error) {
@@ -196,8 +194,11 @@ func (a ApplicationProviderSpec) GetName() (*string, error) {
 }
 
 func (c ApplicationVolume) Type() (ApplicationVolumeProviderType, error) {
+	if c.ApplicationVolumeAllOf1 == nil {
+		return "", fmt.Errorf("application volume missing provider payload")
+	}
 	var data map[ApplicationVolumeProviderType]interface{}
-	if err := json.Unmarshal(c.union, &data); err != nil {
+	if err := json.Unmarshal(c.ApplicationVolumeAllOf1.union, &data); err != nil {
 		return "", err
 	}
 
@@ -306,23 +307,23 @@ func ExecuteGoTemplateOnDevice(t *template.Template, dev *Device) (string, error
 func (e MatchExpression) String() string {
 	var sb strings.Builder
 
-	switch e.Operator {
+	switch MatchExpressionOperator(e.Operator) {
 	case Exists:
 		sb.WriteString(e.Key) // Exists: Just the key
 	case DoesNotExist:
 		sb.WriteString("!") // Prepend the "not exists" operator
 		sb.WriteString(e.Key)
 	case In:
-		if e.Values != nil {
+		if len(e.Values) > 0 {
 			sb.WriteString(e.Key)
 			sb.WriteString(" in ")
-			sb.WriteString("(" + strings.Join(*e.Values, ", ") + ")")
+			sb.WriteString("(" + strings.Join(e.Values, ", ") + ")")
 		}
 	case NotIn:
-		if e.Values != nil {
+		if len(e.Values) > 0 {
 			sb.WriteString(e.Key)
 			sb.WriteString(" notin ")
-			sb.WriteString("(" + strings.Join(*e.Values, ", ") + ")")
+			sb.WriteString("(" + strings.Join(e.Values, ", ") + ")")
 		}
 	default:
 		// Return empty string for unsupported operators
@@ -335,9 +336,8 @@ func (e MatchExpression) String() string {
 func (rd DeviceSpec) GetConsoles() []DeviceConsole {
 	if rd.Consoles == nil {
 		return []DeviceConsole{}
-	} else {
-		return *rd.Consoles
 	}
+	return rd.Consoles
 }
 
 type SensitiveDataHider interface {
@@ -371,8 +371,8 @@ func hideHttpConfig(config *HttpConfig) {
 	}
 	hideValue(config.Password)
 	hideValue(config.Token)
-	hideValue(config.TlsKey)
-	hideValue(config.TlsCrt)
+	hideValue(config.TLSKey)
+	hideValue(config.TLSCrt)
 }
 
 func hideSshConfig(config *SshConfig) {
@@ -389,8 +389,8 @@ func preserveHttpConfig(newConfig, existingConfig *HttpConfig) {
 	}
 	preserveValue(newConfig.Password, existingConfig.Password)
 	preserveValue(newConfig.Token, existingConfig.Token)
-	preserveValue(newConfig.TlsKey, existingConfig.TlsKey)
-	preserveValue(newConfig.TlsCrt, existingConfig.TlsCrt)
+	preserveValue(newConfig.TLSKey, existingConfig.TLSKey)
+	preserveValue(newConfig.TLSCrt, existingConfig.TLSCrt)
 }
 
 func preserveSshConfig(newConfig, existingConfig *SshConfig) {
@@ -634,11 +634,9 @@ func (a *AuthConfig) HideSensitiveData() error {
 	if a == nil {
 		return nil
 	}
-	if a.Providers != nil {
-		for i := range *a.Providers {
-			if err := (*a.Providers)[i].HideSensitiveData(); err != nil {
-				return err
-			}
+	for i := range a.Providers {
+		if err := a.Providers[i].HideSensitiveData(); err != nil {
+			return err
 		}
 	}
 	return nil

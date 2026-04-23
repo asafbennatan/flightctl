@@ -1218,19 +1218,48 @@ components:
     CatalogItemMeta:
       type: object
       description: 'Metadata for CatalogItem resources. Extends ObjectMeta with catalog scoping.'
-      allOf:
-        - $ref: '../v1beta1/openapi.yaml#/components/schemas/ObjectMeta'
-        - type: object
-          properties:
-            catalog:
-              type: string
-              description: 'The catalog this item belongs to. Similar to namespace in Kubernetes.'
-              example: edge-apps
-          required:
-            - catalog
-          additionalProperties: false
-      # Note: additionalProperties: false moved to the second allOf branch to only apply to the new properties,
-      # not the entire composed schema which would reject valid ObjectMeta fields
+      required:
+        - catalog
+        - name
+      properties:
+        creationTimestamp:
+          type: string
+          description: The time the object was created.
+          format: date-time
+        deletionTimestamp:
+          type: string
+          description: The time the object will be deleted.
+          format: date-time
+        name:
+          type: string
+          maxLength: 253
+          description: The name of the object.
+        labels:
+          type: object
+          description: Map of string keys and values that can be used to organize and categorize (scope and select) objects.
+          additionalProperties:
+            type: string
+            maxLength: 63
+        generation:
+          type: integer
+          description: A sequence number representing a specific generation of the desired state. Populated by the system. Read-only.
+          format: int64
+        owner:
+          type: string
+          description: A resource that owns this resource, in "kind/name" format.
+        annotations:
+          type: object
+          additionalProperties:
+            type: string
+          description: Properties set by the service.
+        resourceVersion:
+          type: string
+          description: An opaque string that identifies the server's internal version of an object.
+        catalog:
+          type: string
+          description: 'The catalog this item belongs to. Similar to namespace in Kubernetes.'
+          example: edge-apps
+      additionalProperties: false
     CatalogItem:
       type: object
       description: CatalogItem represents an application template from a catalog. It provides default configuration values that can be customized when adding the application to a fleet.

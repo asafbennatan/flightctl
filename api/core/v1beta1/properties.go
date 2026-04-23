@@ -53,7 +53,7 @@ func (d *Device) isRenderedVersionUpdated() bool {
 		// devices without status cannot be up to date
 		return false
 	}
-	renderedVersionString, ok := (*d.Metadata.Annotations)[DeviceAnnotationRenderedVersion]
+	renderedVersionString, ok := d.Metadata.Annotations[DeviceAnnotationRenderedVersion]
 	if !ok {
 		// devices without a rendered version cannot be out-of-date
 		return true
@@ -94,11 +94,11 @@ func (d *Device) IsUpdatedToFleetSpec(f *Fleet) bool {
 	if d.Metadata.Annotations == nil || f.Metadata.Annotations == nil {
 		return false
 	}
-	fleetTemplateVersion, ok := (*f.Metadata.Annotations)[FleetAnnotationTemplateVersion]
+	fleetTemplateVersion, ok := f.Metadata.Annotations[FleetAnnotationTemplateVersion]
 	if !ok {
 		return false
 	}
-	deviceTemplateVersion, ok := (*d.Metadata.Annotations)[DeviceAnnotationRenderedTemplateVersion]
+	deviceTemplateVersion, ok := d.Metadata.Annotations[DeviceAnnotationRenderedTemplateVersion]
 	if !ok {
 		return false
 	}
@@ -109,7 +109,7 @@ func (d *Device) Version() string {
 	if d == nil || d.Metadata.Annotations == nil {
 		return ""
 	}
-	deviceVersion, ok := (*d.Metadata.Annotations)[DeviceAnnotationRenderedVersion]
+	deviceVersion, ok := d.Metadata.Annotations[DeviceAnnotationRenderedVersion]
 	if !ok {
 		return ""
 	}
@@ -123,7 +123,7 @@ func (d *Device) SpecHash() string {
 	if d == nil || d.Metadata.Annotations == nil {
 		return ""
 	}
-	hash, ok := (*d.Metadata.Annotations)[DeviceAnnotationRenderedSpecHash]
+	hash, ok := d.Metadata.Annotations[DeviceAnnotationRenderedSpecHash]
 	if !ok {
 		return ""
 	}
@@ -159,7 +159,7 @@ func (f *Fleet) GetAnnotation(annotation string) (string, bool) {
 	if f == nil {
 		return "", false
 	}
-	return util.GetFromMap(lo.FromPtr(f.Metadata.Annotations), annotation)
+	return util.GetFromMap(f.Metadata.Annotations, annotation)
 }
 
 // IsRolloutNew returns true if the fleet has a new rollout (deploying template version annotation exists on newFleet but not on oldFleet).

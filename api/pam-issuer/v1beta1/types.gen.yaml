@@ -1,6 +1,4 @@
 package: pam_issuer
-generate:
-  models: true
 output: types.gen.go
 output-options:
-  skip-prune: true
+  prune-unreferenced-schemas: false

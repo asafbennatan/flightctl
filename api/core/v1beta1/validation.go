@@ -23,6 +23,10 @@ import (
 	"github.com/samber/lo"
 )
 
+func ptrStringMap(m map[string]string) *map[string]string {
+	return &m
+}
+
 const (
 	maxBase64CertificateLength  = 20 * 1024 * 1024
 	maxInlineLength             = 1024 * 1024
@@ -65,8 +69,8 @@ type Validator interface {
 func (d Device) Validate() []error {
 	allErrs := []error{}
 	allErrs = append(allErrs, validation.ValidateResourceName(d.Metadata.Name)...)
-	allErrs = append(allErrs, validation.ValidateLabels(d.Metadata.Labels)...)
-	allErrs = append(allErrs, validation.ValidateAnnotations(d.Metadata.Annotations)...)
+	allErrs = append(allErrs, validation.ValidateLabels(ptrStringMap(d.Metadata.Labels))...)
+	allErrs = append(allErrs, validation.ValidateAnnotations(ptrStringMap(d.Metadata.Annotations))...)
 	if d.Spec != nil {
 		allErrs = append(allErrs, d.Spec.Validate(false)...)
 	}
@@ -87,29 +91,29 @@ func (r DeviceSpec) Validate(fleetTemplate bool) []error {
 	if r.UpdatePolicy != nil {
 		allErrs = append(allErrs, r.UpdatePolicy.Validate()...)
 	}
-	if r.Consoles != nil {
+	if len(r.Consoles) > 0 {
 		allErrs = append(allErrs, fmt.Errorf("consoles are not supported through this api"))
 	}
 	if r.Os != nil {
 		allErrs = append(allErrs, validateOciImageReference(&r.Os.Image, "spec.os.image", fleetTemplate)...)
 	}
-	if r.Config != nil {
-		allErrs = append(allErrs, validateConfigs(*r.Config, fleetTemplate)...)
+	if len(r.Config) > 0 {
+		allErrs = append(allErrs, validateConfigs(r.Config, fleetTemplate)...)
 	}
-	if r.Applications != nil {
-		allErrs = append(allErrs, validateApplications(*r.Applications, fleetTemplate)...)
+	if len(r.Applications) > 0 {
+		allErrs = append(allErrs, validateApplications(r.Applications, fleetTemplate)...)
 	}
-	if r.Resources != nil {
+	if len(r.Resources) > 0 {
 		// Individual resource validation
-		for _, resource := range *r.Resources {
+		for _, resource := range r.Resources {
 			allErrs = append(allErrs, resource.Validate()...)
 		}
 
 		// Cross-resource validation
-		allErrs = append(allErrs, validateResourceMonitor(*r.Resources)...)
+		allErrs = append(allErrs, validateResourceMonitor(r.Resources)...)
 	}
-	if r.Systemd != nil && r.Systemd.MatchPatterns != nil {
-		for i, matchPattern := range *r.Systemd.MatchPatterns {
+	if r.Systemd != nil && len(r.Systemd.MatchPatterns) > 0 {
+		for i, matchPattern := range r.Systemd.MatchPatterns {
 			allErrs = append(allErrs, validation.ValidateSystemdName(&matchPattern, fmt.Sprintf("spec.systemd.matchPatterns[%d]", i))...)
 		}
 	}
@@ -189,24 +193,26 @@ func (a HookAction) Validate(path string) []error {
 
 	switch t {
 	case HookActionTypeRun:
-		runAction, err := a.AsHookActionRun()
+		if a.HookActionAllOf1 == nil {
+			allErrs = append(allErrs, fmt.Errorf("%s: hook action missing payload", path))
+			return allErrs
+		}
+		runAction, err := a.HookActionAllOf1.AsHookActionRun()
 		if err != nil {
 			allErrs = append(allErrs, err)
 			return allErrs
 		}
 		allErrs = append(allErrs, validation.ValidateString(&runAction.Run, path+".run", 1, 2048, nil, "")...)
 		// TODO: pull the extra validation done by the agent up here
-		allErrs = append(allErrs, validation.ValidateStringMap(runAction.EnvVars, path+".envVars", 1, 256, nil, nil, "")...)
+		allErrs = append(allErrs, validation.ValidateStringMap(ptrStringMap(runAction.EnvVars), path+".envVars", 1, 256, nil, nil, "")...)
 		allErrs = append(allErrs, validation.ValidateFileOrDirectoryPath(runAction.WorkDir, path+".workDir")...)
 	default:
 		// if we hit this case, it means that the type should be added to the switch statement above
 		allErrs = append(allErrs, fmt.Errorf("%s: unknown hook action type: %s", path, t))
 	}
 
-	if a.If != nil {
-		for i, condition := range *a.If {
-			allErrs = append(allErrs, condition.Validate(fmt.Sprintf("%s.if[%d]", path, i))...)
-		}
+	for i, condition := range a.If {
+		allErrs = append(allErrs, condition.Validate(fmt.Sprintf("%s.if[%d]", path, i))...)
 	}
 
 	return allErrs
@@ -449,8 +455,8 @@ func (h HttpConfigProviderSpec) Validate(fleetTemplate bool) []error {
 func (r EnrollmentRequest) Validate() []error {
 	allErrs := []error{}
 	allErrs = append(allErrs, validation.ValidateResourceName(r.Metadata.Name)...)
-	allErrs = append(allErrs, validation.ValidateLabels(r.Metadata.Labels)...)
-	allErrs = append(allErrs, validation.ValidateAnnotations(r.Metadata.Annotations)...)
+	allErrs = append(allErrs, validation.ValidateLabels(ptrStringMap(r.Metadata.Labels))...)
+	allErrs = append(allErrs, validation.ValidateAnnotations(ptrStringMap(r.Metadata.Annotations))...)
 	allErrs = append(allErrs, validation.ValidateCSRWithTCGSupport([]byte(r.Spec.Csr))...)
 
 	return allErrs
@@ -466,16 +472,16 @@ func (er *EnrollmentRequest) ValidateUpdate(newObj *EnrollmentRequest) []error {
 
 func (r EnrollmentRequestApproval) Validate() []error {
 	allErrs := []error{}
-	allErrs = append(allErrs, validation.ValidateLabelsWithPath(r.Labels, "labels")...)
+	allErrs = append(allErrs, validation.ValidateLabelsWithPath(ptrStringMap(r.Labels), "labels")...)
 	return allErrs
 }
 
 func (r CertificateSigningRequest) Validate() []error {
 	allErrs := []error{}
 	allErrs = append(allErrs, validation.ValidateResourceName(r.Metadata.Name)...)
-	allErrs = append(allErrs, validation.ValidateLabels(r.Metadata.Labels)...)
-	allErrs = append(allErrs, validation.ValidateAnnotations(r.Metadata.Annotations)...)
-	allErrs = append(allErrs, validation.ValidateCSRUsages(r.Spec.Usages)...)
+	allErrs = append(allErrs, validation.ValidateLabels(ptrStringMap(r.Metadata.Labels))...)
+	allErrs = append(allErrs, validation.ValidateAnnotations(ptrStringMap(r.Metadata.Annotations))...)
+	allErrs = append(allErrs, validation.ValidateCSRUsages(lo.ToPtr(r.Spec.Usages))...)
 	allErrs = append(allErrs, validation.ValidateExpirationSeconds(r.Spec.ExpirationSeconds)...)
 	allErrs = append(allErrs, validation.ValidateSignerName(r.Spec.SignerName)...)
 	allErrs = append(allErrs, validation.ValidateCSRWithTCGSupport(r.Spec.Request)...)
@@ -490,11 +496,11 @@ func (csr *CertificateSigningRequest) ValidateUpdate(newObj *CertificateSigningR
 		csr.Status, newObj.Status)
 }
 
-func (b *Batch_Limit) Validate() []error {
+func (b *BatchLimit) Validate() []error {
 	if b == nil {
 		return nil
 	}
-	intVal, err := b.AsBatchLimit1()
+	intVal, err := b.AsInt1()
 	if err == nil {
 		if intVal <= 0 {
 			return []error{errors.New("absolute limit value must be positive integer")}
@@ -528,7 +534,7 @@ func (b *Batch) Validate() []error {
 
 func (b BatchSequence) Validate() []error {
 	var errs []error
-	for _, batch := range lo.FromPtr(b.Sequence) {
+	for _, batch := range b.Sequence {
 		errs = append(errs, batch.Validate()...)
 	}
 	return errs
@@ -559,7 +565,7 @@ func (d *DisruptionBudget) Validate() []error {
 	if d.MinAvailable == nil && d.MaxUnavailable == nil {
 		errs = append(errs, errors.New("at least one of [MinAvailable, MaxUnavailable] must be defined in disruption budget"))
 	}
-	groupBy := lo.FromPtr(d.GroupBy)
+	groupBy := d.GroupBy
 	if len(groupBy) != len(lo.Uniq(groupBy)) {
 		errs = append(errs, errors.New("groupBy items must be unique"))
 	}
@@ -587,8 +593,8 @@ func (r *RolloutPolicy) Validate() []error {
 func (r Fleet) Validate() []error {
 	allErrs := []error{}
 	allErrs = append(allErrs, validation.ValidateResourceName(r.Metadata.Name)...)
-	allErrs = append(allErrs, validation.ValidateLabels(r.Metadata.Labels)...)
-	allErrs = append(allErrs, validation.ValidateAnnotations(r.Metadata.Annotations)...)
+	allErrs = append(allErrs, validation.ValidateLabels(ptrStringMap(r.Metadata.Labels))...)
+	allErrs = append(allErrs, validation.ValidateAnnotations(ptrStringMap(r.Metadata.Annotations))...)
 	allErrs = append(allErrs, r.Spec.Selector.Validate()...)
 	allErrs = append(allErrs, r.Spec.RolloutPolicy.Validate()...)
 
@@ -650,8 +656,8 @@ func (r *Repository) Validate() []error {
 	}
 	allErrs := []error{}
 	allErrs = append(allErrs, validation.ValidateResourceName(r.Metadata.Name)...)
-	allErrs = append(allErrs, validation.ValidateLabels(r.Metadata.Labels)...)
-	allErrs = append(allErrs, validation.ValidateAnnotations(r.Metadata.Annotations)...)
+	allErrs = append(allErrs, validation.ValidateLabels(ptrStringMap(r.Metadata.Labels))...)
+	allErrs = append(allErrs, validation.ValidateAnnotations(ptrStringMap(r.Metadata.Annotations))...)
 
 	specType, err := r.Spec.Discriminator()
 	if err != nil {
@@ -724,8 +730,8 @@ func (r *Repository) ValidateUpdate(newObj *Repository) []error {
 func (r ResourceSync) Validate() []error {
 	allErrs := []error{}
 	allErrs = append(allErrs, validation.ValidateResourceName(r.Metadata.Name)...)
-	allErrs = append(allErrs, validation.ValidateLabels(r.Metadata.Labels)...)
-	allErrs = append(allErrs, validation.ValidateAnnotations(r.Metadata.Annotations)...)
+	allErrs = append(allErrs, validation.ValidateLabels(ptrStringMap(r.Metadata.Labels))...)
+	allErrs = append(allErrs, validation.ValidateAnnotations(ptrStringMap(r.Metadata.Annotations))...)
 	allErrs = append(allErrs, validation.ValidateResourceNameReference(&r.Spec.Repository, "spec.repository")...)
 	allErrs = append(allErrs, validation.ValidateGitRevision(&r.Spec.TargetRevision, "spec.targetRevision")...)
 	allErrs = append(allErrs, validation.ValidateString(&r.Spec.Path, "spec.path", 0, 2048, nil, "")...)
@@ -787,7 +793,7 @@ func validateHttpConfig(config *HttpConfig) []error {
 		if (config.Username != nil && config.Password == nil) || (config.Username == nil && config.Password != nil) {
 			errs = append(errs, fmt.Errorf("both username and password must be provided together"))
 		}
-		if (config.TlsCrt != nil && config.TlsKey == nil) || (config.TlsCrt == nil && config.TlsKey != nil) {
+		if (config.TLSCrt != nil && config.TLSKey == nil) || (config.TLSCrt == nil && config.TLSKey != nil) {
 			errs = append(errs, fmt.Errorf("both tlsCrt and tlsKey must be provided together"))
 		}
 
@@ -796,9 +802,9 @@ func validateHttpConfig(config *HttpConfig) []error {
 			errs = append(errs, validation.ValidateString(config.Password, "spec.httpConfig.password", 1, 256, nil, "")...)
 		}
 
-		if config.TlsCrt != nil && config.TlsKey != nil {
-			errs = append(errs, validation.ValidateBase64Field(*config.TlsCrt, "spec.httpConfig.TlsCrt", maxBase64CertificateLength)...)
-			errs = append(errs, validation.ValidateBase64Field(*config.TlsKey, "spec.httpConfig.TlsKey", maxBase64CertificateLength)...)
+		if config.TLSCrt != nil && config.TLSKey != nil {
+			errs = append(errs, validation.ValidateBase64Field(*config.TLSCrt, "spec.httpConfig.TlsCrt", maxBase64CertificateLength)...)
+			errs = append(errs, validation.ValidateBase64Field(*config.TLSKey, "spec.httpConfig.TlsKey", maxBase64CertificateLength)...)
 		}
 
 		if config.Token != nil {
@@ -995,10 +1001,8 @@ func ValidateHelmApplication(app ApplicationProviderSpec, appName string, fleetT
 		allErrs = append(allErrs, validation.ValidateGenericName(helm.Namespace, pathPrefix+".namespace")...)
 	}
 
-	if helm.ValuesFiles != nil {
-		for i, vf := range *helm.ValuesFiles {
-			allErrs = append(allErrs, validation.ValidateHelmValuesFile(&vf, fmt.Sprintf("%s.valuesFiles[%d]", pathPrefix, i), validation.DNS1123MaxLength)...)
-		}
+	for i, vf := range helm.ValuesFiles {
+		allErrs = append(allErrs, validation.ValidateHelmValuesFile(&vf, fmt.Sprintf("%s.valuesFiles[%d]", pathPrefix, i), validation.DNS1123MaxLength)...)
 	}
 
 	return allErrs
@@ -1020,14 +1024,22 @@ func validateComposeApplication(app ApplicationProviderSpec, appName string, fle
 
 	switch providerType {
 	case ImageApplicationProviderType:
-		imageSpec, err := compose.AsImageApplicationProviderSpec()
+		if compose.ComposeApplicationAllOf3 == nil {
+			allErrs = append(allErrs, fmt.Errorf("invalid compose application provider"))
+			break
+		}
+		imageSpec, err := compose.ComposeApplicationAllOf3.AsImageApplicationProviderSpec()
 		if err != nil {
 			allErrs = append(allErrs, fmt.Errorf("invalid compose image provider: %w", err))
 		} else {
 			allErrs = append(allErrs, validateOciImageReference(&imageSpec.Image, pathPrefix+".image", fleetTemplate)...)
 		}
 	case InlineApplicationProviderType:
-		inlineSpec, err := compose.AsInlineApplicationProviderSpec()
+		if compose.ComposeApplicationAllOf3 == nil {
+			allErrs = append(allErrs, fmt.Errorf("invalid compose application provider"))
+			break
+		}
+		inlineSpec, err := compose.ComposeApplicationAllOf3.AsInlineApplicationProviderSpec()
 		if err != nil {
 			allErrs = append(allErrs, fmt.Errorf("invalid compose inline provider: %w", err))
 		} else {
@@ -1059,14 +1071,22 @@ func validateQuadletApplication(app ApplicationProviderSpec, appName string, fle
 
 	switch providerType {
 	case ImageApplicationProviderType:
-		imageSpec, err := quadlet.AsImageApplicationProviderSpec()
+		if quadlet.QuadletApplicationAllOf4 == nil {
+			allErrs = append(allErrs, fmt.Errorf("invalid quadlet application provider"))
+			break
+		}
+		imageSpec, err := quadlet.QuadletApplicationAllOf4.AsImageApplicationProviderSpec()
 		if err != nil {
 			allErrs = append(allErrs, fmt.Errorf("invalid quadlet image provider: %w", err))
 		} else {
 			allErrs = append(allErrs, validateOciImageReference(&imageSpec.Image, pathPrefix+".image", fleetTemplate)...)
 		}
 	case InlineApplicationProviderType:
-		inlineSpec, err := quadlet.AsInlineApplicationProviderSpec()
+		if quadlet.QuadletApplicationAllOf4 == nil {
+			allErrs = append(allErrs, fmt.Errorf("invalid quadlet application provider"))
+			break
+		}
+		inlineSpec, err := quadlet.QuadletApplicationAllOf4.AsInlineApplicationProviderSpec()
 		if err != nil {
 			allErrs = append(allErrs, fmt.Errorf("invalid quadlet inline provider: %w", err))
 		} else {
@@ -1082,19 +1102,19 @@ func validateQuadletApplication(app ApplicationProviderSpec, appName string, fle
 	return allErrs
 }
 
-func validateEnvVars(envVars *map[string]string, pathPrefix string) []error {
-	return validation.ValidateStringMap(envVars, pathPrefix+".envVars", 1, validation.DNS1123MaxLength, validation.EnvVarNameRegexp, nil, "")
+func validateEnvVars(envVars map[string]string, pathPrefix string) []error {
+	return validation.ValidateStringMap(ptrStringMap(envVars), pathPrefix+".envVars", 1, validation.DNS1123MaxLength, validation.EnvVarNameRegexp, nil, "")
 }
 
-func validateApplicationVolumes(volumes *[]ApplicationVolume, appName string, appType AppType, fleetTemplate bool) []error {
-	if volumes == nil {
+func validateApplicationVolumes(volumes []ApplicationVolume, appName string, appType AppType, fleetTemplate bool) []error {
+	if len(volumes) == 0 {
 		return nil
 	}
 
 	allErrs := []error{}
 	seenVolumeNames := make(map[string]struct{})
 
-	for i, vol := range *volumes {
+	for i, vol := range volumes {
 		path := fmt.Sprintf("spec.applications[%s].volumes[%d]", appName, i)
 		if _, exists := seenVolumeNames[vol.Name]; exists {
 			allErrs = append(allErrs, fmt.Errorf("duplicate volume name for application: %s", vol.Name))
@@ -1123,7 +1143,11 @@ func validateVolume(vol ApplicationVolume, path string, fleetTemplate bool, appT
 
 	switch providerType {
 	case ImageApplicationVolumeProviderType:
-		imgProvider, err := vol.AsImageVolumeProviderSpec()
+		if vol.ApplicationVolumeAllOf1 == nil {
+			errs = append(errs, fmt.Errorf("application volume missing provider payload"))
+			break
+		}
+		imgProvider, err := vol.ApplicationVolumeAllOf1.AsImageVolumeProviderSpec()
 		if err != nil {
 			errs = append(errs, fmt.Errorf("invalid image application volume provider: %w", err))
 		} else {
@@ -1133,7 +1157,11 @@ func validateVolume(vol ApplicationVolume, path string, fleetTemplate bool, appT
 			errs = append(errs, fmt.Errorf("image application volume provider invalid for app type: %s", appType))
 		}
 	case MountApplicationVolumeProviderType:
-		mountProvider, err := vol.AsMountVolumeProviderSpec()
+		if vol.ApplicationVolumeAllOf1 == nil {
+			errs = append(errs, fmt.Errorf("application volume missing provider payload"))
+			break
+		}
+		mountProvider, err := vol.ApplicationVolumeAllOf1.AsMountVolumeProviderSpec()
 		if err != nil {
 			errs = append(errs, fmt.Errorf("invalid mount application volume provider: %w", err))
 		} else {
@@ -1144,7 +1172,11 @@ func validateVolume(vol ApplicationVolume, path string, fleetTemplate bool, appT
 			errs = append(errs, fmt.Errorf("mount application volume provider invalid for app type: %s", appType))
 		}
 	case ImageMountApplicationVolumeProviderType:
-		provider, err := vol.AsImageMountVolumeProviderSpec()
+		if vol.ApplicationVolumeAllOf1 == nil {
+			errs = append(errs, fmt.Errorf("application volume missing provider payload"))
+			break
+		}
+		provider, err := vol.ApplicationVolumeAllOf1.AsImageMountVolumeProviderSpec()
 		if err != nil {
 			errs = append(errs, fmt.Errorf("invalid image mount application volume provider: %w", err))
 		} else {
@@ -1163,15 +1195,15 @@ func validateVolume(vol ApplicationVolume, path string, fleetTemplate bool, appT
 	return errs
 }
 
-func validateContainerPorts(ports *[]ApplicationPort, path string) []error {
-	if ports == nil || len(*ports) == 0 {
+func validateContainerPorts(ports []ApplicationPort, path string) []error {
+	if len(ports) == 0 {
 		return nil
 	}
 
 	var allErrs []error
 	portPattern := regexp.MustCompile(`^[0-9]+:[0-9]+$`)
 
-	for i, portString := range *ports {
+	for i, portString := range ports {
 		formatErr := fmt.Errorf("%s[%d]: must be in format 'portnumber:portnumber', got %q", path, i, portString)
 		if !portPattern.MatchString(portString) {
 			allErrs = append(allErrs, formatErr)
@@ -1269,7 +1301,10 @@ func ensureAppName(app ApplicationProviderSpec) (string, error) {
 			return "", fmt.Errorf("invalid compose application provider type: %w", err)
 		}
 		if providerType == ImageApplicationProviderType {
-			imageSpec, err := compose.AsImageApplicationProviderSpec()
+			if compose.ComposeApplicationAllOf3 == nil {
+				return "", fmt.Errorf("invalid compose application provider")
+			}
+			imageSpec, err := compose.ComposeApplicationAllOf3.AsImageApplicationProviderSpec()
 			if err != nil {
 				return "", fmt.Errorf("invalid compose image provider: %w", err)
 			}
@@ -1289,7 +1324,10 @@ func ensureAppName(app ApplicationProviderSpec) (string, error) {
 			return "", fmt.Errorf("invalid quadlet application provider type: %w", err)
 		}
 		if providerType == ImageApplicationProviderType {
-			imageSpec, err := quadlet.AsImageApplicationProviderSpec()
+			if quadlet.QuadletApplicationAllOf4 == nil {
+				return "", fmt.Errorf("invalid quadlet application provider")
+			}
+			imageSpec, err := quadlet.QuadletApplicationAllOf4.AsImageApplicationProviderSpec()
 			if err != nil {
 				return "", fmt.Errorf("invalid quadlet image provider: %w", err)
 			}
@@ -1432,7 +1470,7 @@ func validateParametersInString(s *string, path string, fleetTemplate bool) (boo
 	dev := &Device{
 		Metadata: ObjectMeta{
 			Name:   lo.ToPtr("name"),
-			Labels: &map[string]string{},
+			Labels: map[string]string{},
 		},
 	}
 
@@ -1507,8 +1545,8 @@ func hasPathField(rawJSON []byte) bool {
 func (a *AuthProvider) Validate(ctx context.Context) []error {
 	allErrs := []error{}
 	allErrs = append(allErrs, validation.ValidateResourceName(a.Metadata.Name)...)
-	allErrs = append(allErrs, validation.ValidateLabels(a.Metadata.Labels)...)
-	allErrs = append(allErrs, validation.ValidateAnnotations(a.Metadata.Annotations)...)
+	allErrs = append(allErrs, validation.ValidateLabels(ptrStringMap(a.Metadata.Labels))...)
+	allErrs = append(allErrs, validation.ValidateAnnotations(ptrStringMap(a.Metadata.Annotations))...)
 	allErrs = append(allErrs, a.Spec.Validate(ctx, false)...)
 
 	return allErrs
@@ -1533,7 +1571,7 @@ func (o *OIDCProviderSpec) Validate(ctx context.Context, isUpdate bool) []error 
 	if o.Issuer == "" {
 		allErrs = append(allErrs, ErrIssuerRequired)
 	}
-	if o.ClientId == "" {
+	if o.ClientID == "" {
 		allErrs = append(allErrs, ErrClientIdRequired)
 	}
 
@@ -1558,7 +1596,7 @@ func (o *OAuth2ProviderSpec) Validate(ctx context.Context, isUpdate bool) []erro
 	if o.UserinfoUrl == "" {
 		allErrs = append(allErrs, ErrUserinfoUrlRequired)
 	}
-	if o.ClientId == "" {
+	if o.ClientID == "" {
 		allErrs = append(allErrs, ErrClientIdRequired)
 	}
 
@@ -1601,7 +1639,7 @@ func (a *AuthProviderSpec) Validate(ctx context.Context, isUpdate bool) []error 
 		} else {
 			allErrs = append(allErrs, (&oauth2Spec).Validate(ctx, isUpdate)...)
 		}
-	case string(K8s):
+	case string(K8S):
 		allErrs = append(allErrs, ErrK8sProviderConfigOnly)
 	case string(Aap):
 		allErrs = append(allErrs, ErrAapProviderConfigOnly)

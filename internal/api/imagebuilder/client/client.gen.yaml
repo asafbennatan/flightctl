@@ -1,0 +1,11 @@
+package: client
+output: client.gen.go
+generation:
+  client: true
+  models-package:
+    path: github.com/flightctl/flightctl/api/imagebuilder/v1alpha1
+    alias: apiimagebuilder
+import-mapping:
+  ../../core/v1beta1/openapi.yaml: github.com/flightctl/flightctl/api/core/v1beta1
+output-options:
+  prune-unreferenced-schemas: false
