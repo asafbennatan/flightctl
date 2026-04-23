@@ -1,10 +1,12 @@
 package testutil
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/flightctl/flightctl/internal/config"
 	"github.com/flightctl/flightctl/internal/domain"
@@ -18,23 +20,24 @@ const (
 	IntegrationAlertmanagerContainer = "flightctl-integration-alertmanager"
 )
 
-func containerRuntimeCLIName() string {
-	dh := os.Getenv("DOCKER_HOST")
-	if dh == "" || strings.Contains(dh, "podman") {
-		return "podman"
-	}
-	return "docker"
-}
-
+// publishedTCPPort resolves the host-published TCP port for a named container.
+// Tries docker first, then podman (avoids wrong default when DOCKER_HOST is unset), with a bounded wait.
 func publishedTCPPort(containerName, containerTCPPort string) (host string, port uint, found bool) {
-	cli := containerRuntimeCLIName()
-	//nolint:gosec // G204: cli is podman|docker; names/ports are fixed integration constants.
-	cmd := exec.Command(cli, "port", containerName, containerTCPPort)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", 0, false
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for _, cli := range []string{"docker", "podman"} {
+		//nolint:gosec // G204: cli is docker|podman; name/port are fixed integration constants.
+		cmd := exec.CommandContext(ctx, cli, "port", containerName, containerTCPPort)
+		out, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+		h, p, ok := parseHostPort(string(out))
+		if ok {
+			return h, p, true
+		}
 	}
-	return parseHostPort(string(out))
+	return "", 0, false
 }
 
 func parseHostPort(output string) (host string, port uint, ok bool) {

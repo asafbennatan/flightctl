@@ -30,6 +30,16 @@ echo "Migration user setup completed. Running database migration..."
 # Tables are created as the migration user; grant the application role the same data-plane access
 # as deploy/scripts/setup_database_users.sql so template DBs and CI match production.
 DB_APP_USER="${DB_APP_USER:-flightctl_app}"
+DB_APP_PASSWORD="${DB_APP_PASSWORD:-adminpass}"
+echo "Ensuring application user exists: $DB_APP_USER"
+PGPASSWORD="$DB_ADMIN_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_ADMIN_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "
+DO \$\$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$DB_APP_USER') THEN
+        EXECUTE format('CREATE USER %I WITH PASSWORD %L CREATEDB', '$DB_APP_USER', '$DB_APP_PASSWORD');
+    END IF;
+END \$\$;"
+
 echo "Granting application user (${DB_APP_USER}) access to migrated schema..."
 PGPASSWORD="$DB_ADMIN_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_ADMIN_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "
 GRANT USAGE ON SCHEMA public TO \"$DB_APP_USER\";

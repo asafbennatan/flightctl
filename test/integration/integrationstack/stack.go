@@ -6,8 +6,10 @@ package integrationstack
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -70,13 +72,81 @@ func integrationStackAlreadyRunning() bool {
 	return true
 }
 
+func inspectPostgresMasterPassword(ctx context.Context) (string, bool) {
+	cli := containers.RuntimeCLIName()
+	sub, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	//nolint:gosec // G204: cli is docker|podman; container name is a package constant.
+	cmd := exec.CommandContext(sub, cli, "inspect", "-f", "{{range .Config.Env}}{{println .}}{{end}}", postgresContainerName)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", false
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		const pfx = "POSTGRES_PASSWORD="
+		if strings.HasPrefix(line, pfx) {
+			return strings.TrimPrefix(line, pfx), true
+		}
+	}
+	return "", false
+}
+
+func inspectRedisRequirepass(ctx context.Context) (string, bool) {
+	cli := containers.RuntimeCLIName()
+	sub, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	//nolint:gosec // G204: cli is docker|podman; container name is a package constant.
+	cmd := exec.CommandContext(sub, cli, "inspect", "-f", "{{json .Config.Cmd}}", redisContainerName)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", false
+	}
+	var argv []string
+	if err := json.Unmarshal(out, &argv); err != nil {
+		return "", false
+	}
+	for i := 0; i+1 < len(argv); i++ {
+		if argv[i] == "--requirepass" {
+			return argv[i+1], true
+		}
+	}
+	return "", false
+}
+
+// integrationStackCredentialMismatch is true when Postgres/Redis are up but env passwords differ from
+// running container config (inspect), or inspect failed — caller should recreate the stack.
+func integrationStackCredentialMismatch(ctx context.Context, postgresMaster, redisPass string) bool {
+	if !containers.ContainerRunningByName(postgresContainerName) || !containers.ContainerRunningByName(redisContainerName) {
+		return false
+	}
+	pm, ok1 := inspectPostgresMasterPassword(ctx)
+	rp, ok2 := inspectRedisRequirepass(ctx)
+	if !ok1 || !ok2 {
+		return true
+	}
+	return pm != postgresMaster || rp != redisPass
+}
+
 // EnsureRunning starts Postgres, Redis, and Alertmanager with reuse if they are not already running.
-// If all three integration containers are already running (e.g. started by preflight or a prior test
-// process), skips testcontainers the same way E2E aux checks containers.ContainerExistsByName before work.
+// If all three containers are running and Postgres/Redis credentials match FLIGHTCTL_* env, skips start.
+// If credentials differ from running containers, removes them so init SQL and Redis requirepass apply.
 func EnsureRunning(ctx context.Context) error {
+	containers.ConfigureDockerHost()
+
+	appUserPW := envOrDefault("FLIGHTCTL_POSTGRESQL_USER_PASSWORD", defaultIntegrationPassword)
+	migratorPW := envOrDefault("FLIGHTCTL_POSTGRESQL_MIGRATOR_PASSWORD", defaultIntegrationPassword)
+	masterPW := envOrDefault("FLIGHTCTL_POSTGRESQL_MASTER_PASSWORD", defaultIntegrationPassword)
+	kvPW := envOrDefault("FLIGHTCTL_KV_PASSWORD", defaultIntegrationPassword)
+
 	if integrationStackAlreadyRunning() {
-		logrus.Info("Integration stack already running; skipping container start")
-		return nil
+		if integrationStackCredentialMismatch(ctx, masterPW, kvPW) {
+			logrus.Warn("Integration stack credentials differ from environment (or inspect failed); removing containers")
+			_ = Stop(ctx)
+		} else {
+			logrus.Info("Integration stack already running; skipping container start")
+			return nil
+		}
 	}
 
 	network := containers.GetDockerNetwork()
@@ -87,10 +157,6 @@ func EnsureRunning(ctx context.Context) error {
 		return fmt.Errorf("temp dir for postgres init: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(initDir) }()
-	appUserPW := envOrDefault("FLIGHTCTL_POSTGRESQL_USER_PASSWORD", defaultIntegrationPassword)
-	migratorPW := envOrDefault("FLIGHTCTL_POSTGRESQL_MIGRATOR_PASSWORD", defaultIntegrationPassword)
-	masterPW := envOrDefault("FLIGHTCTL_POSTGRESQL_MASTER_PASSWORD", defaultIntegrationPassword)
-	kvPW := envOrDefault("FLIGHTCTL_KV_PASSWORD", defaultIntegrationPassword)
 
 	initPath := filepath.Join(initDir, "01-flightctl.sql")
 	if err := os.WriteFile(initPath, []byte(postgresInitSQLScript(appUserPW, migratorPW)), 0600); err != nil {

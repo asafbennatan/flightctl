@@ -757,7 +757,9 @@ func applyEnvVarOverrides(c *Config) {
 	}
 	if dbPort := os.Getenv("DB_PORT"); dbPort != "" {
 		p, err := strconv.ParseUint(dbPort, 10, 32)
-		if err == nil {
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: invalid DB_PORT value %q (%v); leaving database.port at default %d\n", dbPort, err, c.Database.Port)
+		} else {
 			c.Database.Port = uint(p)
 		}
 	}

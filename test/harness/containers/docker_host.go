@@ -63,10 +63,10 @@ func logContainerRuntime(dockerHost string) {
 
 func configureProviderSettings(dockerHost string) {
 	if os.Getenv("TESTCONTAINERS_RYUK_DISABLED") == "" {
-		os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+		_ = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 	}
 	if strings.Contains(dockerHost, "podman") && os.Getenv("DOCKER_API_VERSION") == "" {
-		os.Setenv("DOCKER_API_VERSION", "1.43")
+		_ = os.Setenv("DOCKER_API_VERSION", "1.43")
 	}
 }
 

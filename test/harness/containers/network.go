@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 )
@@ -32,10 +33,18 @@ func IsPodman() bool {
 	return RuntimeCLIName() == "podman"
 }
 
+var (
+	kindClusterOnce    sync.Once
+	kindClusterPresent bool
+)
+
 func isKindCluster() bool {
-	cmd := exec.Command("kind", "get", "clusters")
-	out, err := cmd.Output()
-	return err == nil && strings.TrimSpace(string(out)) != ""
+	kindClusterOnce.Do(func() {
+		cmd := exec.Command("kind", "get", "clusters")
+		out, err := cmd.Output()
+		kindClusterPresent = err == nil && strings.TrimSpace(string(out)) != ""
+	})
+	return kindClusterPresent
 }
 
 // GetHostIP returns the host's external IP for container access.

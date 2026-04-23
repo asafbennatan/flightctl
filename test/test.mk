@@ -75,13 +75,23 @@ unit-test:
 run-integration-test:
 	$(ENV_TRACE_FLAGS) $(MAKE) _integration_test TEST="$(or $(TEST),$(shell go list $(if $(TEST_DIR),$(TEST_DIR),./test/integration/...)))"
 
+BIN_PREFLIGHT := $(ROOT_DIR)/bin/preflight
+PREFLIGHT_SRC := $(wildcard $(ROOT_DIR)/test/integration/preflight/*.go)
+
+$(BIN_PREFLIGHT): $(PREFLIGHT_SRC)
+	@mkdir -p "$(ROOT_DIR)/bin"
+	cd "$(ROOT_DIR)" && go build -o $@ ./test/integration/preflight
+
+.PHONY: build-integration-preflight
+build-integration-preflight: $(BIN_PREFLIGHT)
+
 # Start integration testcontainers (Postgres, Redis, Alertmanager). Tests discover host ports via podman port.
-start-integration-services:
-	@cd "$(ROOT_DIR)" && go run ./test/integration/preflight start
+start-integration-services: $(BIN_PREFLIGHT)
+	@cd "$(ROOT_DIR)" && "$(BIN_PREFLIGHT)" start
 
 # Stop integration testcontainers.
-stop-integration-services:
-	@cd "$(ROOT_DIR)" && go run ./test/integration/preflight stop || true
+stop-integration-services: $(BIN_PREFLIGHT)
+	@cd "$(ROOT_DIR)" && "$(BIN_PREFLIGHT)" stop || true
 
 integration-test: export FLIGHTCTL_KV_PASSWORD=adminpass
 integration-test: export FLIGHTCTL_POSTGRESQL_MASTER_PASSWORD=adminpass
@@ -98,7 +108,7 @@ integration-test: export FLIGHTCTL_TEST_DB_STRATEGY?=local
 #     resolve the same rootless Podman API path the runner used for preflight/tests when applicable.
 integration-test:
 	@bash -euo pipefail -c '\
-	  trap "set +e; $(MAKE) -C \"$(ROOT_DIR)\" stop-integration-services || true" EXIT; \
+	  trap "set +e; if [ \"$${KEEP_INTEGRATION_STACK:-}\" != \"1\" ]; then $(MAKE) -C \"$(ROOT_DIR)\" stop-integration-services || true; fi" EXIT; \
 	  echo "Using $(FLIGHTCTL_TEST_DB_STRATEGY) database strategy..."; \
 	  $(MAKE) -C "$(ROOT_DIR)" start-integration-services; \
 	  if [[ "$(FLIGHTCTL_TEST_DB_STRATEGY)" == "template" ]]; then \
@@ -281,7 +291,7 @@ stop-aux:
 	go run ./cmd/aux-service stop all
 
 .PHONY: start-registry stop-registry start-git-server stop-git-server start-prometheus stop-prometheus start-tracing stop-tracing start-keycloak stop-keycloak start-aux stop-aux
-.PHONY: unit-test prepare-integration-test integration-test run-integration-test start-integration-services stop-integration-services view-coverage prepare-e2e-test deploy-e2e-ocp-test-vm _run_template_migration _ensure_db_setup_image prepare-swtpm-certs clean-swtpm-certs
+.PHONY: unit-test prepare-integration-test integration-test run-integration-test build-integration-preflight start-integration-services stop-integration-services view-coverage prepare-e2e-test deploy-e2e-ocp-test-vm _run_template_migration _ensure_db_setup_image prepare-swtpm-certs clean-swtpm-certs
 
 # Schemathesis API testing
 SCHEMATHESIS_IMAGE ?= flightctl-schemathesis:latest
