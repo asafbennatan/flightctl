@@ -147,6 +147,7 @@ echo "Target database: $DB_NAME"
     -e DB_ADMIN_PASSWORD="$DB_ADMIN_PASSWORD" \
     -e DB_MIGRATION_USER="$DB_MIGRATION_USER" \
     -e DB_MIGRATION_PASSWORD="$DB_MIGRATION_PASSWORD" \
+    -e DB_APP_USER="$APP_USER" \
     "$MIGRATION_IMAGE" \
     /app/deploy/scripts/migration-setup.sh
 

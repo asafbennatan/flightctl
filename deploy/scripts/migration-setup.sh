@@ -26,3 +26,17 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO \"$DB_MIGRATION_USER\" 
 
 echo "Migration user setup completed. Running database migration..."
 /usr/local/bin/flightctl-db-migrate
+
+# Tables are created as the migration user; grant the application role the same data-plane access
+# as deploy/scripts/setup_database_users.sql so template DBs and CI match production.
+DB_APP_USER="${DB_APP_USER:-flightctl_app}"
+echo "Granting application user (${DB_APP_USER}) access to migrated schema..."
+PGPASSWORD="$DB_ADMIN_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_ADMIN_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "
+GRANT USAGE ON SCHEMA public TO \"$DB_APP_USER\";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO \"$DB_APP_USER\";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO \"$DB_APP_USER\";
+ALTER DEFAULT PRIVILEGES FOR ROLE \"$DB_MIGRATION_USER\" IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO \"$DB_APP_USER\";
+ALTER DEFAULT PRIVILEGES FOR ROLE \"$DB_MIGRATION_USER\" IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO \"$DB_APP_USER\";
+"
