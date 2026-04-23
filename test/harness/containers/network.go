@@ -73,6 +73,23 @@ func ContainerExistsByName(name string) bool {
 	return strings.TrimSpace(string(out)) != ""
 }
 
+// ContainerRunningByName returns true if a container with the given name exists and is running.
+// Uses the same CLI selection as ContainerExistsByName (see auxiliary.Registry.Reused / E2E aux).
+func ContainerRunningByName(name string) bool {
+	if !ContainerExistsByName(name) {
+		return false
+	}
+	cli := RuntimeCLIName()
+	//nolint:gosec // G204: cli is podman|docker; name is caller-controlled (fixed names at call sites).
+	cmd := exec.Command(cli, "inspect", "-f", "{{.State.Running}}", name)
+	out, err := cmd.Output()
+	if err != nil {
+		logrus.Debugf("containerRunningByName %s: %v", name, err)
+		return false
+	}
+	return strings.TrimSpace(string(out)) == "true"
+}
+
 // RemoveContainerByName force-removes a container by name (best effort).
 func RemoveContainerByName(name string) error {
 	cli := RuntimeCLIName()

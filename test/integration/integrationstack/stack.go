@@ -44,8 +44,24 @@ receivers:
   - name: default
 `
 
+func integrationStackAlreadyRunning() bool {
+	for _, n := range []string{postgresContainerName, redisContainerName, alertmanagerContainerName} {
+		if !containers.ContainerRunningByName(n) {
+			return false
+		}
+	}
+	return true
+}
+
 // EnsureRunning starts Postgres, Redis, and Alertmanager with reuse if they are not already running.
+// If all three integration containers are already running (e.g. started by preflight or a prior test
+// process), skips testcontainers the same way E2E aux checks containers.ContainerExistsByName before work.
 func EnsureRunning(ctx context.Context) error {
+	if integrationStackAlreadyRunning() {
+		logrus.Info("Integration stack already running; skipping container start")
+		return nil
+	}
+
 	network := containers.GetDockerNetwork()
 	reuse := true
 
