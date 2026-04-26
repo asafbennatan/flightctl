@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flightctl/flightctl/internal/store/testutil"
 	"github.com/flightctl/flightctl/test/harness/containers"
 	"github.com/sirupsen/logrus"
 	"github.com/testcontainers/testcontainers-go"
@@ -140,13 +141,18 @@ func EnsureRunning(ctx context.Context) error {
 	kvPW := envOrDefault("FLIGHTCTL_KV_PASSWORD", defaultIntegrationPassword)
 
 	if integrationStackAlreadyRunning() {
-		if integrationStackCredentialMismatch(ctx, masterPW, kvPW) {
-			logrus.Warn("Integration stack credentials differ from environment (or inspect failed); removing containers")
-			_ = Stop(ctx)
-		} else {
+		credMismatch := integrationStackCredentialMismatch(ctx, masterPW, kvPW)
+		reachable := testutil.IntegrationStackTCPReachable()
+		if !credMismatch && reachable {
 			logrus.Info("Integration stack already running; skipping container start")
 			return nil
 		}
+		if credMismatch {
+			logrus.Warn("Integration stack credentials differ from environment (or inspect failed); removing containers")
+		} else {
+			logrus.Warn("Integration stack containers are running but services are not reachable on published ports; removing containers")
+		}
+		_ = Stop(ctx)
 	}
 
 	network := containers.GetDockerNetwork()

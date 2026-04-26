@@ -9,16 +9,21 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 )
 
-func init() {
-	ConfigureDockerHost()
-}
+var configureOnce sync.Once
 
 // ConfigureDockerHost sets up the container runtime environment for testcontainers.
+// Call this from test setup (e.g. TestMain, e2e aux Get, preflight) or it runs lazily
+// on first use of this package (RuntimeCLIName, GetDockerNetwork, etc.) via sync.Once.
 func ConfigureDockerHost() {
+	configureOnce.Do(configureDockerHostUnlocked)
+}
+
+func configureDockerHostUnlocked() {
 	dockerHost := os.Getenv("DOCKER_HOST")
 	if dockerHost == "" {
 		socketPath := detectContainerSocket()
@@ -35,6 +40,7 @@ func ConfigureDockerHost() {
 
 // RuntimeCLIName returns the CLI binary that matches DOCKER_HOST.
 func RuntimeCLIName() string {
+	ConfigureDockerHost()
 	dh := os.Getenv("DOCKER_HOST")
 	if strings.Contains(dh, "podman") {
 		return "podman"
@@ -42,11 +48,18 @@ func RuntimeCLIName() string {
 	return "docker"
 }
 
-// NamePSFilter returns a docker|podman ps --filter value for an exact container name.
-// Both use an anchored pattern and regexp.QuoteMeta so metacharacters in name match literally.
+// NamePSFilter returns a docker|podman ps --filter value for a container by name.
+// Podman applies the "name" filter as a regular expression, so an anchored, quoted
+// pattern matches a single name even when the name could contain metacharacters.
+//
+// Docker Engine typically treats the "name" filter as a plain substring, not a regex.
+// Using "^...$" there matches nothing because '^' and '$' are taken literally, which
+// breaks any helper that uses ps -f to detect an existing container (e2e registry reuse).
 func NamePSFilter(runtimeCLI, name string) string {
-	_ = runtimeCLI
-	return "name=^" + regexp.QuoteMeta(name) + "$"
+	if runtimeCLI == "podman" {
+		return "name=^" + regexp.QuoteMeta(name) + "$"
+	}
+	return "name=" + name
 }
 
 func logContainerRuntime(dockerHost string) {

@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"context"
+	"net"
 	"os"
 	"os/exec"
 	"strconv"
@@ -38,6 +39,32 @@ func publishedTCPPort(containerName, containerTCPPort string) (host string, port
 		}
 	}
 	return "", 0, false
+}
+
+// IntegrationStackTCPReachable is true when host-published ports for the integration
+// Postgres, Redis, and Alertmanager containers accept a TCP connection.
+func IntegrationStackTCPReachable() bool {
+	probes := []struct {
+		name string
+		spec string
+	}{
+		{IntegrationPostgresContainer, "5432/tcp"},
+		{IntegrationRedisContainer, "6379/tcp"},
+		{IntegrationAlertmanagerContainer, "9093/tcp"},
+	}
+	for _, p := range probes {
+		h, prt, ok := publishedTCPPort(p.name, p.spec)
+		if !ok {
+			return false
+		}
+		addr := net.JoinHostPort(h, strconv.FormatUint(uint64(prt), 10))
+		c, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		if err != nil {
+			return false
+		}
+		_ = c.Close()
+	}
+	return true
 }
 
 func parseHostPort(output string) (host string, port uint, ok bool) {

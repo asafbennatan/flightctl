@@ -16,6 +16,7 @@ const E2EAuxHostEnv = "E2E_AUX_HOST"
 
 // GetDockerNetwork returns the network name for testcontainers (kind, host, podman, bridge).
 func GetDockerNetwork() string {
+	ConfigureDockerHost()
 	if os.Getenv("FLIGHTCTL_QUADLETS") != "" {
 		return "host"
 	}
@@ -62,6 +63,7 @@ func GetHostIP() string {
 
 // GetContainerHostname returns the hostname for host access from inside containers.
 func GetContainerHostname() string {
+	ConfigureDockerHost()
 	if isKindCluster() {
 		return GetHostIP()
 	}

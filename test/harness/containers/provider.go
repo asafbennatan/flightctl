@@ -45,6 +45,7 @@ func WithHostAccess() ContainerRequestOption {
 
 // GenericStart starts a container with the Flight Control testcontainers provider defaults.
 func GenericStart(ctx context.Context, req testcontainers.ContainerRequest, reuse bool, opts ...ContainerRequestOption) (testcontainers.Container, error) {
+	ConfigureDockerHost()
 	for _, opt := range opts {
 		opt(&req)
 	}
