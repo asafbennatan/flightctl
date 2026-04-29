@@ -1083,6 +1083,12 @@ paths:
           required: false
           schema:
             type: boolean
+        - name: cveId
+          in: query
+          description: Filter devices by CVE ID. Only returns devices whose OS image digest has the specified vulnerability.
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: OK

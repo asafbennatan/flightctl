@@ -3060,6 +3060,9 @@ type ListDevicesParams struct {
 
 	// SummaryOnly A boolean flag to include only a summary of the devices. When set to true, the response will contain only the summary information. Only the 'owner' and 'labelSelector' parameters are supported when 'summaryOnly' is true.
 	SummaryOnly *bool `form:"summaryOnly,omitempty" json:"summaryOnly,omitempty"`
+
+	// CveId Filter devices by CVE ID. Only returns devices whose OS image digest has the specified vulnerability.
+	CveId *string `form:"cveId,omitempty" json:"cveId,omitempty"`
 }
 
 // GetRenderedDeviceParams defines parameters for GetRenderedDevice.
