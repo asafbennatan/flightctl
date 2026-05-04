@@ -7145,6 +7145,9 @@ components:
             - DeviceContentOutOfDate
             - DeviceContentUpdating
             - DeviceUpdateFailed
+            - DeviceVulnerabilityCVECritical
+            - DeviceVulnerabilityCVEResolved
+            - DeviceVulnerabilityCVEWarning
             - EnrollmentRequestApproved
             - EnrollmentRequestApprovalFailed
             - DeviceMultipleOwnersDetected
@@ -7254,6 +7257,7 @@ components:
           FleetRolloutBatchDispatched: "#/components/schemas/FleetRolloutBatchDispatchedDetails"
           FleetRolloutBatchCompleted: "#/components/schemas/FleetRolloutBatchCompletedDetails"
           FleetRolloutDeviceSelected: "#/components/schemas/FleetRolloutDeviceSelectedDetails"
+          DeviceVulnerabilityCVE: "#/components/schemas/DeviceVulnerabilityCveDetails"
       oneOf:
         - $ref: "#/components/schemas/ResourceUpdatedDetails"
         - $ref: "#/components/schemas/DeviceOwnershipChangedDetails"
@@ -7269,6 +7273,31 @@ components:
         - $ref: "#/components/schemas/FleetRolloutBatchDispatchedDetails"
         - $ref: "#/components/schemas/FleetRolloutBatchCompletedDetails"
         - $ref: "#/components/schemas/FleetRolloutDeviceSelectedDetails"
+        - $ref: "#/components/schemas/DeviceVulnerabilityCveDetails"
+    DeviceVulnerabilityCveDetails:
+      type: object
+      description: Structured details for per-device CVE vulnerability events.
+      required:
+        - detailType
+        - cveId
+        - imageRef
+        - imageDigest
+      properties:
+        detailType:
+          type: string
+          enum: [DeviceVulnerabilityCVE]
+          description: The type of detail for discriminator purposes.
+        cveId:
+          type: string
+          description: CVE identifier (e.g. CVE-2024-1234). MITRE-style CVE-YYYY-sequence identifier, matching device list filter validation.
+          pattern: '^CVE-[0-9]{4}-[0-9]{4,}$'
+          maxLength: 64
+        imageRef:
+          type: string
+          description: Human-readable OS image reference (e.g. registry/repo tag).
+        imageDigest:
+          type: string
+          description: Image digest the device is running (e.g. sha256:...).
     ResourceUpdatedDetails:
       type: object
       required:

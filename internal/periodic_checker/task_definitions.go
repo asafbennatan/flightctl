@@ -198,14 +198,16 @@ func (e *QueueMaintenanceExecutor) Execute(ctx context.Context, log logrus.Field
 }
 
 type VulnerabilitySyncExecutor struct {
-	log          logrus.FieldLogger
-	vulnClient   trustifyv2.VulnerabilityClient
-	findingStore store.VulnerabilityFinding
+	log            logrus.FieldLogger
+	vulnClient     trustifyv2.VulnerabilityClient
+	findingStore   store.VulnerabilityFinding
+	serviceHandler service.Service
+	vulnCfg        *config.VulnerabilityConfig
 }
 
 func (e *VulnerabilitySyncExecutor) Execute(ctx context.Context, log logrus.FieldLogger, orgId uuid.UUID) {
 	taskCtx := createTaskContext(ctx, PeriodicTaskTypeVulnerabilitySync)
-	vulnSync := tasks.NewVulnerabilitySync(e.log, e.vulnClient, e.findingStore)
+	vulnSync := tasks.NewVulnerabilitySync(e.log, e.vulnClient, e.findingStore, e.serviceHandler, e.vulnCfg)
 	vulnSync.Poll(taskCtx)
 }
 
@@ -248,9 +250,11 @@ func InitializeTaskExecutors(log logrus.FieldLogger, serviceHandler service.Serv
 
 	if cfg.VulnerabilityReporting != nil && cfg.VulnerabilityReporting.Enabled && vulnClient != nil && findingStore != nil {
 		executors[PeriodicTaskTypeVulnerabilitySync] = &VulnerabilitySyncExecutor{
-			log:          log.WithField("pkg", "vulnerability-sync"),
-			vulnClient:   vulnClient,
-			findingStore: findingStore,
+			log:            log.WithField("pkg", "vulnerability-sync"),
+			vulnClient:     vulnClient,
+			findingStore:   findingStore,
+			serviceHandler: serviceHandler,
+			vulnCfg:        cfg.VulnerabilityReporting,
 		}
 	}
 
