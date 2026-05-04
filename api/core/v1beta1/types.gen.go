@@ -190,6 +190,11 @@ const (
 	DeviceUpdatedStatusUpdating  DeviceUpdatedStatusType = "Updating"
 )
 
+// Defines values for DeviceVulnerabilityCveDetailsDetailType.
+const (
+	DeviceVulnerabilityCVE DeviceVulnerabilityCveDetailsDetailType = "DeviceVulnerabilityCVE"
+)
+
 // Defines values for EncodingType.
 const (
 	EncodingBase64 EncodingType = "base64"
@@ -225,6 +230,9 @@ const (
 	EventReasonDeviceSpecInvalid               EventReason = "DeviceSpecInvalid"
 	EventReasonDeviceSpecValid                 EventReason = "DeviceSpecValid"
 	EventReasonDeviceUpdateFailed              EventReason = "DeviceUpdateFailed"
+	EventReasonDeviceVulnerabilityCVECritical  EventReason = "DeviceVulnerabilityCVECritical"
+	EventReasonDeviceVulnerabilityCVEResolved  EventReason = "DeviceVulnerabilityCVEResolved"
+	EventReasonDeviceVulnerabilityCVEWarning   EventReason = "DeviceVulnerabilityCVEWarning"
 	EventReasonEnrollmentRequestApprovalFailed EventReason = "EnrollmentRequestApprovalFailed"
 	EventReasonEnrollmentRequestApproved       EventReason = "EnrollmentRequestApproved"
 	EventReasonFleetInvalid                    EventReason = "FleetInvalid"
@@ -1389,6 +1397,24 @@ type DeviceUpdatedStatus struct {
 
 // DeviceUpdatedStatusType Status type of the device update.
 type DeviceUpdatedStatusType string
+
+// DeviceVulnerabilityCveDetails Structured details for per-device CVE vulnerability events.
+type DeviceVulnerabilityCveDetails struct {
+	// CveId CVE identifier (e.g. CVE-2024-1234).
+	CveId string `json:"cveId"`
+
+	// DetailType The type of detail for discriminator purposes.
+	DetailType DeviceVulnerabilityCveDetailsDetailType `json:"detailType"`
+
+	// ImageDigest Image digest the device is running (e.g. sha256:...).
+	ImageDigest string `json:"imageDigest"`
+
+	// ImageRef Human-readable OS image reference (e.g. registry/repo tag).
+	ImageRef string `json:"imageRef"`
+}
+
+// DeviceVulnerabilityCveDetailsDetailType The type of detail for discriminator purposes.
+type DeviceVulnerabilityCveDetailsDetailType string
 
 // DevicesSummary A summary of the devices in the fleet returned when fetching a single Fleet.
 type DevicesSummary struct {
@@ -4906,6 +4932,34 @@ func (t *EventDetails) MergeFleetRolloutDeviceSelectedDetails(v FleetRolloutDevi
 	return err
 }
 
+// AsDeviceVulnerabilityCveDetails returns the union data inside the EventDetails as a DeviceVulnerabilityCveDetails
+func (t EventDetails) AsDeviceVulnerabilityCveDetails() (DeviceVulnerabilityCveDetails, error) {
+	var body DeviceVulnerabilityCveDetails
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromDeviceVulnerabilityCveDetails overwrites any union data inside the EventDetails as the provided DeviceVulnerabilityCveDetails
+func (t *EventDetails) FromDeviceVulnerabilityCveDetails(v DeviceVulnerabilityCveDetails) error {
+	v.DetailType = "DeviceVulnerabilityCVE"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeDeviceVulnerabilityCveDetails performs a merge with any union data inside the EventDetails, using the provided DeviceVulnerabilityCveDetails
+func (t *EventDetails) MergeDeviceVulnerabilityCveDetails(v DeviceVulnerabilityCveDetails) error {
+	v.DetailType = "DeviceVulnerabilityCVE"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 func (t EventDetails) Discriminator() (string, error) {
 	var discriminator struct {
 		Discriminator string `json:"detailType"`
@@ -4926,6 +4980,8 @@ func (t EventDetails) ValueByDiscriminator() (interface{}, error) {
 		return t.AsDeviceMultipleOwnersResolvedDetails()
 	case "DeviceOwnershipChanged":
 		return t.AsDeviceOwnershipChangedDetails()
+	case "DeviceVulnerabilityCVE":
+		return t.AsDeviceVulnerabilityCveDetails()
 	case "FleetRolloutBatchCompleted":
 		return t.AsFleetRolloutBatchCompletedDetails()
 	case "FleetRolloutBatchDispatched":

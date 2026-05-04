@@ -43,6 +43,17 @@ type TestStore struct {
 type DummyVulnerabilityFinding struct {
 	findings    []model.VulnerabilityFinding
 	deviceStore *DummyDevice
+
+	// StubCVELifecycleResponses switches ListCVEEvent* methods to return the fields below instead of empty (for CVE sync tests).
+	StubCVELifecycleResponses bool
+	CVELifecycleResolution    []store.CVEEventResolutionCandidate
+	CVELifecycleResolutionErr error
+	CVELifecycleSupersede     []store.CVEEventCandidate
+	CVELifecycleSupersedeErr  error
+	CVELifecycleCritical      []store.CVEEventCandidate
+	CVELifecycleCriticalErr   error
+	CVELifecycleWarning       []store.CVEEventCandidate
+	CVELifecycleWarningErr    error
 }
 
 type DummyDevice struct {
@@ -1042,6 +1053,34 @@ func (d *DummyVulnerabilityFinding) GetVulnerabilityImpactPage(_ context.Context
 }
 
 func (d *DummyVulnerabilityFinding) GetImpactDigestDetails(_ context.Context, _ uuid.UUID, _ string, _ []string, _ bool) ([]store.ImpactDigestDetail, error) {
+	return nil, nil
+}
+
+func (d *DummyVulnerabilityFinding) ListCVEEventResolutionCandidates(_ context.Context, _, _ float64) ([]store.CVEEventResolutionCandidate, error) {
+	if d.StubCVELifecycleResponses {
+		return d.CVELifecycleResolution, d.CVELifecycleResolutionErr
+	}
+	return nil, nil
+}
+
+func (d *DummyVulnerabilityFinding) ListOpenWarningSupersedeCVEEventCandidates(_ context.Context, _, _ float64) ([]store.CVEEventCandidate, error) {
+	if d.StubCVELifecycleResponses {
+		return d.CVELifecycleSupersede, d.CVELifecycleSupersedeErr
+	}
+	return nil, nil
+}
+
+func (d *DummyVulnerabilityFinding) ListCriticalCVEEventCandidates(_ context.Context, _ float64) ([]store.CVEEventCandidate, error) {
+	if d.StubCVELifecycleResponses {
+		return d.CVELifecycleCritical, d.CVELifecycleCriticalErr
+	}
+	return nil, nil
+}
+
+func (d *DummyVulnerabilityFinding) ListWarningCVEEventCandidates(_ context.Context, _, _ float64) ([]store.CVEEventCandidate, error) {
+	if d.StubCVELifecycleResponses {
+		return d.CVELifecycleWarning, d.CVELifecycleWarningErr
+	}
 	return nil, nil
 }
 
