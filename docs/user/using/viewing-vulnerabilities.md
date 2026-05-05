@@ -154,6 +154,17 @@ flightctl get vuln device/my-device -o yaml
 flightctl get vuln fleet/production -o wide
 ```
 
+## Events and Alertmanager
+
+High-severity findings can trigger [Events](../references/events.md#vulnerability-cve-events) after each vulnerability sync when [CVE alerting is enabled](../installing/configuring-vulnerability-integration.md#configuring-cve-alerting). Use the CLI to inspect them—for example:
+
+```console
+flightctl get events --field-selector="reason in (DeviceVulnerabilityCVEWarning,DeviceVulnerabilityCVECritical,DeviceVulnerabilityCVEResolved)"
+flightctl get events --field-selector="involvedObject.kind=ImageDigestCVE"
+```
+
+Digest+CVE aggregates are forwarded to Alertmanager as described in [Vulnerability (CVE) alerts](../references/alerts.md#vulnerability-cve-alerts).
+
 ## Pagination
 
 For large result sets, use pagination:

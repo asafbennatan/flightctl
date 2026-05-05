@@ -58,9 +58,19 @@ func (s *EventStore) createEventCVELifecycleIndexes(db *gorm.DB) error {
 	if db.Dialector.Name() != "postgres" {
 		return nil
 	}
-	return db.Exec(`CREATE INDEX IF NOT EXISTS idx_events_device_cve_lifecycle
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_events_device_cve_lifecycle
 		ON events (org_id, involved_object_name, reason, (details->>'cveId'), created_at DESC)
 		WHERE involved_object_kind = 'Device'
+		  AND reason IN (
+		    'DeviceVulnerabilityCVEWarning',
+		    'DeviceVulnerabilityCVECritical',
+		    'DeviceVulnerabilityCVEResolved'
+		  )`).Error; err != nil {
+		return err
+	}
+	return db.Exec(`CREATE INDEX IF NOT EXISTS idx_events_digest_cve_detail_lifecycle
+		ON events (org_id, (details->>'imageDigest'), (details->>'cveId'), reason, created_at DESC)
+		WHERE involved_object_kind = 'ImageDigestCVE'
 		  AND reason IN (
 		    'DeviceVulnerabilityCVEWarning',
 		    'DeviceVulnerabilityCVECritical',

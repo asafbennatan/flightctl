@@ -64,6 +64,21 @@ details:
 | **Application Status** | `DeviceApplicationError`, `DeviceApplicationDegraded`, `DeviceApplicationHealthy`              |
 | **Device Lifecycle**  | `DeviceIsRebooting`, `DeviceDecommissioned`, `DeviceDecommissionFailed`, `DeviceMultipleOwnersDetected`, `DeviceMultipleOwnersResolved`, `DeviceSpecInvalid`, `DeviceSpecValid` |
 | **Content Management** | `DeviceContentUpdating`, `DeviceContentUpToDate`, `DeviceContentOutOfDate`                     |
+| **Vulnerability (CVE)** | `DeviceVulnerabilityCVEWarning`, `DeviceVulnerabilityCVECritical`, `DeviceVulnerabilityCVEResolved` *(see below)* |
+
+### Vulnerability (CVE) events
+
+When [CVE alerting](../installing/configuring-vulnerability-integration.md#configuring-cve-alerting) is enabled, Flight Control emits lifecycle events for high-severity CVEs detected on OS images in use. The **same** `reason` values are used for two shapes of `involvedObject`:
+
+| `involvedObject.kind` | Meaning |
+|-----------------------|---------|
+| `Device` | Event is tied to a **specific device** (`involvedObject.name` is the device name). |
+| `ImageDigestCVE` | Event is **aggregated per organization, image digest, and CVE ID**. `involvedObject.name` encodes the digest and CVE (stable string derived from the digest and `cveId`). Useful for fleet-wide visibility without one row per device for the same image. |
+
+Both kinds use the same optional `details` shape: `detailType: DeviceVulnerabilityCVE` with `cveId`, `imageRef`, and `imageDigest`.
+
+> [!NOTE]
+> The [alert exporter](alerts.md) converts **only** `ImageDigestCVE` CVE events into Alertmanager alerts so repeated detections on many devices running the same image do not create duplicate notifications. Per-device CVE events still appear in the event list for troubleshooting and audit.
 
 ### Resource Lifecycle Events
 
@@ -99,6 +114,7 @@ flightctl get events
 flightctl get events --field-selector="type=Warning"
 flightctl get events --field-selector="reason=DeviceDisconnected"
 flightctl get events --field-selector="involvedObject.kind=Device"
+flightctl get events --field-selector="involvedObject.kind=ImageDigestCVE"
 flightctl get events --field-selector="actor=user:admin"
 
 # Combine filters
@@ -130,7 +146,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 - `reason` – Event reason (e.g., `DeviceDisconnected`)  
 - `type` – Event type (`Normal` or `Warning`)  
 - `actor` – Event actor (`user:admin`, `service:api-server`)  
-- `involvedObject.kind` – Kind of resource (`Device`, `Fleet`)  
+- `involvedObject.kind` – Kind of resource (`Device`, `Fleet`, `ImageDigestCVE`, …)  
 - `involvedObject.name` – Resource name  
 - `metadata.creationTimestamp` – Creation timestamp
 

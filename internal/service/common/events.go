@@ -110,14 +110,22 @@ func GetResourceCreatedOrUpdatedSuccessEvent(ctx context.Context, created bool, 
 }
 
 // GetDeviceEventFromUpdateDetails creates a device event from update details
-func GetDeviceEventFromUpdateDetails(ctx context.Context, resourceName string, update ResourceUpdate) *domain.Event {
-	return getBaseEvent(ctx, resourceEvent{
+// The fleet parameter is optional - if provided, it will be added to the event labels
+func GetDeviceEventFromUpdateDetails(ctx context.Context, resourceName string, update ResourceUpdate, fleet string) *domain.Event {
+	event := getBaseEvent(ctx, resourceEvent{
 		resourceKind: domain.DeviceKind,
 		resourceName: resourceName,
 		reason:       update.Reason,
 		message:      update.Details,
 		details:      nil,
 	})
+	if fleet != "" {
+		if event.Metadata.Labels == nil {
+			event.Metadata.Labels = &map[string]string{}
+		}
+		(*event.Metadata.Labels)["fleet"] = fleet
+	}
+	return event
 }
 
 // GetResourceCreatedOrUpdatedFailureEvent creates an event for failed resource creation or update

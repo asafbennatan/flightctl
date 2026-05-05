@@ -86,17 +86,20 @@ func (h *EventHandler) HandleDeviceUpdatedEvents(ctx context.Context, resourceKi
 	if !created {
 		statusUpdates := common.ComputeDeviceStatusChanges(ctx, oldDevice, newDevice, orgId, h.store)
 
+		// Extract fleet name from device owner for event labels
+		fleet := extractFleetFromDevice(newDevice)
+
 		// Deduplicate DeviceDisconnected events - if multiple status fields changed to Unknown,
 		// only emit one DeviceDisconnected event
 		deviceDisconnectedEmitted := false
 		for _, update := range statusUpdates {
 			if update.Reason == domain.EventReasonDeviceDisconnected {
 				if !deviceDisconnectedEmitted {
-					h.CreateEvent(ctx, orgId, common.GetDeviceEventFromUpdateDetails(ctx, name, update))
+					h.CreateEvent(ctx, orgId, common.GetDeviceEventFromUpdateDetails(ctx, name, update, fleet))
 					deviceDisconnectedEmitted = true
 				}
 			} else {
-				h.CreateEvent(ctx, orgId, common.GetDeviceEventFromUpdateDetails(ctx, name, update))
+				h.CreateEvent(ctx, orgId, common.GetDeviceEventFromUpdateDetails(ctx, name, update, fleet))
 			}
 		}
 	}
@@ -616,6 +619,21 @@ func (h *EventHandler) emitResourceSyncConditionEvents(ctx context.Context, orgI
 //////////////////////////////////////////////////////
 //                    Helper Functions              //
 //////////////////////////////////////////////////////
+
+// extractFleetFromDevice extracts the fleet name from a device's owner reference
+func extractFleetFromDevice(device *domain.Device) string {
+	if device == nil || device.Metadata.Owner == nil || *device.Metadata.Owner == "" {
+		return ""
+	}
+	ownerType, ownerName, err := util.GetResourceOwner(device.Metadata.Owner)
+	if err != nil {
+		return ""
+	}
+	if ownerType != domain.FleetKind {
+		return ""
+	}
+	return ownerName
+}
 
 // computeResourceUpdatedDetails determines which fields were updated by comparing old and new ObjectMeta
 func (h *EventHandler) computeResourceUpdatedDetails(oldMetadata, newMetadata domain.ObjectMeta) *domain.ResourceUpdatedDetails {

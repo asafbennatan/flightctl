@@ -7289,7 +7289,9 @@ components:
           description: The type of detail for discriminator purposes.
         cveId:
           type: string
-          description: CVE identifier (e.g. CVE-2024-1234).
+          description: CVE identifier (e.g. CVE-2024-1234). MITRE-style CVE-YYYY-sequence identifier, matching device list filter validation.
+          pattern: '^CVE-[0-9]{4}-[0-9]{4,}$'
+          maxLength: 64
         imageRef:
           type: string
           description: Human-readable OS image reference (e.g. registry/repo tag).

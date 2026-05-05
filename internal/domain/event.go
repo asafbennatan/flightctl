@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"strings"
 
 	v1beta1 "github.com/flightctl/flightctl/api/core/v1beta1"
 	"github.com/flightctl/flightctl/internal/consts"
@@ -212,4 +213,10 @@ func GetBaseEvent(ctx context.Context, resourceKind ResourceKind, resourceName s
 	event.Details = details
 
 	return &event
+}
+
+// DigestCVEInvolvedObjectName returns a stable involvedObject.name for aggregated digest+CVE lifecycle events.
+// Like other events, the API stores the supplied name without additional DNS normalization.
+func DigestCVEInvolvedObjectName(imageDigest, cveID string) string {
+	return strings.ToLower(strings.ReplaceAll(imageDigest, ":", "-") + "-" + cveID)
 }

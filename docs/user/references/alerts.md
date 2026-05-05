@@ -10,16 +10,27 @@ The Flight Control alerting system consists of three main components:
 2. **Alertmanager Proxy**: Provides authenticated access to Alertmanager using Flight Control credentials
 3. **Alertmanager**: Handles alert routing, grouping, silencing, and notification delivery
 
-## Supported Alert Types
+## Alert aggregation model
+
+Flight Control uses a **fleet-preferred** alerting model:
+
+- **Devices with a fleet owner**: Alerts are aggregated at the fleet level. A single fleet-level alert indicates how many devices in that fleet have the condition. This reduces alert noise and provides a fleet-wide view of issues.
+- **Fleetless devices**: Devices without a fleet owner generate individual per-device alerts.
+
+When a device moves between fleets (or becomes fleetless), its alert state is automatically migrated to the new fleet.
+
+## Supported alert types
 
 Flight Control automatically generates alerts for the following conditions:
 
-### Device Status Alerts
+### Device status alerts
 
 - **Device Disconnected**: Triggered when a device loses connection to Flight Control
 - **Device Connected**: Automatically resolves disconnection alerts when devices reconnect
 
-### Resource Usage Alerts
+For fleet-owned devices, the alert summary indicates the count (for example, "3 disconnected devices in fleet production-fleet").
+
+### Resource usage alerts
 
 - **CPU Alerts**:
   - `DeviceCPUCritical`: CPU usage exceeds critical threshold
@@ -39,17 +50,37 @@ Flight Control automatically generates alerts for the following conditions:
 > [!NOTE]
 > When a critical disk alert is active, device upgrades that require downloading OCI images will automatically fail with an error message prompting the user to clear storage. This prevents upgrade failures due to insufficient disk space.
 
-### Application Alerts
+### Application alerts
 
 - **Application Status**:
   - `DeviceApplicationError`: Application is in error state
   - `DeviceApplicationDegraded`: Application is running but degraded
   - `DeviceApplicationHealthy`: Resolves application alerts when healthy
 
-### Lifecycle Alerts
+### Lifecycle alerts
 
 - **Resource Deletion**: Automatically resolves all alerts when a device or resource is deleted
 - **Device Decommissioning**: Resolves all alerts when a device is decommissioned
+
+### Vulnerability (CVE) alerts
+
+When [CVE alerting is enabled](../installing/configuring-vulnerability-integration.md#configuring-cve-alerting), Flight Control generates alerts for devices with detected CVEs. CVE alerts follow the same fleet-preferred model as other alert types:
+
+- **Fleet-owned devices**: A single alert per fleet indicates how many devices have critical or warning CVEs (for example, "5 devices with critical CVEs in fleet production-fleet").
+- **Fleetless devices**: Individual per-device CVE alerts are generated.
+
+| Alert (reason) | When it fires | Resolution |
+|----------------|---------------|------------|
+| `DeviceVulnerabilityCVECritical` | One or more devices in a fleet (or a fleetless device) have critical CVEs | All critical CVEs resolved for all affected devices |
+| `DeviceVulnerabilityCVEWarning` | One or more devices have warning-severity CVEs (and no critical CVEs) | All warning CVEs resolved, or superseded by critical |
+
+Additional **labels** on CVE alerts include:
+
+- `severity` – `critical` or `warning`
+- `fleet` – Fleet name (empty for fleetless device alerts)
+- `device` – Device name (only for fleetless device alerts)
+
+The alert **annotation** `summary` contains a human-readable description including the device count and fleet or device name.
 
 ## Alert States
 
@@ -246,13 +277,15 @@ receivers:
     send_resolved: true
 ```
 
-## Alert Labels and Filtering
+## Alert labels and filtering
 
 Every Flight Control alert includes these labels:
 
-- `alertname`: The type of alert (e.g., "DeviceDisconnected")
-- `resource`: The name of the affected resource
+- `alertname`: The type of alert (for example, "DeviceDisconnected", "DeviceCPUCritical")
 - `org_id`: The organization ID
+- `severity`: Alert severity (`critical` or `warning`)
+- `fleet`: Fleet name (present for fleet-level alerts, empty for fleetless device alerts)
+- `device`: Device name (present only for fleetless device alerts)
 
 Use these labels to create targeted notification rules and filters:
 
@@ -267,6 +300,16 @@ routes:
 - match:
     alertname: DeviceDisconnected
   receiver: 'monitoring-team'
+
+# Route CVE alerts to security team
+- match:
+    alertname: DeviceVulnerabilityCVECritical
+  receiver: 'security-oncall'
+
+# Route alerts for a specific fleet
+- match:
+    fleet: production-fleet
+  receiver: 'prod-oncall'
 ```
 
 ## Troubleshooting
@@ -351,15 +394,16 @@ routes:
 
 ## Best Practices
 
-### Alert Routing Strategy
+### Alert routing strategy
 
 1. **Prioritize by severity**:
-   - Route critical alerts (CPU/Memory critical, disconnections) to immediate notification channels
+   - Route critical alerts (CPU/Memory critical, disconnections, critical CVEs) to immediate notification channels
    - Route warning alerts to monitoring dashboards or delayed notifications
 
-2. **Group by device or fleet**:
-   - Avoid alert storms by grouping related alerts
-   - Use appropriate group intervals to batch notifications
+2. **Use fleet-level grouping**:
+   - Flight Control already aggregates alerts at the fleet level, reducing alert noise
+   - Use the `fleet` label in Alertmanager routing to direct alerts for specific fleets to the appropriate teams
+   - Consider separate routes for fleetless device alerts (where `fleet` is empty)
 
 ### Retention and Cleanup
 

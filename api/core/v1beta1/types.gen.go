@@ -1400,7 +1400,7 @@ type DeviceUpdatedStatusType string
 
 // DeviceVulnerabilityCveDetails Structured details for per-device CVE vulnerability events.
 type DeviceVulnerabilityCveDetails struct {
-	// CveId CVE identifier (e.g. CVE-2024-1234).
+	// CveId CVE identifier (e.g. CVE-2024-1234). MITRE-style CVE-YYYY-sequence identifier, matching device list filter validation.
 	CveId string `json:"cveId"`
 
 	// DetailType The type of detail for discriminator purposes.

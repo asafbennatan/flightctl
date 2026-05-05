@@ -110,6 +110,11 @@ graph LR
 | `DeviceDiskNormal` | Resolves disk alerts | Disk |
 | `ResourceDeleted` | Resolves all alerts for resource | - |
 | `DeviceDecommissioned` | Resolves all alerts for device | - |
+| `DeviceVulnerabilityCVEWarning` | CVE warning alert (digest + CVE) | CVE warning / critical |
+| `DeviceVulnerabilityCVECritical` | CVE critical alert (digest + CVE) | CVE warning / critical |
+| `DeviceVulnerabilityCVEResolved` | Resolves CVE warning/critical for that digest+CVE | CVE warning / critical |
+
+For `DeviceVulnerabilityCVE*`, the alert exporter **only** processes events whose `involvedObject.kind` is **`ImageDigestCVE`**. Per-device CVE events (`involvedObject.kind` `Device`) are stored in the events table but are not turned into Alertmanager alerts, to avoid duplicate notifications when many devices share the same image.
 
 ### 2. Alertmanager Proxy
 

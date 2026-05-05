@@ -47,11 +47,7 @@ func (c *CheckpointManager) LoadCheckpoint(ctx context.Context) *AlertCheckpoint
 	if status.Code == http.StatusNotFound {
 		CheckpointOperationsTotal.WithLabelValues("load", "not_found").Inc()
 		logger.Info("No existing alert checkpoint found, starting with fresh state")
-		return &AlertCheckpoint{
-			Version:   CurrentAlertCheckpointVersion,
-			Alerts:    make(map[AlertKey]map[string]*AlertInfo),
-			Timestamp: time.Now().Add(-time.Hour).Format(time.RFC3339Nano), // Start from 1 hour ago
-		}
+		return c.newEmptyCheckpoint()
 	}
 	if status.Code != http.StatusOK {
 		CheckpointOperationsTotal.WithLabelValues("load", "error").Inc()
@@ -59,11 +55,7 @@ func (c *CheckpointManager) LoadCheckpoint(ctx context.Context) *AlertCheckpoint
 			"status_code": status.Code,
 			"status_msg":  status.Message,
 		}).Error("Failed to get alert checkpoint from storage")
-		return &AlertCheckpoint{
-			Version:   CurrentAlertCheckpointVersion,
-			Alerts:    make(map[AlertKey]map[string]*AlertInfo),
-			Timestamp: time.Now().Add(-time.Hour).Format(time.RFC3339Nano),
-		}
+		return c.newEmptyCheckpoint()
 	}
 
 	var checkpoint AlertCheckpoint
@@ -75,11 +67,15 @@ func (c *CheckpointManager) LoadCheckpoint(ctx context.Context) *AlertCheckpoint
 			"checkpoint_size":    len(checkpointData),
 			"checkpoint_preview": string(checkpointData[:min(100, len(checkpointData))]),
 		}).Error("Failed to unmarshal alert checkpoint")
-		return &AlertCheckpoint{
-			Version:   CurrentAlertCheckpointVersion,
-			Alerts:    make(map[AlertKey]map[string]*AlertInfo),
-			Timestamp: time.Now().Add(-time.Hour).Format(time.RFC3339Nano),
-		}
+		return c.newEmptyCheckpoint()
+	}
+
+	// Initialize maps if nil (for backward compatibility)
+	if checkpoint.HandlerStates == nil {
+		checkpoint.HandlerStates = make(map[string]json.RawMessage)
+	}
+	if checkpoint.ActiveAlerts == nil {
+		checkpoint.ActiveAlerts = make(map[string]ActiveAlert)
 	}
 
 	CheckpointOperationsTotal.WithLabelValues("load", "success").Inc()
@@ -88,11 +84,20 @@ func (c *CheckpointManager) LoadCheckpoint(ctx context.Context) *AlertCheckpoint
 	logger.WithFields(logrus.Fields{
 		"checkpoint_version":   checkpoint.Version,
 		"checkpoint_timestamp": checkpoint.Timestamp,
-		"alert_keys":           len(checkpoint.Alerts),
-		"total_alerts":         c.countTotalAlerts(checkpoint.Alerts),
+		"handler_states":       len(checkpoint.HandlerStates),
+		"active_alerts":        len(checkpoint.ActiveAlerts),
 	}).Info("Successfully loaded alert checkpoint")
 
 	return &checkpoint
+}
+
+func (c *CheckpointManager) newEmptyCheckpoint() *AlertCheckpoint {
+	return &AlertCheckpoint{
+		Version:       CurrentAlertCheckpointVersion,
+		Timestamp:     time.Now().Add(-time.Hour).Format(time.RFC3339Nano),
+		HandlerStates: make(map[string]json.RawMessage),
+		ActiveAlerts:  make(map[string]ActiveAlert),
+	}
 }
 
 func (c *CheckpointManager) StoreCheckpoint(ctx context.Context, checkpoint *AlertCheckpoint) error {
@@ -101,8 +106,8 @@ func (c *CheckpointManager) StoreCheckpoint(ctx context.Context, checkpoint *Ale
 		"operation":            "store",
 		"checkpoint_version":   checkpoint.Version,
 		"checkpoint_timestamp": checkpoint.Timestamp,
-		"alert_keys":           len(checkpoint.Alerts),
-		"total_alerts":         c.countTotalAlerts(checkpoint.Alerts),
+		"handler_states":       len(checkpoint.HandlerStates),
+		"active_alerts":        len(checkpoint.ActiveAlerts),
 	})
 
 	logger.Debug("Storing alert checkpoint")
@@ -136,15 +141,6 @@ func (c *CheckpointManager) StoreCheckpoint(ctx context.Context, checkpoint *Ale
 
 	logger.Debug("Alert checkpoint stored successfully")
 	return nil
-}
-
-// countTotalAlerts counts the total number of alerts across all resources
-func (c *CheckpointManager) countTotalAlerts(alerts map[AlertKey]map[string]*AlertInfo) int {
-	total := 0
-	for _, reasons := range alerts {
-		total += len(reasons)
-	}
-	return total
 }
 
 // min returns the minimum of two integers

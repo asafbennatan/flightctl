@@ -76,6 +76,9 @@ const (
 	EventListKind                    = v1beta1.EventListKind
 	EventAnnotationRequestID         = v1beta1.EventAnnotationRequestID
 	EventAnnotationDelayDeviceRender = v1beta1.EventAnnotationDelayDeviceRender
+
+	// ImageDigestCVEKind is InvolvedObject.kind for fleet-aggregated CVE events keyed by organization, image digest, and CVE id.
+	ImageDigestCVEKind = "ImageDigestCVE"
 )
 
 // ========== Repository ==========

@@ -102,6 +102,7 @@ func NewAlertmanagerClient(hostname string, port uint, log logrus.FieldLogger, c
 }
 
 // SendAllAlerts sends all alerts from a nested map to Alertmanager in batches.
+// Deprecated: Use SendActiveAlerts instead for the new handler-based architecture.
 func (a *AlertmanagerClient) SendAllAlerts(alerts map[AlertKey]map[string]*AlertInfo) error {
 	// Calculate total alerts across all keys for proper capacity pre-allocation
 	totalAlerts := 0
@@ -126,6 +127,36 @@ func (a *AlertmanagerClient) SendAllAlerts(alerts map[AlertKey]map[string]*Alert
 	}
 
 	// Send any remaining alerts
+	if len(alertBatch) > 0 {
+		err := a.postBatchWithRetry(alertBatch)
+		if err != nil {
+			return fmt.Errorf("error sending alerts: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// SendActiveAlerts sends a slice of alerts to Alertmanager in batches.
+func (a *AlertmanagerClient) SendActiveAlerts(alerts []*AlertInfo) error {
+	if len(alerts) == 0 {
+		return nil
+	}
+
+	alertBatch := make([]AlertmanagerAlert, 0, min(len(alerts), batchSize))
+
+	for _, alert := range alerts {
+		alertBatch = append(alertBatch, alertToAlertmanagerAlert(alert))
+
+		if len(alertBatch) >= batchSize {
+			err := a.postBatchWithRetry(alertBatch)
+			if err != nil {
+				return fmt.Errorf("error sending alerts: %v", err)
+			}
+			alertBatch = alertBatch[:0]
+		}
+	}
+
 	if len(alertBatch) > 0 {
 		err := a.postBatchWithRetry(alertBatch)
 		if err != nil {
@@ -337,6 +368,16 @@ func alertToAlertmanagerAlert(alert *AlertInfo) AlertmanagerAlert {
 			"summary": alert.Summary,
 		},
 		StartsAt: alert.StartsAt,
+	}
+	for k, v := range alert.AdditionalLabels {
+		if k == "" || v == "" {
+			continue
+		}
+		switch k {
+		case "alertname", "resource", "org_id":
+			continue
+		}
+		alertmanagerAlert.Labels[k] = v
 	}
 	if alert.EndsAt != nil {
 		alertmanagerAlert.EndsAt = *alert.EndsAt

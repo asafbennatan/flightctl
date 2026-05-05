@@ -316,6 +316,25 @@ func TestNewAlertmanagerClient_NilConfig(t *testing.T) {
 	}
 }
 
+func Test_alertToAlertmanagerAlert_mergesAdditionalLabels(t *testing.T) {
+	now := time.Now()
+	got := alertToAlertmanagerAlert(&AlertInfo{
+		ResourceName: "sha256-ab-cve-2099",
+		OrgID:        "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+		Reason:       "DeviceVulnerabilityCVECritical",
+		Summary:      "summ",
+		StartsAt:     now,
+		AdditionalLabels: map[string]string{
+			"cve_id":       "CVE-2099",
+			"image_digest": "sha256:ab",
+			"severity":     "critical",
+		},
+	})
+	if got.Labels["cve_id"] != "CVE-2099" || got.Labels["severity"] != "critical" || got.Labels["image_digest"] != "sha256:ab" {
+		t.Fatalf("expected merged CVE labels on AlertmanagerAlert, got %#v", got.Labels)
+	}
+}
+
 // Mock types for testing
 type timeoutError struct{}
 

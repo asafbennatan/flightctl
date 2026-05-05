@@ -33,6 +33,7 @@ package alert_exporter
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -43,24 +44,45 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-const CurrentAlertCheckpointVersion = 1
+const CurrentAlertCheckpointVersion = 2
 
 type AlertKey string
 
 type AlertInfo struct {
-	ResourceName string
-	ResourceKind string
-	OrgID        string
-	Reason       string
-	Summary      string
-	StartsAt     time.Time
-	EndsAt       *time.Time
+	ResourceName     string
+	ResourceKind     string
+	OrgID            string
+	Reason           string
+	Summary          string
+	StartsAt         time.Time
+	EndsAt           *time.Time
+	AdditionalLabels map[string]string // e.g. cve_id, image_digest, severity for digest+Cve alerts
+}
+
+// ActiveAlert represents an alert that is currently active for comparison purposes
+type ActiveAlert struct {
+	AlertKey string    `json:"alertKey"`
+	OrgID    string    `json:"orgId"`
+	Fleet    string    `json:"fleet,omitempty"`
+	Device   string    `json:"device,omitempty"`
+	Name     string    `json:"name"`
+	Severity string    `json:"severity"`
+	StartsAt time.Time `json:"startsAt"`
 }
 
 type AlertCheckpoint struct {
-	Version   int
-	Timestamp string
-	Alerts    map[AlertKey]map[string]*AlertInfo
+	Version   int    `json:"version"`
+	Timestamp string `json:"timestamp"`
+
+	// HandlerStates stores per-handler state, keyed by handler name
+	HandlerStates map[string]json.RawMessage `json:"handlerStates,omitempty"`
+
+	// ActiveAlerts tracks currently active alerts for instant resolution detection
+	ActiveAlerts map[string]ActiveAlert `json:"activeAlerts,omitempty"`
+
+	// Alerts is the legacy field for backward compatibility (version 1)
+	// Deprecated: Use HandlerStates and ActiveAlerts instead
+	Alerts map[AlertKey]map[string]*AlertInfo `json:"alerts,omitempty"`
 }
 
 // ProcessingMetrics tracks operational metrics for monitoring and observability
@@ -240,7 +262,7 @@ func (a *AlertExporter) processingCycle(
 		"sending_time_ms":     metrics.SendingTimeMs,
 		"checkpoint_time_ms":  metrics.CheckpointTimeMs,
 		"total_cycle_time_ms": metrics.TotalCycleTimeMs,
-		"active_alert_keys":   len(newCheckpoint.Alerts),
+		"active_alerts":       len(newCheckpoint.ActiveAlerts),
 	}).Info("Processing cycle completed successfully")
 
 	// Log performance warnings if needed
@@ -256,13 +278,7 @@ func (a *AlertExporter) processingCycle(
 
 // calculateActiveAlerts counts and updates the active alerts metric
 func (a *AlertExporter) calculateActiveAlerts(metrics *ProcessingMetrics, newCheckpoint *AlertCheckpoint, logger *logrus.Entry) {
-	// Count total active alerts
-	activeAlerts := 0
-	for _, reasons := range newCheckpoint.Alerts {
-		activeAlerts += len(reasons)
-	}
-
-	metrics.ActiveAlerts = activeAlerts
+	metrics.ActiveAlerts = len(newCheckpoint.ActiveAlerts)
 
 	// Update Prometheus metrics
 	if metrics.AlertsCreated > 0 {

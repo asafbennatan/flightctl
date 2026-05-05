@@ -12,7 +12,8 @@ import (
 // ErrInvalidCVECVSSThresholds is returned when criticalThreshold <= warningThreshold.
 var ErrInvalidCVECVSSThresholds = errors.New("critical CVSS threshold must be greater than warning CVSS threshold")
 
-// SyncDeviceCVELifecycleEvents runs resolution, Warning supersede, Critical emission, and Warning emission (in that order).
+// SyncDeviceCVELifecycleEvents runs per-device CVE lifecycle phases.
+// Each phase order is: resolution, Warning supersede, Critical, Warning.
 // It is a no-op when the vulnerability finding store or event handler is unavailable.
 func (h *ServiceHandler) SyncDeviceCVELifecycleEvents(ctx context.Context, warningThreshold, criticalThreshold float64) error {
 	if criticalThreshold <= warningThreshold {
