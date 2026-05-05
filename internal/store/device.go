@@ -46,7 +46,7 @@ func (d DeviceStatusType) Validate() error {
 // DeviceListParams extends ListParams with device-specific filter options.
 type DeviceListParams struct {
 	ListParams
-	CveID *string // Filter devices by CVE ID (joins with vulnerability_findings)
+	CveID *string // Filter devices by CVE ID (join vulnerability_findings; selectors use devices.*)
 }
 
 type Device interface {
@@ -431,13 +431,24 @@ func (s *DeviceStore) List(ctx context.Context, orgId uuid.UUID, listParams Devi
 	var nextContinue *string
 	var numRemaining *int64
 
+	listQueryOpts := []ListQueryOption(nil)
+	if listParams.CveID != nil {
+		// Joining vulnerability_findings exposes its "status" column alongside devices.status JSON.
+		// CompositeSelectorResolver qualifies selector SQL as devices.* so it is unambiguous.
+		r, err := selector.NewCompositeSelectorResolver(&model.Device{})
+		if err != nil {
+			return nil, err
+		}
+		listQueryOpts = append(listQueryOpts, WithSelectorResolver(r))
+	}
+
 	// Build base query with selectors
-	baseQuery, err := ListQuery(&model.Device{}).Build(ctx, s.getDB(ctx), orgId, listParams.ListParams)
+	baseQuery, err := ListQuery(&model.Device{}, listQueryOpts...).Build(ctx, s.getDB(ctx), orgId, listParams.ListParams)
 	if err != nil {
 		return nil, err
 	}
 
-	// Apply CVE filter if specified (join with vulnerability_findings)
+	// Apply CVE filter if specified
 	if listParams.CveID != nil {
 		baseQuery = s.applyCveFilter(baseQuery, *listParams.CveID)
 	}
