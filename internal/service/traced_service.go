@@ -825,10 +825,10 @@ func (t *TracedService) GetFleetVulnerabilitySummary(ctx context.Context, orgId 
 	return resp, st
 }
 
-func (t *TracedService) SyncDeviceCVELifecycleEvents(ctx context.Context, warningThreshold, criticalThreshold float64) error {
+func (t *TracedService) SyncDeviceCVELifecycleEvents(ctx context.Context) error {
 	ctx, span := startSpan(ctx, "SyncDeviceCVELifecycleEvents")
 	defer span.End()
-	err := t.inner.SyncDeviceCVELifecycleEvents(ctx, warningThreshold, criticalThreshold)
+	err := t.inner.SyncDeviceCVELifecycleEvents(ctx)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())

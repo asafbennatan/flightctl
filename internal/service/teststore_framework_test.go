@@ -1056,28 +1056,28 @@ func (d *DummyVulnerabilityFinding) GetImpactDigestDetails(_ context.Context, _ 
 	return nil, nil
 }
 
-func (d *DummyVulnerabilityFinding) ListCVEEventResolutionCandidates(_ context.Context, _, _ float64) ([]store.CVEEventResolutionCandidate, error) {
+func (d *DummyVulnerabilityFinding) ListCVEEventResolutionCandidates(_ context.Context) ([]store.CVEEventResolutionCandidate, error) {
 	if d.StubCVELifecycleResponses {
 		return d.CVELifecycleResolution, d.CVELifecycleResolutionErr
 	}
 	return nil, nil
 }
 
-func (d *DummyVulnerabilityFinding) ListOpenWarningSupersedeCVEEventCandidates(_ context.Context, _, _ float64) ([]store.CVEEventCandidate, error) {
+func (d *DummyVulnerabilityFinding) ListOpenWarningSupersedeCVEEventCandidates(_ context.Context) ([]store.CVEEventCandidate, error) {
 	if d.StubCVELifecycleResponses {
 		return d.CVELifecycleSupersede, d.CVELifecycleSupersedeErr
 	}
 	return nil, nil
 }
 
-func (d *DummyVulnerabilityFinding) ListCriticalCVEEventCandidates(_ context.Context, _ float64) ([]store.CVEEventCandidate, error) {
+func (d *DummyVulnerabilityFinding) ListCriticalCVEEventCandidates(_ context.Context) ([]store.CVEEventCandidate, error) {
 	if d.StubCVELifecycleResponses {
 		return d.CVELifecycleCritical, d.CVELifecycleCriticalErr
 	}
 	return nil, nil
 }
 
-func (d *DummyVulnerabilityFinding) ListWarningCVEEventCandidates(_ context.Context, _, _ float64) ([]store.CVEEventCandidate, error) {
+func (d *DummyVulnerabilityFinding) ListWarningCVEEventCandidates(_ context.Context) ([]store.CVEEventCandidate, error) {
 	if d.StubCVELifecycleResponses {
 		return d.CVELifecycleWarning, d.CVELifecycleWarningErr
 	}

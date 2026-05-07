@@ -68,7 +68,7 @@ details:
 
 ### Vulnerability (CVE) events
 
-When [CVE alerting](../installing/configuring-vulnerability-integration.md#configuring-cve-alerting) is enabled, Flight Control emits per-device lifecycle events for high-severity CVEs detected on OS images in use. Each event has `involvedObject.kind` set to `Device` and `involvedObject.name` set to the device name.
+When [vulnerability integration](../installing/configuring-vulnerability-integration.md) is enabled, Flight Control emits per-device lifecycle events for high-severity CVEs detected on OS images in use. Each event has `involvedObject.kind` set to `Device` and `involvedObject.name` set to the device name.
 
 The event `details` contain `detailType: DeviceVulnerabilityCVE` with the following fields:
 

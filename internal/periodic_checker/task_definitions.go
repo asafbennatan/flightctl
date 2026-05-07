@@ -202,12 +202,11 @@ type VulnerabilitySyncExecutor struct {
 	vulnClient     trustifyv2.VulnerabilityClient
 	findingStore   store.VulnerabilityFinding
 	serviceHandler service.Service
-	vulnCfg        *config.VulnerabilityConfig
 }
 
 func (e *VulnerabilitySyncExecutor) Execute(ctx context.Context, log logrus.FieldLogger, orgId uuid.UUID) {
 	taskCtx := createTaskContext(ctx, PeriodicTaskTypeVulnerabilitySync)
-	vulnSync := tasks.NewVulnerabilitySync(e.log, e.vulnClient, e.findingStore, e.serviceHandler, e.vulnCfg)
+	vulnSync := tasks.NewVulnerabilitySync(e.log, e.vulnClient, e.findingStore, e.serviceHandler)
 	vulnSync.Poll(taskCtx)
 }
 
@@ -254,7 +253,6 @@ func InitializeTaskExecutors(log logrus.FieldLogger, serviceHandler service.Serv
 			vulnClient:     vulnClient,
 			findingStore:   findingStore,
 			serviceHandler: serviceHandler,
-			vulnCfg:        cfg.VulnerabilityReporting,
 		}
 	}
 

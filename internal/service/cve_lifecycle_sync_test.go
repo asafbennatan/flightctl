@@ -28,25 +28,13 @@ func testCVELifecycleHandler(t *testing.T) (*ServiceHandler, *TestStore) {
 	return h, ts
 }
 
-func TestSyncDeviceCVELifecycleEvents_When_critical_threshold_not_above_warning_it_should_return_error(t *testing.T) {
-	h, ts := testCVELifecycleHandler(t)
-	ts.init()
-	ts.dummyVulnerabilityFinding.StubCVELifecycleResponses = true
-	ts.dummyVulnerabilityFinding.CVELifecycleCritical = []store.CVEEventCandidate{{DeviceName: "d"}}
-
-	err := h.SyncDeviceCVELifecycleEvents(context.Background(), 7.0, 4.0)
-	require.ErrorIs(t, err, ErrInvalidCVECVSSThresholds)
-
-	require.Len(t, *ts.events.events, 0)
-}
-
 func TestSyncDeviceCVELifecycleEvents_When_list_errors_it_should_abort(t *testing.T) {
 	h, ts := testCVELifecycleHandler(t)
 	dbErr := errors.New("list failed")
 	ts.dummyVulnerabilityFinding.StubCVELifecycleResponses = true
 	ts.dummyVulnerabilityFinding.CVELifecycleResolutionErr = dbErr
 
-	err := h.SyncDeviceCVELifecycleEvents(context.Background(), 4.0, 7.0)
+	err := h.SyncDeviceCVELifecycleEvents(context.Background())
 	require.ErrorIs(t, err, dbErr)
 	require.Len(t, *ts.events.events, 0)
 }
@@ -76,11 +64,11 @@ func TestSyncDeviceCVELifecycleEvents_When_stub_lists_return_candidates_it_shoul
 	ts.dummyVulnerabilityFinding.CVELifecycleWarning = []store.CVEEventCandidate{
 		{
 			OrgID: orgID, DeviceName: "dev-warn", CveID: "CVE-W1", ImageDigest: "sha256:d",
-			ImageRef: "img/w:1", CvssScore: 5.0, Severity: "Important",
+			ImageRef: "img/w:1", CvssScore: 5.0, Severity: "High",
 		},
 	}
 
-	err := h.SyncDeviceCVELifecycleEvents(context.Background(), 4.0, 7.0)
+	err := h.SyncDeviceCVELifecycleEvents(context.Background())
 	require.NoError(t, err)
 
 	evs := *ts.events.events
@@ -114,7 +102,6 @@ func TestSyncDeviceCVELifecycleEvents_When_stub_lists_return_candidates_it_shoul
 }
 
 func TestFormatCVEDeviceEventMessage(t *testing.T) {
-	const warnTh, critTh = 4.0, 7.0
 	tests := []struct {
 		name string
 		r    domain.EventReason
@@ -136,31 +123,25 @@ func TestFormatCVEDeviceEventMessage(t *testing.T) {
 			want: "CVE-2024-1 resolved for image registry.io/os:9.4",
 		},
 		{
-			name: "critical with imageRef uses threshold-based label",
+			name: "critical with imageRef shows severity",
 			r:    domain.EventReasonDeviceVulnerabilityCVECritical,
 			cvss: 9.8,
+			sev:  "Critical",
 			ref:  "registry.io/os:9.4",
-			want: "CVE-2024-1 (CVSS 9.8, Critical) detected on image registry.io/os:9.4",
+			want: "CVE-2024-1 (Critical, CVSS 9.8) detected on image registry.io/os:9.4",
 		},
 		{
-			name: "warning band uses Warning label",
+			name: "warning shows High severity",
 			r:    domain.EventReasonDeviceVulnerabilityCVEWarning,
 			cvss: 5.0,
+			sev:  "High",
 			ref:  "",
-			want: "CVE-2024-1 (CVSS 5.0, Warning) detected",
-		},
-		{
-			name: "below thresholds falls back to severity string",
-			r:    domain.EventReasonDeviceVulnerabilityCVEWarning,
-			cvss: 3.0,
-			sev:  "Moderate",
-			ref:  "",
-			want: "CVE-2024-1 (CVSS 3.0, Moderate) detected",
+			want: "CVE-2024-1 (High, CVSS 5.0) detected",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := formatCVEDeviceEventMessage(tt.r, "CVE-2024-1", tt.cvss, tt.sev, tt.ref, warnTh, critTh)
+			got := formatCVEDeviceEventMessage(tt.r, "CVE-2024-1", tt.cvss, tt.sev, tt.ref)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -169,7 +150,7 @@ func TestFormatCVEDeviceEventMessage(t *testing.T) {
 func TestBuildDeviceCVELifecycleEvent_involved_object_and_warning_type(t *testing.T) {
 	ctx := context.Background()
 	ev, err := buildDeviceCVELifecycleEvent(ctx, "my-device", "CVE-2024-X", "sha256:x", "",
-		8.5, "Critical", domain.EventReasonDeviceVulnerabilityCVECritical, 4, 7)
+		8.5, "Critical", domain.EventReasonDeviceVulnerabilityCVECritical)
 	require.NoError(t, err)
 	require.NotNil(t, ev)
 	assert.Equal(t, "my-device", ev.InvolvedObject.Name)
@@ -178,7 +159,7 @@ func TestBuildDeviceCVELifecycleEvent_involved_object_and_warning_type(t *testin
 	assert.Equal(t, domain.EventReasonDeviceVulnerabilityCVECritical, ev.Reason)
 
 	evResolved, err := buildDeviceCVELifecycleEvent(ctx, "d2", "CVE-2024-Y", "sha256:y", "img:v",
-		0, "", domain.EventReasonDeviceVulnerabilityCVEResolved, 4, 7)
+		0, "", domain.EventReasonDeviceVulnerabilityCVEResolved)
 	require.NoError(t, err)
 	assert.Equal(t, domain.EventTypeNormal, evResolved.Type)
 }

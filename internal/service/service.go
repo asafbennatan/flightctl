@@ -167,5 +167,5 @@ type Service interface {
 	GetFleetVulnerabilities(ctx context.Context, orgId uuid.UUID, name string, params domain.GetFleetVulnerabilitiesParams) (*domain.VulnerabilityGroupList, domain.Status)
 	GetFleetVulnerabilitySummary(ctx context.Context, orgId uuid.UUID, name string, params domain.GetFleetVulnerabilitySummaryParams) (*domain.FleetVulnerabilitySummaryResponse, domain.Status)
 
-	SyncDeviceCVELifecycleEvents(ctx context.Context, warningThreshold, criticalThreshold float64) error
+	SyncDeviceCVELifecycleEvents(ctx context.Context) error
 }
