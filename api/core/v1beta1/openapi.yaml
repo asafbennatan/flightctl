@@ -1215,11 +1215,11 @@ paths:
             type: boolean
         - name: cveId
           in: query
-          description: Filter devices by CVE ID. Only returns devices whose OS image digest has the specified vulnerability. Must be a MITRE-style identifier (CVE-YYYY-sequence, e.g. CVE-2024-12345).
+          description: Filter devices by CVE ID. Only returns devices whose OS image digest has the specified vulnerability. Must be a MITRE-style identifier (CVE-YYYY-sequence, e.g. CVE-2024-12345). Case-insensitive; the value is normalized to uppercase before matching.
           required: false
           schema:
             type: string
-            pattern: '^CVE-[0-9]{4}-[0-9]{4,}$'
+            pattern: '^[Cc][Vv][Ee]-[0-9]{4}-[0-9]{4,}$'
             maxLength: 64
       responses:
         "200":
