@@ -809,6 +809,13 @@ ignore_chown_errors = "true"
 		startArgs = append(startArgs, "--tls-verify=false")
 	}
 	startArgs = append(startArgs,
+		// EDM-3936: raise RLIMIT_NOFILE in the worker container so that the inner
+		// podman build (buildah) can set its own file-descriptor limit to 1048576
+		// without hitting "operation not permitted". The imagebuilder worker always
+		// runs as a privileged container (CAP_SYS_RESOURCE), which allows it to
+		// set hard limits above the host's inherited default (e.g. 524288 on
+		// OpenShift with default systemd settings).
+		"--ulimit", "nofile=1048576:1048576",
 		"--cap-add=SYS_ADMIN",
 		podmanImage,
 		"sleep", "infinity",
