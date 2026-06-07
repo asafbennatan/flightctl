@@ -231,6 +231,20 @@ func NewMountVolume(name, mountPath string) (v1beta1.ApplicationVolume, error) {
 	return volume, err
 }
 
+// NewVmApplicationSpec creates an image-based VmApplication spec.
+func NewVmApplicationSpec(name, image string) (v1beta1.ApplicationProviderSpec, error) {
+	vmApp := v1beta1.VmApplication{
+		AppType: v1beta1.AppTypeVm,
+		Name:    lo.ToPtr(name),
+	}
+	if err := vmApp.FromImageApplicationProviderSpec(v1beta1.ImageApplicationProviderSpec{Image: image}); err != nil {
+		return v1beta1.ApplicationProviderSpec{}, err
+	}
+	var appSpec v1beta1.ApplicationProviderSpec
+	err := appSpec.FromVmApplication(vmApp)
+	return appSpec, err
+}
+
 // NewHelmApplicationSpec creates a HelmApplication spec with optional values files.
 func NewHelmApplicationSpec(name, image, namespace string, valuesFiles []string) (v1beta1.ApplicationProviderSpec, error) {
 	helmApp := v1beta1.HelmApplication{
