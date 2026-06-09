@@ -52,7 +52,6 @@ type httpProbeResult struct {
 	resourceKey string
 	fingerprint string
 	changed     bool
-	firstSeen   bool
 	probeErr    string
 	skip        bool // true for HttpNotConditional or errors
 }
@@ -186,9 +185,7 @@ func (d *DependencySyncHttp) probeEndpoint(ctx context.Context, client *http.Cli
 	case statusCode == http.StatusOK && fingerprint == "":
 		d.log.Warnf("endpoint %s does not support conditional requests (no ETag or Last-Modified)", repoURL)
 		r.skip = true
-	case probe.Fingerprint == nil:
-		r.firstSeen = true
-	case fingerprint != *probe.Fingerprint:
+	case probe.Fingerprint == nil || fingerprint != *probe.Fingerprint:
 		r.changed = true
 	}
 
@@ -253,7 +250,7 @@ func (d *DependencySyncHttp) reconcile(ctx context.Context, orgId uuid.UUID, res
 		}
 		if r.skip {
 			unchangedKeys = append(unchangedKeys, r.resourceKey)
-		} else if r.firstSeen || r.changed {
+		} else if r.changed {
 			upsertStates = append(upsertStates, model.SyncState{
 				OrgID:         orgId,
 				ResourceKey:   r.resourceKey,

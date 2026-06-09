@@ -240,7 +240,7 @@ func TestDependencySyncGit_Poll(t *testing.T) {
 		assert.Equal(t, "device-standalone", events[0].name)
 	})
 
-	t.Run("When first seen it should store fingerprint without emitting events", func(t *testing.T) {
+	t.Run("When first seen it should store fingerprint and emit a change event", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		mockService := service.NewMockService(ctrl)
@@ -258,6 +258,11 @@ func TestDependencySyncGit_Poll(t *testing.T) {
 				return statusOK
 			})
 
+		var events []emittedEvent
+		mockService.EXPECT().CreateEvent(gomock.Any(), orgId, gomock.Any()).Do(func(_ context.Context, _ uuid.UUID, event *domain.Event) {
+			events = append(events, emittedEvent{kind: event.InvolvedObject.Kind, name: event.InvolvedObject.Name})
+		})
+
 		lsRemote := func(_ context.Context, _ string, _ []string, _ transport.AuthMethod) (map[string]string, error) {
 			return map[string]string{"main": "initialsha123"}, nil
 		}
@@ -267,6 +272,10 @@ func TestDependencySyncGit_Poll(t *testing.T) {
 			cfg: &config.Config{}, lsRemote: lsRemote, maxConcurrent: 10,
 		}
 		d.Poll(ctx, orgId)
+
+		require.Len(t, events, 1)
+		assert.Equal(t, string(domain.FleetKind), events[0].kind)
+		assert.Equal(t, "fleet-1", events[0].name)
 	})
 
 	t.Run("When multiple revisions exist for the same repo it should call ls-remote once", func(t *testing.T) {

@@ -756,6 +756,13 @@ func (t *TracedService) BulkUpdateSyncStateLastCheckedAt(ctx context.Context, or
 	return st
 }
 
+func (t *TracedService) SeedSyncStates(ctx context.Context, orgId uuid.UUID, states []model.SyncState) domain.Status {
+	ctx, span := startSpan(ctx, "SeedSyncStates")
+	st := t.inner.SeedSyncStates(ctx, orgId, states)
+	endSpan(span, st)
+	return st
+}
+
 // --- TemplateVersion ---
 func (t *TracedService) CreateTemplateVersion(ctx context.Context, orgId uuid.UUID, tv domain.TemplateVersion, immediateRollout bool) (*domain.TemplateVersion, domain.Status) {
 	ctx, span := startSpan(ctx, "CreateTemplateVersion")

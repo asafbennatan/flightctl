@@ -20,6 +20,9 @@ type SyncState interface {
 	SetLastCheckedAt(ctx context.Context, orgID uuid.UUID, resourceKey string, t time.Time) error
 	BulkUpsert(ctx context.Context, orgID uuid.UUID, states []model.SyncState) error
 	BulkUpdateLastCheckedAt(ctx context.Context, orgID uuid.UUID, resourceKeys []string, t time.Time) error
+	// BulkInsertIfAbsent inserts sync state rows only when no row exists yet for
+	// the given (org_id, resource_key) pair. Existing rows are left untouched.
+	BulkInsertIfAbsent(ctx context.Context, orgID uuid.UUID, states []model.SyncState) error
 }
 
 type SyncStateStore struct {
@@ -89,6 +92,21 @@ func (s *SyncStateStore) BulkUpsert(ctx context.Context, orgID uuid.UUID, states
 	return s.getDB(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "org_id"}, {Name: "resource_key"}},
 		UpdateAll: true,
+	}).Create(&states).Error
+}
+
+// BulkInsertIfAbsent inserts sync state rows only when no row exists yet for
+// the given (org_id, resource_key) pair. Existing rows are left untouched.
+func (s *SyncStateStore) BulkInsertIfAbsent(ctx context.Context, orgID uuid.UUID, states []model.SyncState) error {
+	if len(states) == 0 {
+		return nil
+	}
+	for i := range states {
+		states[i].OrgID = orgID
+	}
+	return s.getDB(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "org_id"}, {Name: "resource_key"}},
+		DoNothing: true,
 	}).Create(&states).Error
 }
 

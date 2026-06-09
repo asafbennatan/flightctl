@@ -11,19 +11,23 @@ import (
 	"github.com/flightctl/flightctl/internal/domain"
 )
 
-func sendHTTPrequest(repoSpec domain.RepositorySpec, repoURL string) ([]byte, error) {
+// sendHTTPrequest fetches the resource at repoURL and returns the response body
+// along with a cache fingerprint (ETag if present, otherwise Last-Modified).
+// The fingerprint is empty when the server provides neither header; callers
+// should treat an empty fingerprint as "not seedable into sync_states".
+func sendHTTPrequest(repoSpec domain.RepositorySpec, repoURL string) ([]byte, string, error) {
 	req, err := http.NewRequest("GET", repoURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+		return nil, "", fmt.Errorf("creating request: %w", err)
 	}
 	repoHttpSpec, err := repoSpec.AsHttpRepoSpec()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	req, tlsConfig, err := buildHttpRepoRequestAuth(repoHttpSpec, req)
 	if err != nil {
-		return nil, fmt.Errorf("error building request authentication: %w", err)
+		return nil, "", fmt.Errorf("error building request authentication: %w", err)
 	}
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -32,17 +36,21 @@ func sendHTTPrequest(repoSpec domain.RepositorySpec, repoURL string) ([]byte, er
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("sending request: %w", err)
+		return nil, "", fmt.Errorf("sending request: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
+		return nil, "", fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("reading response body: %w", err)
+		return nil, "", fmt.Errorf("reading response body: %w", err)
 	}
-	return body, nil
+	fp := resp.Header.Get("ETag")
+	if fp == "" {
+		fp = resp.Header.Get("Last-Modified")
+	}
+	return body, fp, nil
 }
 
 func buildHttpRepoRequestAuth(repoHttpSpec domain.HttpRepoSpec, req *http.Request) (*http.Request, *tls.Config, error) {

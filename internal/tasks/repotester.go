@@ -194,7 +194,7 @@ func (r *HttpRepoTester) TestAccess(repository *domain.Repository) error {
 	}
 
 	repoSpec := repository.Spec
-	_, err = sendHTTPrequest(repoSpec, repoURL)
+	_, _, err = sendHTTPrequest(repoSpec, repoURL)
 	return err
 }
 

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	config_latest "github.com/coreos/ignition/v2/config/v3_4"
 	config_latest_types "github.com/coreos/ignition/v2/config/v3_4/types"
@@ -18,6 +19,7 @@ import (
 	"github.com/flightctl/flightctl/internal/domain"
 	"github.com/flightctl/flightctl/internal/kvstore"
 	"github.com/flightctl/flightctl/internal/service"
+	"github.com/flightctl/flightctl/internal/store/model"
 	"github.com/flightctl/flightctl/internal/util"
 	"github.com/flightctl/flightctl/internal/util/validation"
 	"github.com/flightctl/flightctl/pkg/ignition"
@@ -179,7 +181,39 @@ func (t *DeviceRenderLogic) RenderDevice(ctx context.Context) error {
 	}
 
 	status = t.serviceHandler.UpdateRenderedDevice(ctx, t.orgId, t.event.InvolvedObject.Name, string(renderedConfig), string(renderedApplications), specHash, syncRefs)
-	return t.setStatus(ctx, service.ApiStatusToErr(status))
+	if err := service.ApiStatusToErr(status); err != nil {
+		return t.setStatus(ctx, err)
+	}
+	t.seedSyncStates(ctx, configFingerprints)
+	return t.setStatus(ctx, nil)
+}
+
+// seedSyncStates pre-populates sync_states with the rendered fingerprints so
+// that the periodic probe always has a baseline to compare against on its first
+// run (EDM-4127).  The insert is DO-NOTHING: if the probe has already run and
+// written its own fingerprint, that value is preserved.  Failures are logged as
+// warnings and do not fail the render.
+func (t *DeviceRenderLogic) seedSyncStates(ctx context.Context, fingerprints []ConfigRefFingerprint) {
+	now := time.Now().UTC()
+	var seeds []model.SyncState
+	for _, fp := range fingerprints {
+		if fp.ResourceKey == "" || fp.SyncStateFingerprint == "" {
+			continue
+		}
+		seeds = append(seeds, model.SyncState{
+			OrgID:         t.orgId,
+			ResourceKey:   fp.ResourceKey,
+			Fingerprint:   fp.SyncStateFingerprint,
+			ProbeStatus:   "Synced",
+			LastCheckedAt: now,
+		})
+	}
+	if len(seeds) == 0 {
+		return
+	}
+	if st := t.serviceHandler.SeedSyncStates(ctx, t.orgId, seeds); st.Code != http.StatusOK {
+		t.log.Warnf("failed seeding sync states for device %s/%s: %s", t.orgId, t.event.InvolvedObject.Name, st.Message)
+	}
 }
 
 func (t *DeviceRenderLogic) setStatus(ctx context.Context, renderErr error) error {
@@ -265,7 +299,7 @@ func (t *DeviceRenderLogic) renderConfig(ctx context.Context) (*config_latest_ty
 	var firstError error
 	for i := range *t.deviceConfig {
 		configItem := (*t.deviceConfig)[i]
-		name, repoName, fingerprint, err := t.renderConfigItem(ctx, &configItem, &ignitionConfig)
+		name, repoName, fingerprint, syncFP, err := t.renderConfigItem(ctx, &configItem, &ignitionConfig)
 
 		if repoName != nil {
 			referencedRepos = append(referencedRepos, *repoName)
@@ -277,9 +311,16 @@ func (t *DeviceRenderLogic) renderConfig(ctx context.Context) (*config_latest_ty
 				firstError = err
 			}
 		} else if fingerprint != nil && name != nil {
+			rk := configItemResourceKey(&configItem)
+			sfp := ""
+			if syncFP != nil && rk != "" {
+				sfp = *syncFP
+			}
 			fingerprints = append(fingerprints, ConfigRefFingerprint{
-				ConfigProviderName: *name,
-				Fingerprint:        *fingerprint,
+				ConfigProviderName:   *name,
+				Fingerprint:          *fingerprint,
+				ResourceKey:          rk,
+				SyncStateFingerprint: sfp,
 			})
 		}
 	}
@@ -299,8 +340,40 @@ func (t *DeviceRenderLogic) renderConfig(ctx context.Context) (*config_latest_ty
 
 // ConfigRefFingerprint holds the fingerprint captured for one config provider at render time.
 type ConfigRefFingerprint struct {
-	ConfigProviderName string
-	Fingerprint        string
+	ConfigProviderName   string
+	Fingerprint          string // body hash / commit SHA stored in device.status.dependencySync
+	ResourceKey          string // sync_states resource key (e.g. "git:repo/rev", "http:repo/suffix")
+	SyncStateFingerprint string // fingerprint to seed sync_states with; empty means do not seed
+}
+
+// configItemResourceKey computes the sync_states resource key for a config provider.
+// Returns an empty string for provider types that are not tracked by the periodic probe
+// (inline config, K8s secrets — the latter is handled by the secret informer).
+func configItemResourceKey(configItem *domain.ConfigProviderSpec) string {
+	configType, err := configItem.Type()
+	if err != nil {
+		return ""
+	}
+	switch configType {
+	case domain.GitConfigProviderType:
+		spec, err := configItem.AsGitConfigProviderSpec()
+		if err != nil {
+			return ""
+		}
+		return fmt.Sprintf("git:%s/%s", spec.GitRef.Repository, spec.GitRef.TargetRevision)
+	case domain.HttpConfigProviderType:
+		spec, err := configItem.AsHttpConfigProviderSpec()
+		if err != nil {
+			return ""
+		}
+		suffix := ""
+		if spec.HttpRef.Suffix != nil {
+			suffix = strings.TrimPrefix(*spec.HttpRef.Suffix, "/")
+		}
+		return fmt.Sprintf("http:%s/%s", spec.HttpRef.Repository, suffix)
+	default:
+		return ""
+	}
 }
 
 // cachedSecretData wraps secret data with its ResourceVersion for KV storage.
@@ -314,10 +387,12 @@ type RenderItem interface {
 	MarshalJSON() ([]byte, error)
 }
 
-func (t *DeviceRenderLogic) renderConfigItem(ctx context.Context, configItem *domain.ConfigProviderSpec, ignitionConfig **config_latest_types.Config) (*string, *string, *string, error) {
+// renderConfigItem returns (name, repoName, fingerprint, syncFP, error).
+// syncFP is the fingerprint to seed into sync_states (nil for inline/K8s configs).
+func (t *DeviceRenderLogic) renderConfigItem(ctx context.Context, configItem *domain.ConfigProviderSpec, ignitionConfig **config_latest_types.Config) (*string, *string, *string, *string, error) {
 	configType, err := configItem.Type()
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("%w: failed getting config type: %w", ErrUnknownConfigName, err)
+		return nil, nil, nil, nil, fmt.Errorf("%w: failed getting config type: %w", ErrUnknownConfigName, err)
 	}
 
 	switch configType {
@@ -330,7 +405,7 @@ func (t *DeviceRenderLogic) renderConfigItem(ctx context.Context, configItem *do
 	case domain.HttpConfigProviderType:
 		return t.renderHttpProviderConfig(ctx, configItem, ignitionConfig)
 	default:
-		return nil, nil, nil, fmt.Errorf("%w: unsupported config type %q", ErrUnknownConfigName, configType)
+		return nil, nil, nil, nil, fmt.Errorf("%w: unsupported config type %q", ErrUnknownConfigName, configType)
 	}
 }
 
@@ -362,15 +437,18 @@ func renderApplication(_ context.Context, app *domain.ApplicationProviderSpec) (
 	return appName, app, nil
 }
 
-func (t *DeviceRenderLogic) renderGitConfig(ctx context.Context, configItem *domain.ConfigProviderSpec, ignitionConfig **config_latest_types.Config) (*string, *string, *string, error) {
+// renderGitConfig returns (name, repoName, fingerprint, syncFP, error).
+// syncFP is the commit SHA — the same value as fingerprint — suitable for
+// seeding sync_states so the probe always has a baseline to compare against.
+func (t *DeviceRenderLogic) renderGitConfig(ctx context.Context, configItem *domain.ConfigProviderSpec, ignitionConfig **config_latest_types.Config) (*string, *string, *string, *string, error) {
 	gitSpec, err := configItem.AsGitConfigProviderSpec()
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("%w: failed getting config item as GitConfigProviderSpec: %w", ErrUnknownConfigName, err)
+		return nil, nil, nil, nil, fmt.Errorf("%w: failed getting config item as GitConfigProviderSpec: %w", ErrUnknownConfigName, err)
 	}
 
 	repo, status := t.serviceHandler.GetRepository(ctx, t.orgId, gitSpec.GitRef.Repository)
 	if status.Code != http.StatusOK {
-		return &gitSpec.Name, &gitSpec.GitRef.Repository, nil, fmt.Errorf("failed fetching specified Repository definition %s/%s: %s", t.orgId, gitSpec.GitRef.Repository, status.Message)
+		return &gitSpec.Name, &gitSpec.GitRef.Repository, nil, nil, fmt.Errorf("failed fetching specified Repository definition %s/%s: %s", t.orgId, gitSpec.GitRef.Repository, status.Message)
 	}
 
 	var ignition *config_latest_types.Config
@@ -380,31 +458,31 @@ func (t *DeviceRenderLogic) renderGitConfig(ctx context.Context, configItem *dom
 		var hash string
 		ignition, hash, err = CloneGitRepoToIgnition(repo, gitSpec.GitRef.TargetRevision, gitSpec.GitRef.Path, t.cfg)
 		if err != nil {
-			return &gitSpec.Name, &gitSpec.GitRef.Repository, nil, fmt.Errorf("failed cloning specified git repository %s/%s: %w", t.orgId, gitSpec.GitRef.Repository, err)
+			return &gitSpec.Name, &gitSpec.GitRef.Repository, nil, nil, fmt.Errorf("failed cloning specified git repository %s/%s: %w", t.orgId, gitSpec.GitRef.Repository, err)
 		}
 		commitHash = hash
 	} else {
 		var hash string
 		ignition, hash, err = t.cloneCachedGitRepoToIgnition(ctx, repo, gitSpec.GitRef.TargetRevision, gitSpec.GitRef.Path)
 		if err != nil {
-			return &gitSpec.Name, &gitSpec.GitRef.Repository, nil, fmt.Errorf("failed fetching specified git repository %s/%s: %w", t.orgId, gitSpec.GitRef.Repository, err)
+			return &gitSpec.Name, &gitSpec.GitRef.Repository, nil, nil, fmt.Errorf("failed fetching specified git repository %s/%s: %w", t.orgId, gitSpec.GitRef.Repository, err)
 		}
 		commitHash = hash
 	}
 
 	for _, f := range ignition.Storage.Files {
 		if err := validation.DenyForbiddenDevicePath(f.Path); err != nil {
-			return &gitSpec.Name, &gitSpec.GitRef.Repository, nil, fmt.Errorf("invalid path from git config: %w", err)
+			return &gitSpec.Name, &gitSpec.GitRef.Repository, nil, nil, fmt.Errorf("invalid path from git config: %w", err)
 		}
 	}
 	for _, dir := range ignition.Storage.Directories {
 		if err := validation.DenyForbiddenDevicePath(dir.Path); err != nil {
-			return &gitSpec.Name, &gitSpec.GitRef.Repository, nil, fmt.Errorf("invalid path from git config: %w", err)
+			return &gitSpec.Name, &gitSpec.GitRef.Repository, nil, nil, fmt.Errorf("invalid path from git config: %w", err)
 		}
 	}
 	for _, link := range ignition.Storage.Links {
 		if err := validation.DenyForbiddenDevicePath(link.Path); err != nil {
-			return &gitSpec.Name, &gitSpec.GitRef.Repository, nil, fmt.Errorf("invalid path from git config: %w", err)
+			return &gitSpec.Name, &gitSpec.GitRef.Repository, nil, nil, fmt.Errorf("invalid path from git config: %w", err)
 		}
 		if link.Target != nil {
 			var resolvedTarget string
@@ -414,7 +492,7 @@ func (t *DeviceRenderLogic) renderGitConfig(ctx context.Context, configItem *dom
 				resolvedTarget = filepath.Clean(filepath.Join(filepath.Dir(link.Path), *link.Target))
 			}
 			if err := validation.DenyForbiddenDevicePath(resolvedTarget); err != nil {
-				return &gitSpec.Name, &gitSpec.GitRef.Repository, nil, fmt.Errorf("invalid symlink target from git config: %w", err)
+				return &gitSpec.Name, &gitSpec.GitRef.Repository, nil, nil, fmt.Errorf("invalid symlink target from git config: %w", err)
 			}
 		}
 	}
@@ -422,16 +500,18 @@ func (t *DeviceRenderLogic) renderGitConfig(ctx context.Context, configItem *dom
 	mergedConfig := config_latest.Merge(**ignitionConfig, *ignition)
 	*ignitionConfig = &mergedConfig
 
-	return &gitSpec.Name, &gitSpec.GitRef.Repository, &commitHash, nil
+	return &gitSpec.Name, &gitSpec.GitRef.Repository, &commitHash, &commitHash, nil
 }
 
-func (t *DeviceRenderLogic) renderK8sConfig(ctx context.Context, configItem *domain.ConfigProviderSpec, ignitionConfig **config_latest_types.Config) (*string, *string, *string, error) {
+// renderK8sConfig returns (name, repoName, fingerprint, syncFP, error).
+// syncFP is always nil — K8s secrets are tracked by the secret informer, not the periodic probe.
+func (t *DeviceRenderLogic) renderK8sConfig(ctx context.Context, configItem *domain.ConfigProviderSpec, ignitionConfig **config_latest_types.Config) (*string, *string, *string, *string, error) {
 	k8sSpec, err := configItem.AsKubernetesSecretProviderSpec()
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("%w: failed getting config item as KubernetesSecretProviderSpec: %w", ErrUnknownConfigName, err)
+		return nil, nil, nil, nil, fmt.Errorf("%w: failed getting config item as KubernetesSecretProviderSpec: %w", ErrUnknownConfigName, err)
 	}
 	if t.k8sClient == nil {
-		return &k8sSpec.Name, nil, nil, fmt.Errorf("kubernetes API is not available")
+		return &k8sSpec.Name, nil, nil, nil, fmt.Errorf("kubernetes API is not available")
 	}
 
 	var secretData map[string][]byte
@@ -449,12 +529,12 @@ func (t *DeviceRenderLogic) renderK8sConfig(ctx context.Context, configItem *dom
 		}
 		data, err := t.kvStore.Get(ctx, key.ComposeKey())
 		if err != nil {
-			return &k8sSpec.Name, nil, nil, fmt.Errorf("failed fetching cached secret data: %w", err)
+			return &k8sSpec.Name, nil, nil, nil, fmt.Errorf("failed fetching cached secret data: %w", err)
 		}
 		if data != nil {
 			var cached cachedSecretData
 			if err = json.Unmarshal(data, &cached); err != nil {
-				return &k8sSpec.Name, nil, nil, fmt.Errorf("failed parsing cached secret data: %w", err)
+				return &k8sSpec.Name, nil, nil, nil, fmt.Errorf("failed parsing cached secret data: %w", err)
 			}
 			secretData = cached.Data
 			resourceVersion = cached.ResourceVersion
@@ -466,7 +546,7 @@ func (t *DeviceRenderLogic) renderK8sConfig(ctx context.Context, configItem *dom
 	if secretData == nil {
 		secret, err := t.k8sClient.GetSecret(ctx, k8sSpec.SecretRef.Namespace, k8sSpec.SecretRef.Name)
 		if err != nil {
-			return &k8sSpec.Name, nil, nil, fmt.Errorf("failed getting secret %s/%s: %w", k8sSpec.SecretRef.Namespace, k8sSpec.SecretRef.Name, err)
+			return &k8sSpec.Name, nil, nil, nil, fmt.Errorf("failed getting secret %s/%s: %w", k8sSpec.SecretRef.Namespace, k8sSpec.SecretRef.Name, err)
 		}
 		secretData = secret.Data
 		resourceVersion = secret.ResourceVersion
@@ -479,29 +559,29 @@ func (t *DeviceRenderLogic) renderK8sConfig(ctx context.Context, configItem *dom
 		}
 		secretDataToStore, err := json.Marshal(cached)
 		if err != nil {
-			return &k8sSpec.Name, nil, nil, fmt.Errorf("failed marshalling secret data %s/%s: %w", k8sSpec.SecretRef.Namespace, k8sSpec.SecretRef.Name, err)
+			return &k8sSpec.Name, nil, nil, nil, fmt.Errorf("failed marshalling secret data %s/%s: %w", k8sSpec.SecretRef.Namespace, k8sSpec.SecretRef.Name, err)
 		}
 		updated, err := t.kvStore.SetNX(ctx, key.ComposeKey(), secretDataToStore)
 		if err != nil {
-			return &k8sSpec.Name, nil, nil, fmt.Errorf("failed storing secret %s/%s: %w", k8sSpec.SecretRef.Namespace, k8sSpec.SecretRef.Name, err)
+			return &k8sSpec.Name, nil, nil, nil, fmt.Errorf("failed storing secret %s/%s: %w", k8sSpec.SecretRef.Namespace, k8sSpec.SecretRef.Name, err)
 		}
 		if !updated {
-			return &k8sSpec.Name, nil, nil, fmt.Errorf("failed freezing secret %s/%s: unexpectedly changed", k8sSpec.SecretRef.Namespace, k8sSpec.SecretRef.Name)
+			return &k8sSpec.Name, nil, nil, nil, fmt.Errorf("failed freezing secret %s/%s: unexpectedly changed", k8sSpec.SecretRef.Namespace, k8sSpec.SecretRef.Name)
 		}
 	}
 
 	ignitionWrapper, err := ignition.NewWrapper()
 	if err != nil {
-		return &k8sSpec.Name, nil, nil, fmt.Errorf("failed to create ignition wrapper: %w", err)
+		return &k8sSpec.Name, nil, nil, nil, fmt.Errorf("failed to create ignition wrapper: %w", err)
 	}
 	base := filepath.Clean(k8sSpec.SecretRef.MountPath)
 	for name, contents := range secretData {
 		if name == "." || name == ".." || strings.ContainsRune(name, '/') {
-			return &k8sSpec.Name, nil, nil, fmt.Errorf("invalid secret key %q: must be a single file name", name)
+			return &k8sSpec.Name, nil, nil, nil, fmt.Errorf("invalid secret key %q: must be a single file name", name)
 		}
 		dest := filepath.Join(base, name)
 		if err := validation.DenyForbiddenDevicePath(dest); err != nil {
-			return &k8sSpec.Name, nil, nil, fmt.Errorf("invalid secret-derived path %q: %w", dest, err)
+			return &k8sSpec.Name, nil, nil, nil, fmt.Errorf("invalid secret-derived path %q: %w", dest, err)
 		}
 		ignitionWrapper.SetFile(dest, contents, 0o644, false, k8sSpec.SecretRef.User.String(), k8sSpec.SecretRef.Group)
 	}
@@ -511,18 +591,18 @@ func (t *DeviceRenderLogic) renderK8sConfig(ctx context.Context, configItem *dom
 	if resourceVersion != "" {
 		fingerprint = &resourceVersion
 	}
-	return &k8sSpec.Name, nil, fingerprint, nil
+	return &k8sSpec.Name, nil, fingerprint, nil, nil
 }
 
-func (t *DeviceRenderLogic) renderInlineConfig(configItem *domain.ConfigProviderSpec, ignitionConfig **config_latest_types.Config) (*string, *string, *string, error) {
+func (t *DeviceRenderLogic) renderInlineConfig(configItem *domain.ConfigProviderSpec, ignitionConfig **config_latest_types.Config) (*string, *string, *string, *string, error) {
 	inlineSpec, err := configItem.AsInlineConfigProviderSpec()
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("%w: failed getting config item as InlineConfigProviderSpec: %w", ErrUnknownConfigName, err)
+		return nil, nil, nil, nil, fmt.Errorf("%w: failed getting config item as InlineConfigProviderSpec: %w", ErrUnknownConfigName, err)
 	}
 
 	ignitionWrapper, err := ignition.NewWrapper()
 	if err != nil {
-		return &inlineSpec.Name, nil, nil, fmt.Errorf("failed to create ignition wrapper: %w", err)
+		return &inlineSpec.Name, nil, nil, nil, fmt.Errorf("failed to create ignition wrapper: %w", err)
 	}
 
 	for _, file := range inlineSpec.Inline {
@@ -539,28 +619,33 @@ func (t *DeviceRenderLogic) renderInlineConfig(configItem *domain.ConfigProvider
 	}
 
 	*ignitionConfig = lo.ToPtr(ignitionWrapper.Merge(**ignitionConfig))
-	return &inlineSpec.Name, nil, nil, nil
+	return &inlineSpec.Name, nil, nil, nil, nil
 }
 
-func (t *DeviceRenderLogic) renderHttpProviderConfig(ctx context.Context, configItem *domain.ConfigProviderSpec, ignitionConfig **config_latest_types.Config) (*string, *string, *string, error) {
+// renderHttpProviderConfig returns (name, repoName, fingerprint, syncFP, error).
+// fingerprint is a sha256 body hash stored in device.status.dependencySync.
+// syncFP is the ETag or Last-Modified header captured from a live HTTP fetch;
+// it is nil when serving from the fleet KV cache (ETag not available) or when
+// the server provides no cache headers.
+func (t *DeviceRenderLogic) renderHttpProviderConfig(ctx context.Context, configItem *domain.ConfigProviderSpec, ignitionConfig **config_latest_types.Config) (*string, *string, *string, *string, error) {
 	httpConfigProviderSpec, err := configItem.AsHttpConfigProviderSpec()
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("%w: failed getting config item as HttpConfigProviderSpec: %w", ErrUnknownConfigName, err)
+		return nil, nil, nil, nil, fmt.Errorf("%w: failed getting config item as HttpConfigProviderSpec: %w", ErrUnknownConfigName, err)
 	}
 	repo, status := t.serviceHandler.GetRepository(ctx, t.orgId, httpConfigProviderSpec.HttpRef.Repository)
 	if status.Code != http.StatusOK {
-		return &httpConfigProviderSpec.Name, &httpConfigProviderSpec.HttpRef.Repository, nil, fmt.Errorf("failed fetching specified Repository definition %s/%s: %s", t.orgId, httpConfigProviderSpec.HttpRef.Repository, status.Message)
+		return &httpConfigProviderSpec.Name, &httpConfigProviderSpec.HttpRef.Repository, nil, nil, fmt.Errorf("failed fetching specified Repository definition %s/%s: %s", t.orgId, httpConfigProviderSpec.HttpRef.Repository, status.Message)
 	}
 
 	if t.ownerFleet != nil {
 		err = t.getFrozenRepositoryURL(ctx, repo)
 		if err != nil {
-			return &httpConfigProviderSpec.Name, &httpConfigProviderSpec.HttpRef.Repository, nil, err
+			return &httpConfigProviderSpec.Name, &httpConfigProviderSpec.HttpRef.Repository, nil, nil, err
 		}
 	}
 	repoURL, err := repo.Spec.GetRepoURL()
 	if err != nil {
-		return &httpConfigProviderSpec.Name, &httpConfigProviderSpec.HttpRef.Repository, nil, err
+		return &httpConfigProviderSpec.Name, &httpConfigProviderSpec.HttpRef.Repository, nil, nil, err
 	}
 
 	if httpConfigProviderSpec.HttpRef.Suffix != nil {
@@ -569,6 +654,7 @@ func (t *DeviceRenderLogic) renderHttpProviderConfig(ctx context.Context, config
 
 	var httpData []byte
 	var httpKey kvstore.HttpKey
+	var syncFP string // ETag/Last-Modified from a live fetch; empty from cache
 	needToStoreData := false
 
 	if t.ownerFleet != nil {
@@ -580,42 +666,48 @@ func (t *DeviceRenderLogic) renderHttpProviderConfig(ctx context.Context, config
 		}
 		data, err := t.kvStore.Get(ctx, httpKey.ComposeKey())
 		if err != nil {
-			return &httpConfigProviderSpec.Name, nil, nil, fmt.Errorf("failed fetching cached data: %w", err)
+			return &httpConfigProviderSpec.Name, nil, nil, nil, fmt.Errorf("failed fetching cached data: %w", err)
 		}
 		if data != nil {
-			httpData = data
+			httpData = data // cache hit — syncFP stays empty
 		} else {
 			needToStoreData = true
 		}
 	}
 
 	if httpData == nil {
-		httpData, err = sendHTTPrequest(repo.Spec, repoURL)
+		var fp string
+		httpData, fp, err = sendHTTPrequest(repo.Spec, repoURL)
 		if err != nil {
-			return &httpConfigProviderSpec.Name, nil, nil, fmt.Errorf("failed fetching data: %w", err)
+			return &httpConfigProviderSpec.Name, nil, nil, nil, fmt.Errorf("failed fetching data: %w", err)
 		}
+		syncFP = fp
 	}
 
 	if needToStoreData {
 		updated, err := t.kvStore.SetNX(ctx, httpKey.ComposeKey(), httpData)
 		if err != nil {
-			return &httpConfigProviderSpec.Name, nil, nil, fmt.Errorf("failed storing data: %w", err)
+			return &httpConfigProviderSpec.Name, nil, nil, nil, fmt.Errorf("failed storing data: %w", err)
 		}
 		if !updated {
-			return &httpConfigProviderSpec.Name, nil, nil, fmt.Errorf("failed storing data: unexpectedly changed")
+			return &httpConfigProviderSpec.Name, nil, nil, nil, fmt.Errorf("failed storing data: unexpectedly changed")
 		}
 	}
 
 	ignitionWrapper, err := ignition.NewWrapper()
 	if err != nil {
-		return &httpConfigProviderSpec.Name, &httpConfigProviderSpec.HttpRef.Repository, nil, fmt.Errorf("failed to create ignition wrapper: %w", err)
+		return &httpConfigProviderSpec.Name, &httpConfigProviderSpec.HttpRef.Repository, nil, nil, fmt.Errorf("failed to create ignition wrapper: %w", err)
 	}
 
 	ignitionWrapper.SetFile(httpConfigProviderSpec.HttpRef.FilePath, httpData, 0o644, false, "", "")
 	*ignitionConfig = lo.ToPtr(ignitionWrapper.Merge(**ignitionConfig))
 
 	bodyHash := fmt.Sprintf("sha256:%x", sha256.Sum256(httpData))
-	return &httpConfigProviderSpec.Name, &httpConfigProviderSpec.HttpRef.Repository, &bodyHash, nil
+	var syncFPPtr *string
+	if syncFP != "" {
+		syncFPPtr = &syncFP
+	}
+	return &httpConfigProviderSpec.Name, &httpConfigProviderSpec.HttpRef.Repository, &bodyHash, syncFPPtr, nil
 }
 
 func (t *DeviceRenderLogic) getFrozenRepositoryURL(ctx context.Context, repo *domain.Repository) error {

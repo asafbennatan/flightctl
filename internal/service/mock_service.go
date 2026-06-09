@@ -74,6 +74,20 @@ func (mr *MockServiceMockRecorder) BulkUpdateSyncStateLastCheckedAt(ctx, orgId, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BulkUpdateSyncStateLastCheckedAt", reflect.TypeOf((*MockService)(nil).BulkUpdateSyncStateLastCheckedAt), ctx, orgId, resourceKeys, t)
 }
 
+// SeedSyncStates mocks base method.
+func (m *MockService) SeedSyncStates(ctx context.Context, orgId uuid.UUID, states []model.SyncState) domain.Status {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SeedSyncStates", ctx, orgId, states)
+	ret0, _ := ret[0].(domain.Status)
+	return ret0
+}
+
+// SeedSyncStates indicates an expected call of SeedSyncStates.
+func (mr *MockServiceMockRecorder) SeedSyncStates(ctx, orgId, states any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SeedSyncStates", reflect.TypeOf((*MockService)(nil).SeedSyncStates), ctx, orgId, states)
+}
+
 // BulkUpsertDeviceDependencyRefs mocks base method.
 func (m *MockService) BulkUpsertDeviceDependencyRefs(ctx context.Context, orgId uuid.UUID, refs []model.DependencyRef) domain.Status {
 	m.ctrl.T.Helper()

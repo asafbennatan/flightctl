@@ -48,7 +48,6 @@ type probeResult struct {
 	resourceKey string
 	newSHA      string
 	changed     bool
-	firstSeen   bool
 	probeErr    string // non-empty when the probe failed
 }
 
@@ -169,9 +168,7 @@ func (d *DependencySyncGit) probeRepo(ctx context.Context,
 			newSHA:      newSHA,
 		}
 
-		if p.Fingerprint == nil {
-			r.firstSeen = true
-		} else if newSHA != *p.Fingerprint {
+		if p.Fingerprint == nil || newSHA != *p.Fingerprint {
 			r.changed = true
 		}
 
@@ -237,7 +234,7 @@ func (d *DependencySyncGit) reconcile(ctx context.Context, orgId uuid.UUID, resu
 			})
 			continue
 		}
-		if r.firstSeen || r.changed {
+		if r.changed {
 			upsertStates = append(upsertStates, model.SyncState{
 				OrgID:         orgId,
 				ResourceKey:   r.resourceKey,

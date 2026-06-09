@@ -93,3 +93,8 @@ func (h *ServiceHandler) BulkUpdateSyncStateLastCheckedAt(ctx context.Context, o
 	err := h.store.SyncState().BulkUpdateLastCheckedAt(ctx, orgId, resourceKeys, t)
 	return StoreErrorToApiStatus(err, false, "", nil)
 }
+
+func (h *ServiceHandler) SeedSyncStates(ctx context.Context, orgId uuid.UUID, states []model.SyncState) domain.Status {
+	err := h.store.SyncState().BulkInsertIfAbsent(ctx, orgId, states)
+	return StoreErrorToApiStatus(err, false, "", nil)
+}
