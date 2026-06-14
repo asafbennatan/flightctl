@@ -142,8 +142,9 @@ var _ kvstore.KVStore = (*fakeKVStore)(nil)
 // ─── renderVmApplication ──────────────────────────────────────────────────────
 
 const (
-	fakePodYAML    = "apiVersion: v1\nkind: Pod\nmetadata:\n  name: my-vm\n"
-	customKubeUnit = "[Kube]\nYaml=pod.yaml\nKubeDownForce=true\nPublishPort=8080:8080/tcp\n"
+	fakePodYAML = "apiVersion: v1\nkind: Pod\nmetadata:\n  name: my-vm\n"
+	// customKubeUnit intentionally omits Yaml=; the server always injects Yaml=pod.yaml.
+	customKubeUnit = "[Kube]\nKubeDownForce=true\nPublishPort=8080:8080/tcp\n"
 )
 
 func TestRenderVmApplication(t *testing.T) {
@@ -174,7 +175,7 @@ func TestRenderVmApplication(t *testing.T) {
 			wantAnnotation: true,
 		},
 		{
-			name:   "When inline set contains a .kube file it should pass it through unchanged",
+			name:   "When inline set contains a .kube file without Yaml= it should inject Yaml=pod.yaml and preserve other directives",
 			vmName: "my-vm",
 			files: map[string]string{
 				"vm.yaml":    minimalVmYAML("my-vm"),
@@ -183,7 +184,6 @@ func TestRenderVmApplication(t *testing.T) {
 			converter:      stubbedConverter(fakePodYAML),
 			kvStore:        newFakeKVStore(),
 			wantPodYAML:    fakePodYAML,
-			wantKubeUnit:   customKubeUnit,
 			wantAnnotation: true,
 		},
 		{
@@ -268,7 +268,12 @@ func TestRenderVmApplication(t *testing.T) {
 			}
 
 			assert.Equal(t, tc.wantPodYAML, fileMap["pod.yaml"], "pod.yaml content")
-			assert.Equal(t, tc.wantKubeUnit, fileMap[tc.vmName+".kube"], ".kube unit content")
+			kubeContent := fileMap[tc.vmName+".kube"]
+			if tc.wantKubeUnit != "" {
+				assert.Equal(t, tc.wantKubeUnit, kubeContent, ".kube unit content")
+			} else {
+				assert.Contains(t, kubeContent, "Yaml=pod.yaml", ".kube unit must contain Yaml=pod.yaml")
+			}
 			assert.NotContains(t, fileMap, vmYamlFileName, "vm.yaml must not appear in the rendered QuadletApplication")
 		})
 	}
@@ -325,30 +330,49 @@ func TestRenderVmApplication_ImageProviderUnsupported(t *testing.T) {
 func TestBuildKubeUnit(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name        string
-		kubeContent *string
-		want        string
+		name          string
+		kubeContent   *string
+		wantContains  []string
+		wantNotContain []string
+		wantErr       string
 	}{
 		{
-			name:        "When kubeContent is nil it should return the default unit",
-			kubeContent: nil,
-			want:        defaultKubeUnit,
+			name:         "When kubeContent is nil it should produce a unit with Yaml=pod.yaml",
+			kubeContent:  nil,
+			wantContains: []string{"[Kube]", "Yaml=pod.yaml"},
 		},
 		{
-			name:        "When kubeContent is provided it should return it verbatim",
-			kubeContent: lo.ToPtr(customKubeUnit),
-			want:        customKubeUnit,
+			name:         "When kubeContent has no Yaml= directive it should inject Yaml=pod.yaml",
+			kubeContent:  lo.ToPtr("[Kube]\nPublishPort=2222:2222\n"),
+			wantContains: []string{"Yaml=pod.yaml", "PublishPort=2222:2222"},
 		},
 		{
-			name:        "When kubeContent is an empty string it should return it verbatim",
-			kubeContent: lo.ToPtr(""),
-			want:        "",
+			name:           "When kubeContent has Yaml=vm.yaml it should override to Yaml=pod.yaml",
+			kubeContent:    lo.ToPtr("[Kube]\nYaml=vm.yaml\nPublishPort=8080:8080\n"),
+			wantContains:   []string{"Yaml=pod.yaml", "PublishPort=8080:8080"},
+			wantNotContain: []string{"Yaml=vm.yaml"},
+		},
+		{
+			name:         "When kubeContent already has Yaml=pod.yaml it should keep it and preserve other directives",
+			kubeContent:  lo.ToPtr("[Kube]\nYaml=pod.yaml\nKubeDownForce=true\n"),
+			wantContains: []string{"Yaml=pod.yaml", "KubeDownForce=true"},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tc.want, buildKubeUnit(tc.kubeContent))
+			got, err := buildKubeUnit(tc.kubeContent)
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			for _, s := range tc.wantContains {
+				assert.Contains(t, got, s)
+			}
+			for _, s := range tc.wantNotContain {
+				assert.NotContains(t, got, s)
+			}
 		})
 	}
 }
