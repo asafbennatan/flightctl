@@ -13,6 +13,18 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// GetDeviceConsole and GetDeviceApplicationConsole are part of the server.Transport interface
+// because the OpenAPI spec declares the WS paths for resource mapping purposes.
+// The real WebSocket upgrade logic lives in WebsocketHandler; these stubs are
+// unreachable at runtime (the generated router mounts them at /api/v1/ws/v1/…).
+func (h *TransportHandler) GetDeviceConsole(w http.ResponseWriter, r *http.Request, _ string) {
+	http.NotFound(w, r)
+}
+
+func (h *TransportHandler) GetDeviceApplicationConsole(w http.ResponseWriter, r *http.Request, _, _ string, _ api.GetDeviceApplicationConsoleParams) {
+	http.NotFound(w, r)
+}
+
 func (h *WebsocketHandler) injectProtocolsToMetadata(metadataStr string, protocols []string) (string, error) {
 	var metadata api.DeviceConsoleSessionMetadata
 	if err := json.Unmarshal([]byte(metadataStr), &metadata); err != nil {
