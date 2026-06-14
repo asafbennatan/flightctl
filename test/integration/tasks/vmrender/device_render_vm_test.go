@@ -214,7 +214,7 @@ spec:
 	})
 
 	Context("when a VmApplication with a user-provided .kube file is rendered", func() {
-		It("should preserve the user-provided .kube unit in the output", func() {
+		It("should inject Yaml=pod.yaml and preserve other directives in the output .kube unit", func() {
 			vmYAML := fmt.Sprintf(`apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
@@ -245,7 +245,8 @@ spec:
           image: quay.io/containerdisks/fedora:40
 `, deviceName)
 
-			customKube := "[Kube]\nYaml=pod.yaml\nPublishPort=8080:8080/tcp\n"
+			// Yaml= intentionally omitted; the server always injects Yaml=pod.yaml.
+			customKube := "[Kube]\nPublishPort=8080:8080/tcp\n"
 			inlineSpec := api.InlineApplicationProviderSpec{
 				Inline: []api.ApplicationContent{
 					{Path: "vm.yaml", Content: lo.ToPtr(vmYAML)},
@@ -265,9 +266,19 @@ spec:
 			Expect(err).ToNot(HaveOccurred())
 			Expect(inline.Inline).To(HaveLen(2))
 
+			kubePath := fmt.Sprintf("%s.kube", deviceName)
 			paths := []string{inline.Inline[0].Path, inline.Inline[1].Path}
 			Expect(paths).To(ContainElement("pod.yaml"))
-			Expect(paths).To(ContainElement(fmt.Sprintf("%s.kube", deviceName)))
+			Expect(paths).To(ContainElement(kubePath))
+
+			fileMap := make(map[string]string, 2)
+			for _, f := range inline.Inline {
+				if f.Content != nil {
+					fileMap[f.Path] = *f.Content
+				}
+			}
+			Expect(fileMap[kubePath]).To(ContainSubstring("Yaml=pod.yaml"))
+			Expect(fileMap[kubePath]).To(ContainSubstring("PublishPort=8080:8080/tcp"))
 		})
 	})
 })
