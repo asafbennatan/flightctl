@@ -22,9 +22,10 @@ type TransportHandler struct {
 }
 
 type WebsocketHandler struct {
-	ca                    *crypto.CAClient
-	log                   logrus.FieldLogger
-	consoleSessionManager *console.ConsoleSessionManager
+	ca                       *crypto.CAClient
+	log                      logrus.FieldLogger
+	consoleSessionManager    *console.ConsoleSessionManager
+	appConsoleSessionManager *console.AppConsoleSessionManager
 }
 
 // Make sure we conform to servers Transport interface
@@ -41,15 +42,20 @@ func NewTransportHandler(serviceHandler service.Service, converter convertv1beta
 	}
 }
 
-func NewWebsocketHandler(ca *crypto.CAClient, log logrus.FieldLogger, consoleSessionManager *console.ConsoleSessionManager) *WebsocketHandler {
+func NewWebsocketHandler(ca *crypto.CAClient, log logrus.FieldLogger, consoleSessionManager *console.ConsoleSessionManager, appConsoleSessionManager *console.AppConsoleSessionManager) *WebsocketHandler {
 	return &WebsocketHandler{
-		ca:                    ca,
-		log:                   log,
-		consoleSessionManager: consoleSessionManager,
+		ca:                       ca,
+		log:                      log,
+		consoleSessionManager:    consoleSessionManager,
+		appConsoleSessionManager: appConsoleSessionManager,
 	}
 }
 
 func (h *WebsocketHandler) RegisterRoutes(r chi.Router) {
-	// Websocket handler for console
-	r.Get("/ws/v1/devices/{name}/console", h.HandleDeviceConsole)
+	if h.consoleSessionManager != nil {
+		r.Get("/ws/v1/devices/{name}/console", h.HandleDeviceConsole)
+	}
+	if h.appConsoleSessionManager != nil {
+		r.Get("/ws/v1/devices/{name}/applications/{appName}/console", h.HandleApplicationConsole)
+	}
 }

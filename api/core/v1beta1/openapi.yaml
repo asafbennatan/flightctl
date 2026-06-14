@@ -1983,6 +1983,120 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Status'
+  /ws/v1/devices/{name}/console:
+    x-resource: devices/console
+    get:
+      tags:
+        - device
+      description: Open a WebSocket console session to the Device.
+      operationId: getDeviceConsole
+      x-rbac:
+        resource: devices/console
+        action: get
+      parameters:
+        - name: name
+          in: path
+          description: The name of the Device resource.
+          required: true
+          schema:
+            type: string
+      responses:
+        "101":
+          description: Switching Protocols
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+  /ws/v1/devices/{name}/applications/{appName}/console:
+    x-resource: devices/applications/console
+    get:
+      tags:
+        - device
+      description: Open a WebSocket console session to an application running on the Device.
+      operationId: getDeviceApplicationConsole
+      x-rbac:
+        resource: devices/applications/console
+        action: get
+      parameters:
+        - name: name
+          in: path
+          description: The name of the Device resource.
+          required: true
+          schema:
+            type: string
+        - name: appName
+          in: path
+          description: The name of the application to connect to.
+          required: true
+          schema:
+            type: string
+        - name: consoleType
+          in: query
+          required: true
+          description: The type of console session to open. Currently only "serial" is supported.
+          schema:
+            type: string
+            enum:
+              - serial
+      responses:
+        "101":
+          description: Switching Protocols
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
   /deviceactions/resume:
     x-resource: devices/resume
     post:

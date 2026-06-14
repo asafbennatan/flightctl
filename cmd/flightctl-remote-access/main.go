@@ -2,15 +2,22 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/flightctl/flightctl/internal/auth"
 	"github.com/flightctl/flightctl/internal/config"
 	"github.com/flightctl/flightctl/internal/crypto"
 	"github.com/flightctl/flightctl/internal/instrumentation/tracing"
 	remoteaccessserver "github.com/flightctl/flightctl/internal/remote_access_server"
+	"github.com/flightctl/flightctl/internal/rendered"
+	"github.com/flightctl/flightctl/internal/store"
+	"github.com/flightctl/flightctl/internal/util"
 	"github.com/flightctl/flightctl/pkg/log"
+	"github.com/flightctl/flightctl/pkg/queues"
+	"github.com/google/uuid"
 )
 
 func main() {
@@ -44,10 +51,38 @@ func main() {
 		}
 	}()
 
+	log.Println("Initializing data store")
+	db, err := store.InitDB(cfg, log)
+	if err != nil {
+		log.Fatalf("initializing data store: %v", err)
+	}
+	dataStore := store.NewStore(db, log.WithField("pkg", "store"))
+	defer dataStore.Close()
+
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGHUP, syscall.SIGTERM, syscall.SIGQUIT)
 	defer cancel()
 
-	server, err := remoteaccessserver.New(log, cfg, caClient, serverCerts)
+	processID := fmt.Sprintf("remote-access-%s-%s", util.GetHostname(), uuid.New().String())
+	provider, err := queues.NewRedisProvider(ctx, log, processID, cfg.KV.Hostname, cfg.KV.Port, cfg.KV.Password, queues.DefaultRetryConfig())
+	if err != nil {
+		log.Fatalf("failed connecting to Redis queue: %v", err)
+	}
+	defer func() {
+		provider.Stop()
+		provider.Wait()
+	}()
+
+	publisher, err := rendered.NewBroadcaster(ctx, provider)
+	if err != nil {
+		log.Fatalf("creating rendered version broadcaster: %v", err)
+	}
+
+	multiAuth, err := auth.InitMultiAuth(cfg, log, nil)
+	if err != nil {
+		log.Fatalf("initializing auth: %v", err)
+	}
+
+	server, err := remoteaccessserver.New(log, cfg, caClient, serverCerts, dataStore, publisher, multiAuth)
 	if err != nil {
 		log.Fatalf("initializing remote-access server: %v", err)
 	}

@@ -4,25 +4,40 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"io"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	pb "github.com/flightctl/flightctl/api/grpc/v1"
 	apiserver "github.com/flightctl/flightctl/internal/api_server"
 	"github.com/flightctl/flightctl/internal/api_server/middleware"
+	"github.com/flightctl/flightctl/internal/auth"
+	"github.com/flightctl/flightctl/internal/auth/authn"
 	"github.com/flightctl/flightctl/internal/config"
+	"github.com/flightctl/flightctl/internal/console"
+	"github.com/flightctl/flightctl/internal/consts"
 	"github.com/flightctl/flightctl/internal/crypto"
+	"github.com/flightctl/flightctl/internal/domain"
+	"github.com/flightctl/flightctl/internal/rendered"
+	"github.com/flightctl/flightctl/internal/service"
+	"github.com/flightctl/flightctl/internal/store"
+	transportv1beta1 "github.com/flightctl/flightctl/internal/transport/v1beta1"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	grpcAuth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
-// Server provides the flightctl-remote-access service: an HTTP 501 stub and
-// a gRPC RouterService stub that accepts and immediately closes streams.
-// Future stories will replace the stubs with real console-bridging logic.
+// Server provides the flightctl-remote-access service: a WebSocket HTTP server
+// and a gRPC RouterService that bridges agent streams to active AppConsoleSessions.
 type Server struct {
 	pb.UnimplementedRouterServiceServer
 	log            logrus.FieldLogger
@@ -31,11 +46,35 @@ type Server struct {
 	httpListener   net.Listener
 	agentListener  net.Listener
 	agentTLSConfig *tls.Config
+	pendingStreams *sync.Map
+	httpHandler    http.Handler
 }
 
-// New creates a Server with a TLS HTTP listener at cfg.Service.Address and
-// an mTLS gRPC+HTTP mux listener at cfg.Service.AgentEndpointAddress.
-func New(log logrus.FieldLogger, cfg *config.Config, ca *crypto.CAClient, serverCerts *crypto.TLSCertificateConfig) (*Server, error) {
+// storeAppConsoleService adapts store.Device to console.AppConsoleDeviceService.
+type storeAppConsoleService struct {
+	deviceStore store.Device
+}
+
+func (s *storeAppConsoleService) GetDevice(ctx context.Context, orgId uuid.UUID, name string) (*domain.Device, domain.Status) {
+	result, err := s.deviceStore.Get(ctx, orgId, name)
+	return result, service.StoreErrorToApiStatus(err, false, domain.DeviceKind, &name)
+}
+
+func (s *storeAppConsoleService) UpdateDevice(ctx context.Context, orgId uuid.UUID, name string, device domain.Device, fieldsToUnset []string) (*domain.Device, error) {
+	return s.deviceStore.Update(ctx, orgId, &device, fieldsToUnset, false, nil, nil)
+}
+
+// New creates a Server with the required dependencies. The db store, KV-backed
+// rendered.Publisher, and auth config are needed for annotation management and auth enforcement.
+func New(
+	log logrus.FieldLogger,
+	cfg *config.Config,
+	ca *crypto.CAClient,
+	serverCerts *crypto.TLSCertificateConfig,
+	dataStore store.Store,
+	publisher rendered.Publisher,
+	multiAuth *authn.MultiAuth,
+) (*Server, error) {
 	tlsConfig, agentTLSConfig, err := crypto.TLSConfigForServer(ca.GetCABundleX509(), serverCerts)
 	if err != nil {
 		return nil, err
@@ -71,21 +110,40 @@ func New(log logrus.FieldLogger, cfg *config.Config, ca *crypto.CAClient, server
 		httpListener:   httpListener,
 		agentListener:  agentListener,
 		agentTLSConfig: agentTLSConfig,
+		pendingStreams: &sync.Map{},
 	}
 	pb.RegisterRouterServiceServer(grpcServer, s)
+
+	svc := &storeAppConsoleService{deviceStore: dataStore.Device()}
+	appConsoleMgr := console.NewAppConsoleSessionManager(svc, log, s, publisher)
+	ws := transportv1beta1.NewWebsocketHandler(ca, log, nil, appConsoleMgr)
+
+	authZ, err := auth.InitMultiAuthZ(cfg, log)
+	if err != nil {
+		return nil, err
+	}
+
+	r := chi.NewRouter()
+	if multiAuth != nil {
+		r.Use(auth.CreateAuthNMiddleware(multiAuth, log))
+	}
+	r.Use(auth.CreateAuthZMiddleware(authZ, log))
+	ws.RegisterRoutes(r)
+	s.httpHandler = r
+
 	return s, nil
 }
 
 // Run starts both listeners concurrently and blocks until ctx is cancelled.
 func (s *Server) Run(ctx context.Context) error {
 	agentSrv := middleware.NewHTTPServerWithTLSContext(
-		grpcMuxHandlerFunc(s.grpcServer, stubHandler(), s.log),
+		grpcMuxHandlerFunc(s.grpcServer, s.httpHandler, s.log),
 		s.log,
 		s.cfg.Service.AgentEndpointAddress,
 		s.cfg,
 	)
 
-	httpSrv := middleware.NewHTTPServer(stubHandler(), s.log, s.cfg.Service.Address, s.cfg)
+	httpSrv := middleware.NewHTTPServer(s.httpHandler, s.log, s.cfg.Service.Address, s.cfg)
 
 	go func() {
 		s.log.Printf("Remote-access agent listener on %s", s.agentListener.Addr())
@@ -111,17 +169,111 @@ func (s *Server) Run(ctx context.Context) error {
 	return nil
 }
 
-// Stream implements pb.RouterServiceServer — accepts the incoming agent gRPC
-// stream and immediately closes it (stub).
-func (s *Server) Stream(_ pb.RouterService_StreamServer) error {
+// StartSession registers an AppConsoleSession so the next gRPC Stream() call from
+// the agent can rendezvous with it.
+func (s *Server) StartSession(session *console.AppConsoleSession) error {
+	s.log.Infof("app console session %s registered for device %s app %s", session.UUID, session.DeviceName, session.AppName)
+	s.pendingStreams.Store(session.UUID, session)
 	return nil
 }
 
-// stubHandler returns HTTP 501 Not Implemented for every request.
-func stubHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
-	})
+// CloseSession removes a previously registered AppConsoleSession.
+func (s *Server) CloseSession(session *console.AppConsoleSession) error {
+	s.log.Infof("app console session %s removed for device %s app %s", session.UUID, session.DeviceName, session.AppName)
+	s.pendingStreams.Delete(session.UUID)
+	return nil
+}
+
+// Stream implements pb.RouterServiceServer. When the agent connects it reads the
+// x-session-id gRPC metadata key, looks up the matching AppConsoleSession, sends
+// the selected protocol to ProtocolCh, and forwards bytes bidirectionally.
+func (s *Server) Stream(stream pb.RouterService_StreamServer) error {
+	ctx := stream.Context()
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return status.Error(codes.InvalidArgument, "missing metadata")
+	}
+
+	sessionIDs := md.Get(consts.GrpcSessionIDKey)
+	if len(sessionIDs) != 1 {
+		return status.Error(codes.InvalidArgument, "missing "+consts.GrpcSessionIDKey)
+	}
+	sessionID := sessionIDs[0]
+
+	val, loaded := s.pendingStreams.Load(sessionID)
+	if !loaded {
+		s.log.Warnf("agent connected to unknown session %s", sessionID)
+		return status.Error(codes.NotFound, "session not found: "+sessionID)
+	}
+
+	session, ok := val.(*console.AppConsoleSession)
+	if !ok {
+		return status.Error(codes.Internal, "invalid session type for "+sessionID)
+	}
+
+	selectedProtocols := md.Get(consts.GrpcSelectedProtocolKey)
+	if len(selectedProtocols) != 1 {
+		close(session.ProtocolCh)
+		return status.Error(codes.InvalidArgument, "missing "+consts.GrpcSelectedProtocolKey)
+	}
+	select {
+	case session.ProtocolCh <- selectedProtocols[0]:
+	default:
+		return status.Error(codes.DeadlineExceeded, "session no longer waiting for protocol negotiation")
+	}
+
+	s.log.Infof("agent connected to app console session %s for device %s app %s, bridging streams",
+		sessionID, session.DeviceName, session.AppName)
+	return s.forwardChannels(ctx, stream, session)
+}
+
+func (s *Server) forwardChannels(ctx context.Context, stream pb.RouterService_StreamServer, session *console.AppConsoleSession) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	go s.pipeStreamToChannel(ctx, stream, session.RecvCh)
+	return s.pipeChannelToStream(ctx, session.SendCh, stream)
+}
+
+func (s *Server) pipeStreamToChannel(ctx context.Context, stream pb.RouterService_StreamServer, ch chan []byte) {
+	defer close(ch)
+	for {
+		msg, err := stream.Recv()
+		if err != nil {
+			if ctx.Err() != nil {
+				s.log.Debug("app console stream context closed")
+			} else {
+				s.log.Debugf("app console stream recv error: %v", err)
+			}
+			return
+		}
+		ch <- msg.GetPayload()
+		if msg.GetClosed() {
+			s.log.Debug("app console stream closed by agent")
+			return
+		}
+	}
+}
+
+func (s *Server) pipeChannelToStream(ctx context.Context, ch chan []byte, stream pb.RouterService_StreamServer) error {
+	for {
+		select {
+		case <-ctx.Done():
+			s.log.Debug("app console channel context closed")
+			_ = stream.Send(&pb.StreamResponse{Payload: []byte{}, Closed: true})
+			return io.EOF
+		case payload, ok := <-ch:
+			if !ok {
+				s.log.Debug("app console send channel closed")
+				_ = stream.Send(&pb.StreamResponse{Payload: []byte{}, Closed: true})
+				return io.EOF
+			}
+			if err := stream.Send(&pb.StreamResponse{Payload: payload}); err != nil {
+				s.log.Debugf("app console stream send error: %v", err)
+				return err
+			}
+		}
+	}
 }
 
 // grpcMuxHandlerFunc routes incoming requests to grpcServer (gRPC) or

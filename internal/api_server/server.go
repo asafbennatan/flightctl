@@ -361,7 +361,7 @@ func (s *Server) Run(ctx context.Context) error {
 		)
 
 		consoleSessionManager := console.NewConsoleSessionManager(serviceHandler, s.log, s.consoleEndpointReg)
-		ws := transportv1beta1.NewWebsocketHandler(s.ca, s.log, consoleSessionManager)
+		ws := transportv1beta1.NewWebsocketHandler(s.ca, s.log, consoleSessionManager, nil)
 		ws.RegisterRoutes(r)
 	})
 
