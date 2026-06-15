@@ -6,15 +6,19 @@ import (
 	"sort"
 
 	"github.com/flightctl/flightctl/api/core/v1beta1"
+	grpc_v1 "github.com/flightctl/flightctl/api/grpc/v1"
 	"github.com/flightctl/flightctl/internal/agent/client"
+	appconsole "github.com/flightctl/flightctl/internal/agent/device/applications/console"
 	"github.com/flightctl/flightctl/internal/agent/device/applications/provider"
 	"github.com/flightctl/flightctl/internal/agent/device/dependency"
 	"github.com/flightctl/flightctl/internal/agent/device/errors"
 	"github.com/flightctl/flightctl/internal/agent/device/fileio"
+	"github.com/flightctl/flightctl/internal/agent/device/spec"
 	"github.com/flightctl/flightctl/internal/agent/device/status"
 	"github.com/flightctl/flightctl/internal/agent/device/systemd"
 	"github.com/flightctl/flightctl/internal/agent/device/systeminfo"
 	"github.com/flightctl/flightctl/internal/agent/shutdown"
+	"github.com/flightctl/flightctl/pkg/executer"
 	"github.com/flightctl/flightctl/pkg/log"
 )
 
@@ -38,6 +42,10 @@ type manager struct {
 
 	// cache of temporary extracted app data
 	appDataCache map[string]*provider.AppData
+
+	// appConsole is created by WithConsole and owned by this manager.
+	// executor/dialFn live on PodmanMonitor (VM/serial-console specific).
+	appConsole *appconsole.Manager
 }
 
 func NewManager(
@@ -48,7 +56,7 @@ func NewManager(
 	systemInfo systeminfo.Manager,
 	systemdFactory systemd.ManagerFactory,
 	pullConfigResolver dependency.PullConfigResolver,
-) Manager {
+) *manager {
 	bootTime := systemInfo.BootTime()
 	return &manager{
 		rwFactory:          rwFactory,
@@ -366,4 +374,59 @@ func (m *manager) CollectOCITargets(ctx context.Context, current, desired *v1bet
 	}
 
 	return collection, nil
+}
+
+// WithConsole injects app console dependencies after construction and creates
+// the owned AppConsoleManager. executor and dialFn are VM/serial-console specific
+// and owned by PodmanMonitor, so they are forwarded there. Must be called before RunConsole.
+func (m *manager) WithConsole(
+	deviceName string,
+	grpcClient grpc_v1.RouterServiceClient,
+	executor executer.Executer,
+	dialFn appconsole.DialFunc,
+) {
+	if grpcClient == nil {
+		m.log.Warn("remote access gRPC client not available — app console disabled")
+		return
+	}
+	m.podmanMonitor.WithConsole(executor, dialFn)
+	m.appConsole = appconsole.NewManager(grpcClient, deviceName, appconsole.ResolverFunc(m.resolveConsole), m.log)
+}
+
+// RunConsole blocks on the spec watcher and syncs app console sessions on each
+// device update. Call as a goroutine alongside other Run methods.
+func (m *manager) RunConsole(ctx context.Context, watcher spec.Watcher) {
+	if m.appConsole == nil {
+		m.log.Warn("RunConsole called without WithConsole — app console disabled")
+		return
+	}
+	m.log.Debug("Starting app console controller")
+	defer func() {
+		m.log.Debug("Stopping app console controller")
+		m.appConsole.Wait()
+	}()
+
+	for {
+		device, err := watcher.Pop()
+		if err != nil {
+			m.log.Warnf("failed to pop from spec watcher: %v", err)
+			return
+		}
+		m.appConsole.Sync(ctx, device)
+	}
+}
+
+// resolveConsole is the unexported Session factory. It delegates to the monitor
+// that owns the named app. Wrapped via appconsole.ResolverFunc in WithConsole
+// to avoid exposing an exported method on manager.
+func (m *manager) resolveConsole(appName, consoleType string) (appconsole.Session, error) {
+	session, err := m.podmanMonitor.resolveConsole(appName, consoleType)
+	if !errors.Is(err, errConsoleAppNotFound) {
+		return session, err
+	}
+	session, err = m.kubernetesMonitor.resolveConsole(appName, consoleType)
+	if !errors.Is(err, errConsoleAppNotFound) {
+		return session, err
+	}
+	return nil, fmt.Errorf("app %q not found in any monitor", appName)
 }

@@ -1317,3 +1317,85 @@ func TestReduceActions_Consistency(t *testing.T) {
 			"ordering should be consistent on iteration %d", i)
 	}
 }
+
+func TestPodmanMonitorResolveConsole(t *testing.T) {
+	newMonitor := func(t *testing.T) (*PodmanMonitor, *executer.MockExecuter, *gomock.Controller) {
+		t.Helper()
+		ctrl := gomock.NewController(t)
+		testLog := log.NewPrefixLogger("test")
+		tmpDir := t.TempDir()
+		readWriter := fileio.NewReadWriter(
+			fileio.NewReader(fileio.WithReaderRootDir(tmpDir)),
+			fileio.NewWriter(fileio.WithWriterRootDir(tmpDir)),
+		)
+		execMock := executer.NewMockExecuter(ctrl)
+		podman := client.NewPodman(testLog, execMock, readWriter, util.NewPollConfig())
+		systemdMgr := systemd.NewMockManager(ctrl)
+		systemdMgr.EXPECT().AddExclusions(gomock.Any()).AnyTimes()
+		systemdMgr.EXPECT().RemoveExclusions(gomock.Any()).AnyTimes()
+		var podmanFactory client.PodmanFactory = func(_ v1beta1.Username) (*client.Podman, error) { return podman, nil }
+		var systemdFactory systemd.ManagerFactory = func(_ v1beta1.Username) (systemd.Manager, error) { return systemdMgr, nil }
+		var rwFactory fileio.ReadWriterFactory = func(_ v1beta1.Username) (fileio.ReadWriter, error) { return readWriter, nil }
+		m := NewPodmanMonitor(testLog, podmanFactory, systemdFactory, "", rwFactory)
+		m.WithConsole(execMock, nil)
+		return m, execMock, ctrl
+	}
+
+	t.Run("When the app is not tracked it should return errConsoleAppNotFound", func(t *testing.T) {
+		require := require.New(t)
+		m, _, ctrl := newMonitor(t)
+		defer ctrl.Finish()
+		_, err := m.resolveConsole("unknown-app", "serial")
+		require.ErrorIs(err, errConsoleAppNotFound)
+	})
+
+	t.Run("When the app is a non-VM type it should return an unsupported error", func(t *testing.T) {
+		require := require.New(t)
+		m, _, ctrl := newMonitor(t)
+		defer ctrl.Finish()
+		app := createTestApplicationWithType(require, "compose-app", v1beta1.ApplicationStatusRunning, v1beta1.CurrentProcessUsername, v1beta1.AppTypeCompose)
+		err := m.Ensure(t.Context(), app)
+		require.NoError(err)
+		_, err = m.resolveConsole("compose-app", "serial")
+		require.Error(err)
+		require.Contains(err.Error(), "only VM apps support console")
+	})
+
+	t.Run("When the app is a VM but consoleType is not serial it should return an error", func(t *testing.T) {
+		require := require.New(t)
+		m, _, ctrl := newMonitor(t)
+		defer ctrl.Finish()
+		app := createTestApplicationWithType(require, "my-vm", v1beta1.ApplicationStatusRunning, v1beta1.CurrentProcessUsername, v1beta1.AppTypeVm)
+		err := m.Ensure(t.Context(), app)
+		require.NoError(err)
+		_, err = m.resolveConsole("my-vm", "shell")
+		require.Error(err)
+		require.Contains(err.Error(), "unsupported console type")
+	})
+
+	t.Run("When the app is VM serial and workload is tracked it should use the tracked container name", func(t *testing.T) {
+		require := require.New(t)
+		m, _, ctrl := newMonitor(t)
+		defer ctrl.Finish()
+		app := createTestApplicationWithType(require, "my-vm", v1beta1.ApplicationStatusRunning, v1beta1.CurrentProcessUsername, v1beta1.AppTypeVm)
+		w := &Workload{Name: "virt-launcher-my-vm-compute", Status: StatusRunning}
+		app.AddWorkload(w)
+		err := m.Ensure(t.Context(), app)
+		require.NoError(err)
+		sess, err := m.resolveConsole("my-vm", "serial")
+		require.NoError(err)
+		require.NotNil(sess)
+	})
+
+	t.Run("When the app is VM serial and workload is not yet tracked it should use the conventional fallback name", func(t *testing.T) {
+		require := require.New(t)
+		m, _, ctrl := newMonitor(t)
+		defer ctrl.Finish()
+		app := createTestApplicationWithType(require, "my-vm", v1beta1.ApplicationStatusRunning, v1beta1.CurrentProcessUsername, v1beta1.AppTypeVm)
+		err := m.Ensure(t.Context(), app)
+		require.NoError(err)
+		sess, err := m.resolveConsole("my-vm", "serial")
+		require.NoError(err)
+		require.NotNil(sess)
+	})
+}

@@ -81,7 +81,6 @@ type Manager interface {
 	AfterUpdate(ctx context.Context) error
 	// Shutdown closes the manager according to the corresponding shutdown state
 	Shutdown(ctx context.Context, state shutdown.State) error
-
 	dependency.OCICollector
 	status.Exporter
 }

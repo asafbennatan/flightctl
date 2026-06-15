@@ -45,6 +45,21 @@ func (m *MockMonitor) EXPECT() *MockMonitorMockRecorder {
 	return m.recorder
 }
 
+// Get mocks base method.
+func (m *MockMonitor) Get(name string) (Application, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Get", name)
+	ret0, _ := ret[0].(Application)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// Get indicates an expected call of Get.
+func (mr *MockMonitorMockRecorder) Get(name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockMonitor)(nil).Get), name)
+}
+
 // Run mocks base method.
 func (m *MockMonitor) Run(ctx context.Context) {
 	m.ctrl.T.Helper()

@@ -389,6 +389,12 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.log.Warnf("Failed to create gRPC client: %v", err)
 	}
 
+	// create a separate gRPC client for flightctl-remote-access
+	remoteAccessGrpcClient, err := identityProvider.CreateGRPCClient(&a.config.RemoteAccessService.Config)
+	if err != nil {
+		a.log.Warnf("Failed to create remote access gRPC client: %v", err)
+	}
+
 	// create console manager
 	consoleManager := console.NewManager(
 		grpcClient,
@@ -398,6 +404,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		specManager.Watch(),
 		a.log,
 	)
+
+	// wire app console into the applications manager (nil dialFn = production default)
+	applicationsManager.WithConsole(deviceName, remoteAccessGrpcClient, exec, nil)
 
 	applicationsController := applications.NewController(
 		podmanClientFactory,
@@ -465,7 +474,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	startAsync(reloadManager.Run)
 	startAsync(resourceManager.Run)
 	startAsync(prefetchManager.Run)
+	appConsoleWatcher := specManager.Watch()
 	startAsync(consoleManager.Run)
+	startAsync(func(ctx context.Context) { applicationsManager.RunConsole(ctx, appConsoleWatcher) })
 	startAsync(specManager.Publisher().Run)
 	startAsync(certManager.Run)
 

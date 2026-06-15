@@ -8,6 +8,7 @@ import (
 	"io"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -15,11 +16,13 @@ import (
 
 	"github.com/flightctl/flightctl/api/core/v1beta1"
 	"github.com/flightctl/flightctl/internal/agent/client"
+	appconsole "github.com/flightctl/flightctl/internal/agent/device/applications/console"
 	"github.com/flightctl/flightctl/internal/agent/device/applications/lifecycle"
 	"github.com/flightctl/flightctl/internal/agent/device/applications/provider"
 	"github.com/flightctl/flightctl/internal/agent/device/errors"
 	"github.com/flightctl/flightctl/internal/agent/device/fileio"
 	"github.com/flightctl/flightctl/internal/agent/device/systemd"
+	"github.com/flightctl/flightctl/pkg/executer"
 	"github.com/flightctl/flightctl/pkg/log"
 	"github.com/samber/lo"
 )
@@ -44,6 +47,12 @@ type PodmanMonitor struct {
 	events         chan client.PodmanEvent
 
 	log *log.PrefixLogger
+
+	// console fields — populated by WithConsole. Specific to VM serial console
+	// session creation; held here because PodmanMonitor owns its apps and knows
+	// how to connect to their consoles.
+	consoleExecutor executer.Executer
+	consoleDial     appconsole.DialFunc
 }
 
 func NewPodmanMonitor(
@@ -723,4 +732,59 @@ func (e *podmanEventWatcher) Stop() error {
 	}
 	e.log.Info("Podman monitor stopped")
 	return nil
+}
+
+// errConsoleAppNotFound is a sentinel returned by resolveConsole when the named
+// application is not tracked by this monitor. The caller should try the next monitor.
+var errConsoleAppNotFound = fmt.Errorf("app not found in podman monitor")
+
+// WithConsole injects the console-specific dependencies into PodmanMonitor.
+// executor and dialFn are VM/serial-console specific and owned here because
+// PodmanMonitor knows which apps it manages and how to connect to their consoles.
+func (m *PodmanMonitor) WithConsole(executor executer.Executer, dialFn appconsole.DialFunc) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.consoleExecutor = executor
+	m.consoleDial = dialFn
+}
+
+// resolveConsole implements the console Session factory for Podman-managed apps.
+// It scans the apps map, checks the app type, and returns the appropriate Session.
+// Returns errConsoleAppNotFound if the app is not tracked by this monitor.
+func (m *PodmanMonitor) resolveConsole(appName, consoleType string) (appconsole.Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.consoleExecutor == nil {
+		return nil, fmt.Errorf("console not configured: WithConsole was not called")
+	}
+
+	var found Application
+	for _, app := range m.apps {
+		if app.Name() == appName {
+			found = app
+			break
+		}
+	}
+	if found == nil {
+		return nil, errConsoleAppNotFound
+	}
+
+	if found.AppType() != v1beta1.AppTypeVm {
+		return nil, fmt.Errorf("app %q has type %q: only VM apps support console", appName, found.AppType())
+	}
+
+	if consoleType != "serial" {
+		return nil, fmt.Errorf("app %q: unsupported console type %q for VM (supported: serial)", appName, consoleType)
+	}
+
+	containerName := fmt.Sprintf("%s%s%s", virtLauncherContainerPrefix, appName, virtLauncherContainerSuffix)
+	for _, w := range found.Workloads() {
+		if strings.HasSuffix(w.Name, virtLauncherContainerSuffix) {
+			containerName = w.Name
+			break
+		}
+	}
+
+	return appconsole.NewVMSerialSession(containerName, m.consoleExecutor, m.consoleDial, m.log), nil
 }
