@@ -46,8 +46,8 @@ type RenderedVersionPublisher interface {
 }
 
 // AppConsoleSessionManager manages application console sessions using device annotations.
-// It mirrors ConsoleSessionManager, keyed on DeviceAnnotationApplicationConsole with
-// per-appName uniqueness enforcement.
+// It mirrors ConsoleSessionManager, keyed on DeviceAnnotationRemoteSession with
+// per-appName uniqueness enforcement (stored as a JSON array of DeviceRemoteSession).
 type AppConsoleSessionManager struct {
 	svc                 AppConsoleDeviceService
 	log                 logrus.FieldLogger

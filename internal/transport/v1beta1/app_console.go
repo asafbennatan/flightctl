@@ -35,6 +35,18 @@ func (h *WebsocketHandler) HandleApplicationConsole(w http.ResponseWriter, r *ht
 		return
 	}
 
+	sessionStarted := true
+	closeSession := func() {
+		if !sessionStarted {
+			return
+		}
+		if closeStatus := h.appConsoleSessionManager.CloseSession(r.Context(), session); closeStatus.Code != http.StatusOK {
+			h.log.Errorf("error closing app console session %s for device %s app %s: %v", session.UUID, deviceName, appName, closeStatus.Message)
+		}
+		sessionStarted = false
+	}
+	defer closeSession()
+
 	timer := time.NewTimer(time.Minute)
 	defer timer.Stop()
 	var (
@@ -129,7 +141,4 @@ func (h *WebsocketHandler) HandleApplicationConsole(w http.ResponseWriter, r *ht
 
 	wg.Wait()
 	h.log.Infof("ending app console session %s to device %s app %s", session.UUID, deviceName, appName)
-	if closeStatus := h.appConsoleSessionManager.CloseSession(r.Context(), session); closeStatus.Code != http.StatusOK {
-		h.log.Errorf("error closing app console session %s for device %s app %s: %v", session.UUID, deviceName, appName, closeStatus.Message)
-	}
 }

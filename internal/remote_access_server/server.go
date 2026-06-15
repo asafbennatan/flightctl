@@ -200,7 +200,7 @@ func (s *Server) Stream(stream pb.RouterService_StreamServer) error {
 	}
 	sessionID := sessionIDs[0]
 
-	val, loaded := s.pendingStreams.Load(sessionID)
+	val, loaded := s.pendingStreams.LoadAndDelete(sessionID)
 	if !loaded {
 		s.log.Warnf("agent connected to unknown session %s", sessionID)
 		return status.Error(codes.NotFound, "session not found: "+sessionID)
