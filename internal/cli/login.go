@@ -589,6 +589,13 @@ func (o *LoginOptions) Run(ctx context.Context, args []string) error {
 	}
 	o.clientConfig.ImageBuilderService = imageBuilderService
 
+	// Set console service URL (flightctl-remote-access) based on the main API server
+	consoleService, err := deriveConsoleService(o.clientConfig.Service)
+	if err != nil {
+		return fmt.Errorf("deriving console service: %w", err)
+	}
+	o.clientConfig.ConsoleService = consoleService
+
 	if err := o.clientConfig.Persist(o.ConfigFilePath); err != nil {
 		return fmt.Errorf("persisting client config: %w", err)
 	}
@@ -848,6 +855,43 @@ func deriveImageBuilderService(mainService client.Service) (*client.Service, err
 
 	return &client.Service{
 		Server:                   imageBuilderURL,
+		TLSServerName:            mainService.TLSServerName,
+		CertificateAuthority:     mainService.CertificateAuthority,
+		CertificateAuthorityData: mainService.CertificateAuthorityData,
+		InsecureSkipVerify:       mainService.InsecureSkipVerify,
+	}, nil
+}
+
+// deriveConsoleService derives the flightctl-remote-access HTTP service URL from the main API service URL.
+// For route mode (api.{domain} with standard ports): replaces "api." prefix with "console.".
+// For nodePort mode (port 3443): uses the same hostname on port 3444.
+// For all other cases: uses the same hostname on port 3444.
+func deriveConsoleService(mainService client.Service) (*client.Service, error) {
+	const defaultConsolePort = 3444
+
+	parsedURL, err := url.Parse(mainService.Server)
+	if err != nil {
+		return nil, fmt.Errorf("parsing main service URL %q: %w", mainService.Server, err)
+	}
+
+	hostname := parsedURL.Hostname()
+	port := parsedURL.Port()
+
+	var consoleURL string
+	switch {
+	case (port == "" || port == "443" || port == "80") && strings.HasPrefix(hostname, "api."):
+		// Route mode: replace "api." with "console." in the hostname
+		consoleURL = parsedURL.Scheme + "://" + strings.Replace(hostname, "api.", "console.", 1)
+	case port == "3443":
+		// NodePort mode: same hostname, console service port
+		consoleURL = fmt.Sprintf("%s://%s:%d", parsedURL.Scheme, hostname, defaultConsolePort)
+	default:
+		// Unknown/other: same hostname, console service port
+		consoleURL = fmt.Sprintf("%s://%s:%d", parsedURL.Scheme, hostname, defaultConsolePort)
+	}
+
+	return &client.Service{
+		Server:                   consoleURL,
 		TLSServerName:            mainService.TLSServerName,
 		CertificateAuthority:     mainService.CertificateAuthority,
 		CertificateAuthorityData: mainService.CertificateAuthorityData,

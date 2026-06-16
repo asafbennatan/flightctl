@@ -8,6 +8,7 @@ import (
 
 	"github.com/flightctl/flightctl/internal/client"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoginOptions_Complete(t *testing.T) {
@@ -566,6 +567,73 @@ func TestLoginOptions_GetAuthConfig_HTTPResponseErrors(t *testing.T) {
 				assert.Contains(t, errMsg, tt.url)
 				assert.Contains(t, errMsg, fmt.Sprintf("response code %v", tt.statusCode))
 			}
+		})
+	}
+}
+
+func TestDeriveConsoleService(t *testing.T) {
+	caData := []byte("fake-ca-data")
+	tests := []struct {
+		name        string
+		mainService client.Service
+		wantServer  string
+		wantErr     bool
+	}{
+		{
+			name:        "When main service is in route mode it should replace api. prefix with console.",
+			mainService: client.Service{Server: "https://api.example.com"},
+			wantServer:  "https://console.example.com",
+		},
+		{
+			name:        "When main service is in route mode with standard port 443 it should replace api. prefix",
+			mainService: client.Service{Server: "https://api.example.com:443"},
+			wantServer:  "https://console.example.com",
+		},
+		{
+			name:        "When main service is in nodePort mode port 3443 it should use port 3444",
+			mainService: client.Service{Server: "https://myhost:3443"},
+			wantServer:  "https://myhost:3444",
+		},
+		{
+			name:        "When main service uses an unknown port it should use port 3444 on the same host",
+			mainService: client.Service{Server: "https://myhost:8443"},
+			wantServer:  "https://myhost:3444",
+		},
+		{
+			name:        "When main service has no api. prefix in route mode it should use port 3444",
+			mainService: client.Service{Server: "https://flightctl.example.com"},
+			wantServer:  "https://flightctl.example.com:3444",
+		},
+		{
+			name: "When main service has CA data it should be copied to console service",
+			mainService: client.Service{
+				Server:                   "https://api.example.com",
+				CertificateAuthorityData: caData,
+				InsecureSkipVerify:       true,
+				TLSServerName:            "myserver",
+			},
+			wantServer: "https://console.example.com",
+		},
+		{
+			name:        "When main service URL is invalid it should return an error",
+			mainService: client.Service{Server: "://bad-url"},
+			wantErr:     true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := deriveConsoleService(tt.mainService)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, got)
+			assert.Equal(t, tt.wantServer, got.Server)
+			assert.Equal(t, tt.mainService.TLSServerName, got.TLSServerName)
+			assert.Equal(t, tt.mainService.CertificateAuthority, got.CertificateAuthority)
+			assert.Equal(t, tt.mainService.CertificateAuthorityData, got.CertificateAuthorityData)
+			assert.Equal(t, tt.mainService.InsecureSkipVerify, got.InsecureSkipVerify)
 		})
 	}
 }
