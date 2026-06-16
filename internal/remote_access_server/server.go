@@ -12,7 +12,7 @@ import (
 
 	pb "github.com/flightctl/flightctl/api/grpc/v1"
 	apiserver "github.com/flightctl/flightctl/internal/api_server"
-	"github.com/flightctl/flightctl/internal/api_server/middleware"
+	fcmiddleware "github.com/flightctl/flightctl/internal/api_server/middleware"
 	"github.com/flightctl/flightctl/internal/auth"
 	"github.com/flightctl/flightctl/internal/auth/authn"
 	"github.com/flightctl/flightctl/internal/config"
@@ -29,6 +29,7 @@ import (
 	grpcAuth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/keepalive"
@@ -46,8 +47,11 @@ type Server struct {
 	httpListener   net.Listener
 	agentListener  net.Listener
 	agentTLSConfig *tls.Config
-	pendingStreams *sync.Map
-	httpHandler    http.Handler
+	pendingStreams  *sync.Map
+	// httpHandler serves port 3444: user-facing WebSocket console (API-like middleware).
+	httpHandler http.Handler
+	// identityMapper maps authenticated identities to DB organisations; must be Start()ed in Run().
+	identityMapper *service.IdentityMapper
 }
 
 // storeAppConsoleService adapts store.Device to console.AppConsoleDeviceService.
@@ -80,7 +84,7 @@ func New(
 		return nil, err
 	}
 
-	httpListener, err := middleware.NewTLSListener(cfg.Service.Address, tlsConfig)
+	httpListener, err := fcmiddleware.NewTLSListener(cfg.Service.Address, tlsConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -95,13 +99,18 @@ func New(
 
 	grpcServer := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
-		grpc.ChainStreamInterceptor(grpcAuth.StreamServerInterceptor(middleware.GrpcAuthMiddleware)),
+		grpc.ChainStreamInterceptor(grpcAuth.StreamServerInterceptor(fcmiddleware.GrpcAuthMiddleware)),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			MaxConnectionIdle: 15 * time.Minute,
 			Time:              2 * time.Minute,
 			Timeout:           20 * time.Second,
 		}),
 	)
+
+	// Identity mapper: created here, started in Run() to manage its lifecycle with the context.
+	orgProvisioner := service.NewOrgProvisioner(dataStore, log)
+	identityMapper := service.NewIdentityMapper(dataStore, orgProvisioner, log)
+	identityMappingMiddleware := fcmiddleware.NewIdentityMappingMiddleware(identityMapper, log)
 
 	s := &Server{
 		log:            log,
@@ -110,7 +119,8 @@ func New(
 		httpListener:   httpListener,
 		agentListener:  agentListener,
 		agentTLSConfig: agentTLSConfig,
-		pendingStreams: &sync.Map{},
+		pendingStreams:  &sync.Map{},
+		identityMapper: identityMapper,
 	}
 	pb.RegisterRouterServiceServer(grpcServer, s)
 
@@ -123,27 +133,38 @@ func New(
 		return nil, err
 	}
 
+	// Port 3444: user-facing WebSocket console.
+	// Middleware mirrors flightctl-api: AuthN → IdentityMapping → OrgExtraction → AuthZ.
 	r := chi.NewRouter()
 	if multiAuth != nil {
 		r.Use(auth.CreateAuthNMiddleware(multiAuth, log))
 	}
+	r.Use(identityMappingMiddleware.MapIdentityToDB)
+	r.Use(fcmiddleware.ExtractAndValidateOrg(fcmiddleware.QueryOrgIDExtractor, log))
 	r.Use(auth.CreateAuthZMiddleware(authZ, log))
 	ws.RegisterRoutes(r)
-	s.httpHandler = r
+	s.httpHandler = otelhttp.NewHandler(r, "remote-access-http-server")
 
 	return s, nil
 }
 
 // Run starts both listeners concurrently and blocks until ctx is cancelled.
 func (s *Server) Run(ctx context.Context) error {
-	agentSrv := middleware.NewHTTPServerWithTLSContext(
-		grpcMuxHandlerFunc(s.grpcServer, s.httpHandler, s.log),
+	s.identityMapper.Start()
+	defer s.identityMapper.Stop()
+
+	// Port 7444: agent gRPC endpoint.
+	// HTTP fallback returns 404 — agents connect via gRPC only; gRPC auth is
+	// handled by the GrpcAuthMiddleware interceptor on the grpcServer.
+	agentSrv := fcmiddleware.NewHTTPServerWithTLSContext(
+		grpcMuxHandlerFunc(s.grpcServer, http.NotFoundHandler(), s.log),
 		s.log,
 		s.cfg.Service.AgentEndpointAddress,
 		s.cfg,
 	)
 
-	httpSrv := middleware.NewHTTPServer(s.httpHandler, s.log, s.cfg.Service.Address, s.cfg)
+	// Port 3444: user-facing WebSocket console.
+	httpSrv := fcmiddleware.NewHTTPServer(s.httpHandler, s.log, s.cfg.Service.Address, s.cfg)
 
 	go func() {
 		s.log.Printf("Remote-access agent listener on %s", s.agentListener.Addr())
@@ -154,9 +175,9 @@ func (s *Server) Run(ctx context.Context) error {
 	}()
 
 	go func() {
-		s.log.Printf("Remote-access HTTP stub listener on %s", s.httpListener.Addr())
+		s.log.Printf("Remote-access HTTP listener on %s", s.httpListener.Addr())
 		if err := httpSrv.Serve(s.httpListener); err != nil && !errors.Is(err, net.ErrClosed) && !errors.Is(err, http.ErrServerClosed) {
-			s.log.Errorf("HTTP stub listener error: %v", err)
+			s.log.Errorf("HTTP listener error: %v", err)
 		}
 	}()
 

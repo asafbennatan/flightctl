@@ -1,8 +1,8 @@
 [Unit]
 Description=Flight Control Remote Access service
 PartOf=flightctl.target
-After=flightctl-certs-init.service
-Wants=flightctl-certs-init.service
+After=flightctl-db-wait.service flightctl-db-migrate.service flightctl-kv.service flightctl-certs-init.service
+Wants=flightctl-db-wait.service flightctl-db-migrate.service flightctl-kv.service flightctl-certs-init.service
 
 [Container]
 ContainerName=flightctl-remote-access
@@ -11,6 +11,9 @@ Pull=missing
 Network=flightctl.network
 AddHost=%H:host-gateway
 Environment=HOME=/root
+Secret=flightctl-postgresql-user-password,type=env,target=DB_PASSWORD
+Secret=flightctl-kv-password,type=env,target=KV_PASSWORD
+Environment=DB_USER=flightctl_app
 
 Volume=/etc/flightctl/pki/flightctl-remote-access/server.crt:/root/.flightctl/certs/server.crt:ro,z
 Volume=/etc/flightctl/pki/flightctl-remote-access/server.key:/root/.flightctl/certs/server.key:ro,z

@@ -390,6 +390,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	// create a separate gRPC client for flightctl-remote-access
+	if a.config.RemoteAccessService.Config.Service.Server == "" {
+		a.log.Warn("remote-access-service server is not configured — app console (VM serial/exec) will be disabled")
+	}
 	remoteAccessGrpcClient, err := identityProvider.CreateGRPCClient(&a.config.RemoteAccessService.Config)
 	if err != nil {
 		a.log.Warnf("Failed to create remote access gRPC client: %v", err)
