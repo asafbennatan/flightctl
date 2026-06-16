@@ -184,6 +184,54 @@ func TestClientConfig(t *testing.T) {
 	}
 }
 
+func TestConfigEqual_ConsoleService(t *testing.T) {
+	svcA := &Service{Server: "https://console-a.example.com"}
+	svcB := &Service{Server: "https://console-b.example.com"}
+
+	tests := []struct {
+		name   string
+		c1     Config
+		c2     Config
+		wantEq bool
+	}{
+		{
+			name:   "When both ConsoleService fields are nil the configs should be equal",
+			c1:     Config{Service: Service{Server: "https://api.example.com"}},
+			c2:     Config{Service: Service{Server: "https://api.example.com"}},
+			wantEq: true,
+		},
+		{
+			name:   "When only c1 has ConsoleService the configs should not be equal",
+			c1:     Config{Service: Service{Server: "https://api.example.com"}, ConsoleService: svcA},
+			c2:     Config{Service: Service{Server: "https://api.example.com"}},
+			wantEq: false,
+		},
+		{
+			name:   "When only c2 has ConsoleService the configs should not be equal",
+			c1:     Config{Service: Service{Server: "https://api.example.com"}},
+			c2:     Config{Service: Service{Server: "https://api.example.com"}, ConsoleService: svcA},
+			wantEq: false,
+		},
+		{
+			name:   "When both ConsoleService fields are equal the configs should be equal",
+			c1:     Config{Service: Service{Server: "https://api.example.com"}, ConsoleService: svcA},
+			c2:     Config{Service: Service{Server: "https://api.example.com"}, ConsoleService: &Service{Server: "https://console-a.example.com"}},
+			wantEq: true,
+		},
+		{
+			name:   "When ConsoleService fields differ the configs should not be equal",
+			c1:     Config{Service: Service{Server: "https://api.example.com"}, ConsoleService: svcA},
+			c2:     Config{Service: Service{Server: "https://api.example.com"}, ConsoleService: svcB},
+			wantEq: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.wantEq, tt.c1.Equal(&tt.c2))
+		})
+	}
+}
+
 func TestGetConsoleServer(t *testing.T) {
 	tests := []struct {
 		name   string
