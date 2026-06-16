@@ -64,8 +64,10 @@ func WithDisableRedirectFollowing() imagebuilderclient.ClientOption {
 type Config struct {
 	Service             Service  `json:"service"`
 	ImageBuilderService *Service `json:"imageBuilderService,omitempty"`
-	AuthInfo            AuthInfo `json:"authentication"`
-	Organization        string   `json:"organization,omitempty"`
+	// ConsoleService holds the URL and TLS config for connecting to flightctl-remote-access.
+	ConsoleService *Service `json:"consoleService,omitempty"`
+	AuthInfo       AuthInfo `json:"authentication"`
+	Organization   string   `json:"organization,omitempty"`
 
 	// HTTPOptions contains HTTP client configuration options
 	HTTPOptions []HTTPClientOption `json:"-"`
@@ -162,6 +164,16 @@ func (c *Config) Equal(c2 *Config) bool {
 		// Both non-nil, use Equal method
 		return false
 	}
+	// Compare ConsoleService pointer field
+	if c.ConsoleService == nil && c2.ConsoleService == nil {
+		// Both nil, continue with other fields
+	} else if c.ConsoleService == nil || c2.ConsoleService == nil {
+		// One nil, one not nil => not equal
+		return false
+	} else if !c.ConsoleService.Equal(c2.ConsoleService) {
+		// Both non-nil, use Equal method
+		return false
+	}
 	return c.Service.Equal(&c2.Service) && c.AuthInfo.Equal(&c2.AuthInfo) && c.Organization == c2.Organization
 }
 
@@ -238,6 +250,9 @@ func (c *Config) DeepCopy() *Config {
 	}
 	if c.ImageBuilderService != nil {
 		copied.ImageBuilderService = c.ImageBuilderService.DeepCopy()
+	}
+	if c.ConsoleService != nil {
+		copied.ConsoleService = c.ConsoleService.DeepCopy()
 	}
 	return copied
 }
@@ -588,6 +603,14 @@ func NewFromConfigFile(filename string, opts ...client.ClientOption) (*Client, e
 func (c *Config) GetImageBuilderServer() string {
 	if c.ImageBuilderService != nil && c.ImageBuilderService.Server != "" {
 		return c.ImageBuilderService.Server
+	}
+	return ""
+}
+
+// GetConsoleServer returns the flightctl-remote-access server URL if configured, empty string otherwise.
+func (c *Config) GetConsoleServer() string {
+	if c.ConsoleService != nil && c.ConsoleService.Server != "" {
+		return c.ConsoleService.Server
 	}
 	return ""
 }

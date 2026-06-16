@@ -183,3 +183,32 @@ func TestClientConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestGetConsoleServer(t *testing.T) {
+	tests := []struct {
+		name   string
+		config Config
+		want   string
+	}{
+		{
+			name:   "When ConsoleService is nil it should return empty string",
+			config: Config{},
+			want:   "",
+		},
+		{
+			name:   "When ConsoleService has empty Server it should return empty string",
+			config: Config{ConsoleService: &Service{Server: ""}},
+			want:   "",
+		},
+		{
+			name:   "When ConsoleService has a server URL it should return it",
+			config: Config{ConsoleService: &Service{Server: "https://console.example.com"}},
+			want:   "https://console.example.com",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.config.GetConsoleServer())
+		})
+	}
+}
