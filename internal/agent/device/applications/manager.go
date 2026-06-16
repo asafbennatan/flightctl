@@ -18,7 +18,6 @@ import (
 	"github.com/flightctl/flightctl/internal/agent/device/systemd"
 	"github.com/flightctl/flightctl/internal/agent/device/systeminfo"
 	"github.com/flightctl/flightctl/internal/agent/shutdown"
-	"github.com/flightctl/flightctl/pkg/executer"
 	"github.com/flightctl/flightctl/pkg/log"
 )
 
@@ -382,14 +381,13 @@ func (m *manager) CollectOCITargets(ctx context.Context, current, desired *v1bet
 func (m *manager) WithConsole(
 	deviceName string,
 	grpcClient grpc_v1.RouterServiceClient,
-	executor executer.Executer,
 	dialFn appconsole.DialFunc,
 ) {
 	if grpcClient == nil {
 		m.log.Warn("remote access gRPC client not available — app console disabled")
 		return
 	}
-	m.podmanMonitor.WithConsole(executor, dialFn)
+	m.podmanMonitor.WithConsole(dialFn)
 	m.appConsole = appconsole.NewManager(grpcClient, deviceName, appconsole.ResolverFunc(m.resolveConsole), m.log)
 }
 

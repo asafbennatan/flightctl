@@ -45,12 +45,12 @@ func (m *mockAppSessionRegistration) CloseSession(session *AppConsoleSession) er
 	return args.Error(0)
 }
 
-// mockRenderedPublisher is a hand-written testify mock for rendered.Publisher.
+// mockRenderedPublisher is a hand-written testify mock for RenderedVersionPublisher.
 type mockRenderedPublisher struct {
 	mock.Mock
 }
 
-func (m *mockRenderedPublisher) Publish(ctx context.Context, orgId uuid.UUID, name string, renderedVersion string) error {
+func (m *mockRenderedPublisher) StoreAndNotify(ctx context.Context, orgId uuid.UUID, name string, renderedVersion string) error {
 	args := m.Called(ctx, orgId, name, renderedVersion)
 	return args.Error(0)
 }
@@ -183,7 +183,7 @@ func TestAppConsoleSessionManager_CloseSession_RemovesAnnotation(t *testing.T) {
 	// GetDevice is called during modifyAnnotations
 	svc.On("GetDevice", mock.Anything, orgId, "device1").Return(device, domain.StatusOK())
 	svc.On("UpdateDevice", mock.Anything, orgId, "device1", mock.Anything, mock.Anything).Return(device, nil)
-	pub.On("Publish", mock.Anything, orgId, "device1", mock.Anything).Return(nil)
+	pub.On("StoreAndNotify", mock.Anything, orgId, "device1", mock.Anything).Return(nil)
 
 	status := mgr.CloseSession(ctx, session)
 

@@ -1135,7 +1135,7 @@ func TestCollectOCITargetsDeferredDependencies(t *testing.T) {
 }
 
 func TestManagerResolveConsole(t *testing.T) {
-	newTestManager := func(t *testing.T) (*manager, *executer.MockExecuter, *gomock.Controller) {
+	newTestManager := func(t *testing.T) (*manager, *gomock.Controller) {
 		t.Helper()
 		ctrl := gomock.NewController(t)
 		testLog := log.NewPrefixLogger("test")
@@ -1157,13 +1157,13 @@ func TestManagerResolveConsole(t *testing.T) {
 			kubernetesMonitor: NewKubernetesMonitor(testLog, client.NewCLIClients(), rwFactory),
 			log:               testLog,
 		}
-		m.podmanMonitor.WithConsole(execMock, nil)
-		return m, execMock, ctrl
+		m.podmanMonitor.WithConsole(nil)
+		return m, ctrl
 	}
 
 	t.Run("When the app is tracked by podmanMonitor it should return a session from podmanMonitor", func(t *testing.T) {
 		require := require.New(t)
-		m, _, ctrl := newTestManager(t)
+		m, ctrl := newTestManager(t)
 		defer ctrl.Finish()
 		app := createTestApplicationWithType(require, "my-vm", v1beta1.ApplicationStatusRunning, v1beta1.CurrentProcessUsername, v1beta1.AppTypeVm)
 		err := m.podmanMonitor.Ensure(t.Context(), app)
@@ -1175,7 +1175,7 @@ func TestManagerResolveConsole(t *testing.T) {
 
 	t.Run("When the app is not found in any monitor it should return an error", func(t *testing.T) {
 		require := require.New(t)
-		m, _, ctrl := newTestManager(t)
+		m, ctrl := newTestManager(t)
 		defer ctrl.Finish()
 		_, err := m.resolveConsole("ghost-app", "serial")
 		require.Error(err)

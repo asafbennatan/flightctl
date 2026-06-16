@@ -1319,7 +1319,7 @@ func TestReduceActions_Consistency(t *testing.T) {
 }
 
 func TestPodmanMonitorResolveConsole(t *testing.T) {
-	newMonitor := func(t *testing.T) (*PodmanMonitor, *executer.MockExecuter, *gomock.Controller) {
+	newMonitor := func(t *testing.T) (*PodmanMonitor, *gomock.Controller) {
 		t.Helper()
 		ctrl := gomock.NewController(t)
 		testLog := log.NewPrefixLogger("test")
@@ -1337,13 +1337,13 @@ func TestPodmanMonitorResolveConsole(t *testing.T) {
 		var systemdFactory systemd.ManagerFactory = func(_ v1beta1.Username) (systemd.Manager, error) { return systemdMgr, nil }
 		var rwFactory fileio.ReadWriterFactory = func(_ v1beta1.Username) (fileio.ReadWriter, error) { return readWriter, nil }
 		m := NewPodmanMonitor(testLog, podmanFactory, systemdFactory, "", rwFactory)
-		m.WithConsole(execMock, nil)
-		return m, execMock, ctrl
+		m.WithConsole(nil)
+		return m, ctrl
 	}
 
 	t.Run("When the app is not tracked it should return errConsoleAppNotFound", func(t *testing.T) {
 		require := require.New(t)
-		m, _, ctrl := newMonitor(t)
+		m, ctrl := newMonitor(t)
 		defer ctrl.Finish()
 		_, err := m.resolveConsole("unknown-app", "serial")
 		require.ErrorIs(err, errConsoleAppNotFound)
@@ -1351,7 +1351,7 @@ func TestPodmanMonitorResolveConsole(t *testing.T) {
 
 	t.Run("When the app is a non-VM type it should return an unsupported error", func(t *testing.T) {
 		require := require.New(t)
-		m, _, ctrl := newMonitor(t)
+		m, ctrl := newMonitor(t)
 		defer ctrl.Finish()
 		app := createTestApplicationWithType(require, "compose-app", v1beta1.ApplicationStatusRunning, v1beta1.CurrentProcessUsername, v1beta1.AppTypeCompose)
 		err := m.Ensure(t.Context(), app)
@@ -1363,7 +1363,7 @@ func TestPodmanMonitorResolveConsole(t *testing.T) {
 
 	t.Run("When the app is a VM but consoleType is not serial it should return an error", func(t *testing.T) {
 		require := require.New(t)
-		m, _, ctrl := newMonitor(t)
+		m, ctrl := newMonitor(t)
 		defer ctrl.Finish()
 		app := createTestApplicationWithType(require, "my-vm", v1beta1.ApplicationStatusRunning, v1beta1.CurrentProcessUsername, v1beta1.AppTypeVm)
 		err := m.Ensure(t.Context(), app)
@@ -1375,7 +1375,7 @@ func TestPodmanMonitorResolveConsole(t *testing.T) {
 
 	t.Run("When the app is VM serial and workload is tracked it should use the tracked container name", func(t *testing.T) {
 		require := require.New(t)
-		m, _, ctrl := newMonitor(t)
+		m, ctrl := newMonitor(t)
 		defer ctrl.Finish()
 		app := createTestApplicationWithType(require, "my-vm", v1beta1.ApplicationStatusRunning, v1beta1.CurrentProcessUsername, v1beta1.AppTypeVm)
 		w := &Workload{Name: "virt-launcher-my-vm-compute", Status: StatusRunning}
@@ -1389,7 +1389,7 @@ func TestPodmanMonitorResolveConsole(t *testing.T) {
 
 	t.Run("When the app is VM serial and workload is not yet tracked it should use the conventional fallback name", func(t *testing.T) {
 		require := require.New(t)
-		m, _, ctrl := newMonitor(t)
+		m, ctrl := newMonitor(t)
 		defer ctrl.Finish()
 		app := createTestApplicationWithType(require, "my-vm", v1beta1.ApplicationStatusRunning, v1beta1.CurrentProcessUsername, v1beta1.AppTypeVm)
 		err := m.Ensure(t.Context(), app)

@@ -12,7 +12,6 @@ import (
 
 	"github.com/flightctl/flightctl/api/core/v1beta1"
 	grpc_v1 "github.com/flightctl/flightctl/api/grpc/v1"
-	"github.com/flightctl/flightctl/pkg/executer"
 	"github.com/flightctl/flightctl/pkg/log"
 	"github.com/google/uuid"
 	"github.com/samber/lo"
@@ -257,15 +256,8 @@ func TestAppConsoleManager(t *testing.T) {
 		serverConn, clientConn := net.Pipe()
 		defer serverConn.Close()
 
-		dialFn := func(_ string) (net.Conn, error) { return clientConn, nil }
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-		mockExec := executer.NewMockExecuter(ctrl)
-		mockExec.EXPECT().
-			ExecuteWithContext(gomock.Any(), "podman", "inspect", "--format", "{{.State.Pid}}", "virt-launcher-my-vm-compute").
-			Return("12345\n", "", 0)
-
-		vmSess := NewVMSerialSession("virt-launcher-my-vm-compute", mockExec, dialFn, log.NewPrefixLogger("test"))
+		dialFn := func(_ string) (io.ReadWriteCloser, error) { return clientConn, nil }
+		vmSess := NewVMSerialSession("virt-launcher-my-vm-compute", dialFn, log.NewPrefixLogger("test"))
 		resolver := &mockResolver{sessions: map[string]Session{"my-vm": vmSess}}
 		v := setupTestVars(t, resolver)
 
@@ -282,17 +274,13 @@ func TestAppConsoleManager(t *testing.T) {
 		v.manager.sessionWg.Wait()
 	})
 
-	t.Run("When getContainerPID fails it should send an error over the gRPC stream", func(t *testing.T) {
+	t.Run("When the dialFn fails it should send an error over the gRPC stream", func(t *testing.T) {
 		require := require.New(t)
 
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-		mockExec := executer.NewMockExecuter(ctrl)
-		mockExec.EXPECT().
-			ExecuteWithContext(gomock.Any(), "podman", "inspect", "--format", "{{.State.Pid}}", "virt-launcher-my-vm-compute").
-			Return("", "no such container", 1)
-
-		vmSess := NewVMSerialSession("virt-launcher-my-vm-compute", mockExec, nil, log.NewPrefixLogger("test"))
+		dialFn := func(_ string) (io.ReadWriteCloser, error) {
+			return nil, fmt.Errorf("podman exec: no such container")
+		}
+		vmSess := NewVMSerialSession("virt-launcher-my-vm-compute", dialFn, log.NewPrefixLogger("test"))
 		resolver := &mockResolver{sessions: map[string]Session{"my-vm": vmSess}}
 		v := setupTestVars(t, resolver)
 
@@ -309,165 +297,12 @@ func TestAppConsoleManager(t *testing.T) {
 			v.mu.Lock()
 			defer v.mu.Unlock()
 			return v.closeSendCalled
-		}, 2*time.Second, 20*time.Millisecond, "expected CloseSend to be called after PID lookup failure")
+		}, 2*time.Second, 20*time.Millisecond, "expected CloseSend to be called after dial failure")
 
 		v.mu.Lock()
 		payloads := v.sentPayloads
 		v.mu.Unlock()
-		require.NotEmpty(payloads, "expected error payload after PID lookup failure")
-	})
-}
-
-func TestVMSerialSessionDialWithRetry(t *testing.T) {
-	t.Run("When the serial socket becomes available after retries it should bridge successfully", func(t *testing.T) {
-		require := require.New(t)
-
-		var mu sync.Mutex
-		callCount := 0
-		serverConn, clientConn := net.Pipe()
-		dialFn := func(_ string) (net.Conn, error) {
-			mu.Lock()
-			defer mu.Unlock()
-			callCount++
-			if callCount < 3 {
-				return nil, fmt.Errorf("not ready yet")
-			}
-			return clientConn, nil
-		}
-
-		sess := &vmSerialSession{
-			containerName: "virt-launcher-my-vm-compute",
-			dialFn:        dialFn,
-			log:           log.NewPrefixLogger("test"),
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		conn, err := sess.dialWithRetry(ctx, "/fake/socket")
-		require.NoError(err)
-		require.NotNil(conn)
-
-		written := []byte("hello")
-		go func() {
-			_, _ = serverConn.Write(written)
-		}()
-		buf := make([]byte, 5)
-		n, readErr := conn.Read(buf)
-		require.NoError(readErr)
-		require.Equal(written, buf[:n])
-
-		_ = conn.Close()
-		_ = serverConn.Close()
-
-		mu.Lock()
-		require.GreaterOrEqual(callCount, 3)
-		mu.Unlock()
-	})
-
-	t.Run("When the serial socket never becomes available it should timeout", func(t *testing.T) {
-		require := require.New(t)
-
-		dialFn := func(_ string) (net.Conn, error) {
-			return nil, fmt.Errorf("connection refused")
-		}
-
-		sess := &vmSerialSession{
-			containerName: "virt-launcher-my-vm-compute",
-			dialFn:        dialFn,
-			log:           log.NewPrefixLogger("test"),
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-		defer cancel()
-
-		_, err := sess.dialWithRetry(ctx, "/fake/socket")
-		require.Error(err)
-	})
-
-	t.Run("When the serial socket times out it should send a timeout error over the gRPC stream", func(t *testing.T) {
-		require := require.New(t)
-
-		dialFn := func(_ string) (net.Conn, error) {
-			return nil, fmt.Errorf("connection refused")
-		}
-
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-		mockExec := executer.NewMockExecuter(ctrl)
-		mockExec.EXPECT().
-			ExecuteWithContext(gomock.Any(), "podman", "inspect", "--format", "{{.State.Pid}}", "virt-launcher-my-vm-compute").
-			Return("99999\n", "", 0)
-
-		vmSess := NewVMSerialSession("virt-launcher-my-vm-compute", mockExec, dialFn, log.NewPrefixLogger("test"))
-		resolver := &mockResolver{sessions: map[string]Session{"my-vm": vmSess}}
-
-		var sentPayloads [][]byte
-		var closeSendCalled bool
-		var mu sync.Mutex
-
-		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
-		mockGrpcClient := NewMockRouterServiceClient(mockCtrl)
-		mockStreamClient := NewMockRouterService_StreamClient(mockCtrl)
-
-		mockGrpcClient.EXPECT().Stream(gomock.Any()).Return(mockStreamClient, nil)
-		mockStreamClient.EXPECT().Send(gomock.Any()).DoAndReturn(func(req *grpc_v1.StreamRequest) error {
-			mu.Lock()
-			sentPayloads = append(sentPayloads, req.Payload)
-			mu.Unlock()
-			return nil
-		}).AnyTimes()
-		mockStreamClient.EXPECT().CloseSend().DoAndReturn(func() error {
-			mu.Lock()
-			closeSendCalled = true
-			mu.Unlock()
-			return nil
-		}).AnyTimes()
-
-		mgr := NewManager(mockGrpcClient, "test-device", resolver, log.NewPrefixLogger("test"))
-
-		sessionID := uuid.New().String()
-		device := makeDevice([]v1beta1.DeviceRemoteSession{serialSession(sessionID, "my-vm")})
-
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-		defer cancel()
-		mgr.Sync(ctx, device)
-		mgr.sessionWg.Wait()
-
-		require.Eventually(func() bool {
-			mu.Lock()
-			defer mu.Unlock()
-			return closeSendCalled
-		}, 2*time.Second, 20*time.Millisecond, "expected CloseSend to be called after socket timeout")
-
-		mu.Lock()
-		p := sentPayloads
-		mu.Unlock()
-		require.NotEmpty(p, "expected timeout error payload")
-	})
-}
-
-func TestVMSerialSessionGetContainerPID(t *testing.T) {
-	t.Run("When podman inspect returns a non-numeric PID it should return an error", func(t *testing.T) {
-		require := require.New(t)
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockExec := executer.NewMockExecuter(ctrl)
-		mockExec.EXPECT().
-			ExecuteWithContext(gomock.Any(), "podman", "inspect", "--format", "{{.State.Pid}}", "virt-launcher-my-vm-compute").
-			Return("not-a-pid\n", "", 0)
-
-		sess := &vmSerialSession{
-			containerName: "virt-launcher-my-vm-compute",
-			executor:      mockExec,
-			log:           log.NewPrefixLogger("test"),
-		}
-
-		_, err := sess.getContainerPID(context.Background())
-		require.Error(err)
-		require.Contains(err.Error(), "invalid PID")
+		require.NotEmpty(payloads, "expected error payload after dial failure")
 	})
 }
 

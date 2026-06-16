@@ -409,7 +409,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	)
 
 	// wire app console into the applications manager (nil dialFn = production default)
-	applicationsManager.WithConsole(deviceName, remoteAccessGrpcClient, exec, nil)
+	applicationsManager.WithConsole(deviceName, remoteAccessGrpcClient, nil)
 
 	applicationsController := applications.NewController(
 		podmanClientFactory,

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -22,7 +23,6 @@ import (
 	"github.com/flightctl/flightctl/internal/agent/device/errors"
 	"github.com/flightctl/flightctl/internal/agent/device/fileio"
 	"github.com/flightctl/flightctl/internal/agent/device/systemd"
-	"github.com/flightctl/flightctl/pkg/executer"
 	"github.com/flightctl/flightctl/pkg/log"
 	"github.com/samber/lo"
 )
@@ -48,11 +48,9 @@ type PodmanMonitor struct {
 
 	log *log.PrefixLogger
 
-	// console fields — populated by WithConsole. Specific to VM serial console
-	// session creation; held here because PodmanMonitor owns its apps and knows
-	// how to connect to their consoles.
-	consoleExecutor executer.Executer
-	consoleDial     appconsole.DialFunc
+	// consoleDial is populated by WithConsole and injected into every new
+	// vmSerialSession. nil means use the production podman-exec default.
+	consoleDial appconsole.DialFunc
 }
 
 func NewPodmanMonitor(
@@ -741,10 +739,9 @@ var errConsoleAppNotFound = fmt.Errorf("app not found in podman monitor")
 // WithConsole injects the console-specific dependencies into PodmanMonitor.
 // executor and dialFn are VM/serial-console specific and owned here because
 // PodmanMonitor knows which apps it manages and how to connect to their consoles.
-func (m *PodmanMonitor) WithConsole(executor executer.Executer, dialFn appconsole.DialFunc) {
+func (m *PodmanMonitor) WithConsole(dialFn appconsole.DialFunc) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.consoleExecutor = executor
 	m.consoleDial = dialFn
 }
 
@@ -754,10 +751,6 @@ func (m *PodmanMonitor) WithConsole(executor executer.Executer, dialFn appconsol
 func (m *PodmanMonitor) resolveConsole(appName, consoleType string) (appconsole.Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	if m.consoleExecutor == nil {
-		return nil, fmt.Errorf("console not configured: WithConsole was not called")
-	}
 
 	var found Application
 	for _, app := range m.apps {
@@ -786,5 +779,22 @@ func (m *PodmanMonitor) resolveConsole(appName, consoleType string) (appconsole.
 		}
 	}
 
-	return appconsole.NewVMSerialSession(containerName, m.consoleExecutor, m.consoleDial, m.log), nil
+	dialFn := m.consoleDial
+	if dialFn == nil {
+		factory := m.clientFactory
+		dialFn = func(cName string) (io.ReadWriteCloser, error) {
+			podman, err := factory("")
+			if err != nil {
+				return nil, fmt.Errorf("creating podman client for console dial: %w", err)
+			}
+			pid, err := podman.ContainerPID(context.Background(), cName)
+			if err != nil {
+				return nil, fmt.Errorf("getting PID for container %s: %w", cName, err)
+			}
+			socketPath := fmt.Sprintf("/proc/%d/root%s", pid, appconsole.SerialSocketPath)
+			return net.Dial("unix", socketPath)
+		}
+	}
+
+	return appconsole.NewVMSerialSession(containerName, dialFn, m.log), nil
 }

@@ -40,9 +40,10 @@ type AppConsoleSessionRegistration interface {
 	CloseSession(session *AppConsoleSession) error
 }
 
-// RenderedVersionPublisher publishes rendered version change notifications.
+// RenderedVersionPublisher stores and broadcasts rendered version change notifications so that
+// waiting GetRenderedDevice long-polls on the API server see the change immediately.
 type RenderedVersionPublisher interface {
-	Publish(ctx context.Context, orgId uuid.UUID, name string, renderedVersion string) error
+	StoreAndNotify(ctx context.Context, orgId uuid.UUID, name string, renderedVersion string) error
 }
 
 // AppConsoleSessionManager manages application console sessions using device annotations.
@@ -115,7 +116,7 @@ func (m *AppConsoleSessionManager) modifyAnnotations(ctx context.Context, orgId 
 		}
 	}
 	if err == nil {
-		if pubErr := m.publisher.Publish(ctx, orgId, deviceName, nextRenderedVersion); pubErr != nil {
+		if pubErr := m.publisher.StoreAndNotify(ctx, orgId, deviceName, nextRenderedVersion); pubErr != nil {
 			m.log.WithError(pubErr).Errorf("annotation for device %s persisted but rendered-version notification failed", deviceName)
 			return domain.StatusInternalServerError(pubErr.Error())
 		}

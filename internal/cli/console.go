@@ -16,7 +16,6 @@ import (
 
 	api "github.com/flightctl/flightctl/api/core/v1beta1"
 	"github.com/flightctl/flightctl/internal/client"
-	"github.com/flightctl/flightctl/internal/util"
 	"github.com/gorilla/websocket"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
@@ -267,7 +266,7 @@ type rawReader struct {
 func newRawReader(cancel context.CancelFunc, termState **term.State) *rawReader {
 	return &rawReader{
 		cancel:    cancel,
-		state:     normal,
+		state:     newline, // treat start-of-session as "after newline" so ~. works immediately
 		termState: termState,
 	}
 }
@@ -292,31 +291,60 @@ func (e *rawReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
+	// When in tilde state, we have a buffered ~ that was NOT yet forwarded to
+	// the remote. Read the next character to resolve the escape sequence.
+	if e.state == tilde {
+		if len(p) < 2 {
+			// No room to prepend ~; flush it and reset state.
+			e.state = normal
+			p[0] = '~'
+			return 1, nil
+		}
+		n, err := os.Stdin.Read(p[1:])
+		if n == 0 {
+			return 0, err
+		}
+		switch p[1] {
+		case '.':
+			// Escape sequence complete: disconnect without sending anything.
+			e.state = disconnected
+			e.cancel()
+			return 0, nil
+		case '~':
+			// Double tilde: send one ~ to the remote and stay in tilde state
+			// so the second ~ can itself be escaped or trigger another sequence.
+			p[0] = '~'
+			return 1, err
+		default:
+			// Not an escape: send the buffered ~ followed by the new character.
+			e.state = normal
+			p[0] = '~'
+			return 1 + n, err
+		}
+	}
+
 	n, err := os.Stdin.Read(p)
+	out := 0
 	for i := 0; i < n; i++ {
-		switch p[i] {
+		b := p[i]
+		switch b {
 		case '\n', '\r':
 			e.state = newline
 		case '~':
 			if e.state == newline {
+				// Hold the ~ without forwarding it; resolve on the next Read.
 				e.state = tilde
-				continue
-			}
-			e.state = normal
-		case '.':
-			if e.state == tilde {
-				e.state = disconnected
-				e.cancel()
-				// Return data up to the start of the sequence
-				return util.Max(i-2, 0), nil
+				return out, nil
 			}
 			e.state = normal
 		default:
 			e.state = normal
 		}
+		p[out] = b
+		out++
 	}
 
-	return n, err
+	return out, err
 }
 
 func (o *ConsoleOptions) connectViaWS(ctx context.Context, config *client.Config, deviceName, token string, passThroughArgs []string) error {
@@ -483,6 +511,8 @@ func (o *ConsoleOptions) connectAppViaWS(ctx context.Context, config *client.Con
 			}
 		}()
 	}
+
+	fmt.Fprintf(os.Stderr, "Connected to %s console. Use ~. to exit.\r\n", appName)
 
 	done := make(chan struct{})
 

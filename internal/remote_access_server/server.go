@@ -20,7 +20,6 @@ import (
 	"github.com/flightctl/flightctl/internal/consts"
 	"github.com/flightctl/flightctl/internal/crypto"
 	"github.com/flightctl/flightctl/internal/domain"
-	"github.com/flightctl/flightctl/internal/rendered"
 	"github.com/flightctl/flightctl/internal/service"
 	"github.com/flightctl/flightctl/internal/store"
 	transportv1beta1 "github.com/flightctl/flightctl/internal/transport/v1beta1"
@@ -69,14 +68,14 @@ func (s *storeAppConsoleService) UpdateDevice(ctx context.Context, orgId uuid.UU
 }
 
 // New creates a Server with the required dependencies. The db store, KV-backed
-// rendered.Publisher, and auth config are needed for annotation management and auth enforcement.
+// console.RenderedVersionPublisher, and auth config are needed for annotation management and auth enforcement.
 func New(
 	log logrus.FieldLogger,
 	cfg *config.Config,
 	ca *crypto.CAClient,
 	serverCerts *crypto.TLSCertificateConfig,
 	dataStore store.Store,
-	publisher rendered.Publisher,
+	publisher console.RenderedVersionPublisher,
 	multiAuth *authn.MultiAuth,
 ) (*Server, error) {
 	tlsConfig, agentTLSConfig, err := crypto.TLSConfigForServer(ca.GetCABundleX509(), serverCerts)

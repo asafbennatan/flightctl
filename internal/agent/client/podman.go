@@ -252,6 +252,23 @@ func (p *Podman) ExtractArtifact(ctx context.Context, artifact, destination stri
 
 // Inspect returns the JSON output of the image inspection. The expectation is
 // that the image exists in local container storage.
+// ContainerPID returns the host PID of the container's init process.
+func (p *Podman) ContainerPID(ctx context.Context, name string) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, p.timeout)
+	defer cancel()
+
+	args := []string{"inspect", "--format", "{{.State.Pid}}", name}
+	stdout, stderr, exitCode := p.exec.ExecuteWithContext(ctx, podmanCmd, args...)
+	if exitCode != 0 {
+		return 0, fmt.Errorf("inspect container %s: %w", name, errors.FromStderr(stderr, exitCode))
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(stdout))
+	if err != nil {
+		return 0, fmt.Errorf("parsing PID for container %s: %w", name, err)
+	}
+	return pid, nil
+}
+
 func (p *Podman) Inspect(ctx context.Context, image string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()

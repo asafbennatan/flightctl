@@ -11,6 +11,7 @@ import (
 	"github.com/flightctl/flightctl/internal/config"
 	"github.com/flightctl/flightctl/internal/crypto"
 	"github.com/flightctl/flightctl/internal/instrumentation/tracing"
+	"github.com/flightctl/flightctl/internal/kvstore"
 	remoteaccessserver "github.com/flightctl/flightctl/internal/remote_access_server"
 	"github.com/flightctl/flightctl/internal/rendered"
 	"github.com/flightctl/flightctl/internal/store"
@@ -72,9 +73,15 @@ func main() {
 		provider.Wait()
 	}()
 
-	publisher, err := rendered.NewBroadcaster(ctx, provider)
+	kvStore, err := kvstore.NewKVStore(ctx, log, cfg.KV.Hostname, cfg.KV.Port, cfg.KV.Password)
 	if err != nil {
-		log.Fatalf("creating rendered version broadcaster: %v", err)
+		log.Fatalf("initializing KV store: %v", err)
+	}
+	if err = rendered.Bus.Initialize(ctx, kvStore, provider, 0, log); err != nil {
+		log.Fatalf("initializing rendered version bus: %v", err)
+	}
+	if err = rendered.Bus.Instance().Start(ctx); err != nil {
+		log.Fatalf("starting rendered version bus: %v", err)
 	}
 
 	multiAuth, err := auth.InitMultiAuth(cfg, log, nil)
@@ -82,7 +89,7 @@ func main() {
 		log.Fatalf("initializing auth: %v", err)
 	}
 
-	server, err := remoteaccessserver.New(log, cfg, caClient, serverCerts, dataStore, publisher, multiAuth)
+	server, err := remoteaccessserver.New(log, cfg, caClient, serverCerts, dataStore, rendered.Bus.Instance(), multiAuth)
 	if err != nil {
 		log.Fatalf("initializing remote-access server: %v", err)
 	}
