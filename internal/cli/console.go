@@ -435,9 +435,6 @@ func (o *ConsoleOptions) connectAppViaWS(ctx context.Context, config *client.Con
 		return err
 	}
 
-	if config.ConsoleService == nil {
-		return fmt.Errorf("console service configuration is missing")
-	}
 	tlsCfg, err := buildTLSConfigForConsole(config.ConsoleService, config.AuthInfo)
 	if err != nil {
 		return err
