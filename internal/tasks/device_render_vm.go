@@ -42,7 +42,7 @@ type VmConverterFn func(ctx context.Context, vmYAML []byte) (podYAML []byte, std
 // at a binary extracted to a temporary directory.
 func NewVmConverter(binaryPath string) VmConverterFn {
 	return func(ctx context.Context, vmYAML []byte) ([]byte, string, error) {
-		cmd := exec.CommandContext(ctx, binaryPath)
+		cmd := exec.CommandContext(ctx, binaryPath, "--add-console-proxy")
 		cmd.Stdin = bytes.NewReader(vmYAML)
 
 		var stdoutBuf, stderrBuf bytes.Buffer

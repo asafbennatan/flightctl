@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -14,6 +13,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/gorilla/websocket"
 
 	"github.com/flightctl/flightctl/api/core/v1beta1"
 	"github.com/flightctl/flightctl/internal/agent/client"
@@ -787,12 +788,16 @@ func (m *PodmanMonitor) resolveConsole(appName, consoleType string) (appconsole.
 			if err != nil {
 				return nil, fmt.Errorf("creating podman client for console dial: %w", err)
 			}
-			pid, err := podman.ContainerPID(context.Background(), cName)
+			ip, err := podman.ContainerIP(context.Background(), cName)
 			if err != nil {
-				return nil, fmt.Errorf("getting PID for container %s: %w", cName, err)
+				return nil, fmt.Errorf("getting IP for container %s: %w", cName, err)
 			}
-			socketPath := fmt.Sprintf("/proc/%d/root%s", pid, appconsole.SerialSocketPath)
-			return net.Dial("unix", socketPath)
+			consoleURL := fmt.Sprintf("ws://%s:%d%s", ip, appconsole.ConsoleProxyPort, appconsole.ConsoleProxyPath)
+			conn, _, err := websocket.DefaultDialer.Dial(consoleURL, nil)
+			if err != nil {
+				return nil, fmt.Errorf("dialing console proxy for %s at %s: %w", cName, consoleURL, err)
+			}
+			return appconsole.NewWSConn(conn), nil
 		}
 	}
 

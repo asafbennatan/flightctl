@@ -269,6 +269,23 @@ func (p *Podman) ContainerPID(ctx context.Context, name string) (int, error) {
 	return pid, nil
 }
 
+// ContainerIP returns the primary IP address of the container.
+func (p *Podman) ContainerIP(ctx context.Context, name string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, p.timeout)
+	defer cancel()
+
+	args := []string{"inspect", "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", name}
+	stdout, stderr, exitCode := p.exec.ExecuteWithContext(ctx, podmanCmd, args...)
+	if exitCode != 0 {
+		return "", fmt.Errorf("inspect container %s: %w", name, errors.FromStderr(stderr, exitCode))
+	}
+	ip := strings.TrimSpace(stdout)
+	if ip == "" {
+		return "", fmt.Errorf("container %s has no IP address", name)
+	}
+	return ip, nil
+}
+
 func (p *Podman) Inspect(ctx context.Context, image string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()

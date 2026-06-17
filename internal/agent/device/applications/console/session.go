@@ -7,15 +7,63 @@ import (
 	"net"
 	"sync"
 
+	"github.com/gorilla/websocket"
+
 	grpc_v1 "github.com/flightctl/flightctl/api/grpc/v1"
 	"github.com/flightctl/flightctl/pkg/log"
 )
 
-// DialFunc opens a bidirectional connection to the VM serial console.
-// The production implementation (in PodmanMonitor.resolveConsole) dials
-// the container's socket directly via /proc/<pid>/root/<socket>.
+// DialFunc opens a bidirectional connection to the VM serial console proxy.
+// The production implementation (in PodmanMonitor.resolveConsole) dials the
+// console proxy sidecar WebSocket endpoint injected by kubevirt-vm-to-pod.
 // Tests may inject a mock via NewVMSerialSession.
 type DialFunc func(containerName string) (io.ReadWriteCloser, error)
+
+// wsConn wraps a *websocket.Conn as io.ReadWriteCloser.
+// Read consumes WebSocket frames sequentially via NextReader so partial reads work
+// correctly across frame boundaries. Write serialises concurrent callers because
+// gorilla/websocket does not support concurrent writes.
+type wsConn struct {
+	conn   *websocket.Conn
+	mu     sync.Mutex
+	reader io.Reader
+}
+
+// NewWSConn wraps a gorilla WebSocket connection as io.ReadWriteCloser.
+func NewWSConn(conn *websocket.Conn) io.ReadWriteCloser {
+	return &wsConn{conn: conn}
+}
+
+func (w *wsConn) Read(p []byte) (int, error) {
+	for {
+		if w.reader != nil {
+			n, err := w.reader.Read(p)
+			if n > 0 || err != io.EOF {
+				return n, err
+			}
+			// Frame exhausted; fetch the next one.
+			w.reader = nil
+		}
+		_, r, err := w.conn.NextReader()
+		if err != nil {
+			return 0, err
+		}
+		w.reader = r
+	}
+}
+
+func (w *wsConn) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err := w.conn.WriteMessage(websocket.BinaryMessage, p); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+func (w *wsConn) Close() error {
+	return w.conn.Close()
+}
 
 // vmSerialSession implements Session for VM serial console.
 // Created by PodmanMonitor.resolveConsole for AppTypeVm + "serial".
@@ -80,7 +128,6 @@ func (s *vmSerialSession) bridge(ctx context.Context, conn io.ReadWriteCloser, s
 		for {
 			n, err := conn.Read(buf)
 			if n > 0 {
-				s.log.Debugf("serial→gRPC: %d bytes: %q", n, buf[:n])
 				if sendErr := streamClient.Send(&grpc_v1.StreamRequest{Payload: buf[:n]}); sendErr != nil {
 					s.log.Debugf("send to gRPC stream failed: %v", sendErr)
 					return
@@ -107,7 +154,6 @@ func (s *vmSerialSession) bridge(ctx context.Context, conn io.ReadWriteCloser, s
 				return
 			}
 			if len(msg.Payload) > 0 {
-				s.log.Debugf("gRPC→serial: %d bytes: %q", len(msg.Payload), msg.Payload)
 				if _, writeErr := conn.Write(msg.Payload); writeErr != nil {
 					s.log.Debugf("write to serial connection failed: %v", writeErr)
 					return
