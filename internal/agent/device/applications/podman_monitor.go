@@ -744,6 +744,10 @@ var errConsoleAppNotFound = fmt.Errorf("app not found in podman monitor")
 // where libvirt exposes the VM's serial console (created by virt-launcher at startup).
 const vmSerialSocketPath = "/var/run/kubevirt-private/default/virt-serial0"
 
+// vmVNCSocketPath is the fixed Unix socket path inside the virt-launcher compute container
+// where QEMU exposes the VM's VNC display (RFB protocol).
+const vmVNCSocketPath = "/var/run/kubevirt-private/default/virt-vnc"
+
 // WithConsole injects the console-specific dependencies into PodmanMonitor.
 // dialFn overrides the default serial dial function; nil means use the production default.
 func (m *PodmanMonitor) WithConsole(dialFn appconsole.DialFunc) {
@@ -774,8 +778,9 @@ func (m *PodmanMonitor) resolveConsole(appName, consoleType string) (appconsole.
 		return nil, fmt.Errorf("app %q has type %q: only VM apps support console", appName, found.AppType())
 	}
 
-	if v1beta1.GetDeviceApplicationConsoleParamsConsoleType(consoleType) != v1beta1.ConsoleTypeSerial {
-		return nil, fmt.Errorf("app %q: unsupported console type %q for VM (supported: serial)", appName, consoleType)
+	ct := v1beta1.GetDeviceApplicationConsoleParamsConsoleType(consoleType)
+	if ct != v1beta1.ConsoleTypeSerial && ct != v1beta1.ConsoleTypeVnc {
+		return nil, fmt.Errorf("app %q: unsupported console type %q for VM (supported: serial, vnc)", appName, consoleType)
 	}
 
 	// The container name comes from podman events via workload tracking — it is the authoritative
@@ -800,7 +805,12 @@ func (m *PodmanMonitor) resolveConsole(appName, consoleType string) (appconsole.
 		return nil, fmt.Errorf("app %q: no active compute container found (workload with \"-compute\" suffix required)", appName)
 	}
 
-	m.log.Infof("console: selected container %q for app %q (type=%s)", containerName, appName, consoleType)
+	m.log.Infof("console: selected container %q for app %q (type=%s)", containerName, appName, ct)
+
+	if ct == v1beta1.ConsoleTypeVnc {
+		dialFn := m.defaultVNCDialFn()
+		return appconsole.NewVMVNCSession(containerName, dialFn, m.log), nil
+	}
 
 	dialFn := m.consoleDial
 	if dialFn == nil {
@@ -821,5 +831,18 @@ func (m *PodmanMonitor) defaultSerialDialFn() appconsole.DialFunc {
 			return nil, fmt.Errorf("creating podman client for serial console: %w", err)
 		}
 		return podman.ExecStream(containerName, "nc", "-U", vmSerialSocketPath)
+	}
+}
+
+// defaultVNCDialFn returns the production DialFunc that bridges the caller to the VM's VNC
+// console by running `podman exec -i <container> nc -U <socket>` inside the compute container.
+// nc (netcat) supports Unix-domain sockets via -U and bridges the RFB byte stream.
+func (m *PodmanMonitor) defaultVNCDialFn() appconsole.DialFunc {
+	return func(containerName string) (io.ReadWriteCloser, error) {
+		podman, err := m.clientFactory("")
+		if err != nil {
+			return nil, fmt.Errorf("creating podman client for VNC console: %w", err)
+		}
+		return podman.ExecStream(containerName, "nc", "-U", vmVNCSocketPath)
 	}
 }
