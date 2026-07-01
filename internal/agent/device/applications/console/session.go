@@ -127,6 +127,42 @@ func (s *vmSerialSession) Run(ctx context.Context, streamClient grpc_v1.RouterSe
 	bridgeConn(ctx, "serial", conn, streamClient, s.log)
 }
 
+// vmVNCSession implements Session for VM VNC console.
+// Created by PodmanMonitor.resolveConsole for AppTypeVm + "vnc".
+type vmVNCSession struct {
+	containerName string
+	dialFn        DialFunc
+	log           *log.PrefixLogger
+}
+
+// NewVMVNCSession returns a Session that bridges the VM's VNC socket to
+// the gRPC stream. dialFn must not be nil; the production implementation is
+// provided by PodmanMonitor.resolveConsole.
+func NewVMVNCSession(containerName string, dialFn DialFunc, log *log.PrefixLogger) Session {
+	return &vmVNCSession{
+		containerName: containerName,
+		dialFn:        dialFn,
+		log:           log,
+	}
+}
+
+// Run implements Session. It dials the container and bridges the VNC connection
+// to the gRPC stream. No initial byte is sent — VNC clients initiate the
+// RFB handshake themselves.
+func (s *vmVNCSession) Run(ctx context.Context, streamClient grpc_v1.RouterService_StreamClient) {
+	s.log.Debugf("vm vnc console session started for container %s", s.containerName)
+	defer s.log.Debugf("vm vnc console session finished for container %s", s.containerName)
+
+	conn, err := s.dialFn(s.containerName)
+	if err != nil {
+		sendErrorOverStream(streamClient, fmt.Sprintf("failed to connect to VNC console for %s: %v", s.containerName, err))
+		return
+	}
+	defer conn.Close()
+
+	bridgeConn(ctx, "vnc", conn, streamClient, s.log)
+}
+
 // Ensure net.Conn satisfies io.ReadWriteCloser so existing test helpers that
-// return net.Pipe() remain compatible with bridge's updated signature.
+// return net.Pipe() remain compatible with bridgeConn's signature.
 var _ io.ReadWriteCloser = (net.Conn)(nil)
