@@ -48,9 +48,12 @@ type PodmanMonitor struct {
 
 	log *log.PrefixLogger
 
-	// consoleDial is populated by WithConsole. Overrides the default serial
+	// serialConsoleDial is populated by WithConsole. Overrides the default serial
 	// dial function; nil means use defaultSerialDialFn.
-	consoleDial appconsole.DialFunc
+	serialConsoleDial appconsole.DialFunc
+	// vncConsoleDial is populated by WithConsole. Overrides the default VNC
+	// dial function; nil means use defaultVNCDialFn.
+	vncConsoleDial appconsole.DialFunc
 }
 
 func NewPodmanMonitor(
@@ -749,11 +752,13 @@ const vmSerialSocketPath = "/var/run/kubevirt-private/default/virt-serial0"
 const vmVNCSocketPath = "/var/run/kubevirt-private/default/virt-vnc"
 
 // WithConsole injects the console-specific dependencies into PodmanMonitor.
-// dialFn overrides the default serial dial function; nil means use the production default.
-func (m *PodmanMonitor) WithConsole(dialFn appconsole.DialFunc) {
+// serialDialFn and vncDialFn override the production dial functions for testing;
+// nil means use the production default for that type.
+func (m *PodmanMonitor) WithConsole(serialDialFn, vncDialFn appconsole.DialFunc) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.consoleDial = dialFn
+	m.serialConsoleDial = serialDialFn
+	m.vncConsoleDial = vncDialFn
 }
 
 // resolveConsole implements the console Session factory for Podman-managed apps.
@@ -807,17 +812,20 @@ func (m *PodmanMonitor) resolveConsole(appName, consoleType string) (appconsole.
 
 	m.log.Infof("console: selected container %q for app %q (type=%s)", containerName, appName, ct)
 
-	if ct == v1beta1.ConsoleTypeVnc {
-		dialFn := m.defaultVNCDialFn()
+	switch ct {
+	case v1beta1.ConsoleTypeVnc:
+		dialFn := m.vncConsoleDial
+		if dialFn == nil {
+			dialFn = m.defaultVNCDialFn()
+		}
 		return appconsole.NewVMVNCSession(containerName, dialFn, m.log), nil
+	default:
+		dialFn := m.serialConsoleDial
+		if dialFn == nil {
+			dialFn = m.defaultSerialDialFn()
+		}
+		return appconsole.NewVMSerialSession(containerName, dialFn, m.log), nil
 	}
-
-	dialFn := m.consoleDial
-	if dialFn == nil {
-		dialFn = m.defaultSerialDialFn()
-	}
-
-	return appconsole.NewVMSerialSession(containerName, dialFn, m.log), nil
 }
 
 // defaultSerialDialFn returns the production DialFunc that bridges the caller to the VM's serial
@@ -839,6 +847,7 @@ func (m *PodmanMonitor) defaultSerialDialFn() appconsole.DialFunc {
 // nc (netcat) supports Unix-domain sockets via -U and bridges the RFB byte stream.
 func (m *PodmanMonitor) defaultVNCDialFn() appconsole.DialFunc {
 	return func(containerName string) (io.ReadWriteCloser, error) {
+		m.log.Infof("console: exec podman exec -i %s nc -U %s", containerName, vmVNCSocketPath)
 		podman, err := m.clientFactory("")
 		if err != nil {
 			return nil, fmt.Errorf("creating podman client for VNC console: %w", err)

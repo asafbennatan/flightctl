@@ -1347,7 +1347,7 @@ func TestPodmanMonitorResolveConsole(t *testing.T) {
 		var systemdFactory systemd.ManagerFactory = func(_ v1beta1.Username) (systemd.Manager, error) { return systemdMgr, nil }
 		var rwFactory fileio.ReadWriterFactory = func(_ v1beta1.Username) (fileio.ReadWriter, error) { return readWriter, nil }
 		m := NewPodmanMonitor(testLog, podmanFactory, systemdFactory, "", rwFactory)
-		m.WithConsole(nil)
+		m.WithConsole(nil, nil)
 		return m, ctrl
 	}
 
@@ -1431,6 +1431,6 @@ func TestPodmanMonitorResolveConsole(t *testing.T) {
 		require.NoError(err)
 		_, err = m.resolveConsole("my-vm", "vnc")
 		require.Error(err)
-		require.Contains(err.Error(), "no running compute container found")
+		require.Contains(err.Error(), "no active compute container found")
 	})
 }

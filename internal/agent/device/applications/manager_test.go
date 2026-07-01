@@ -1157,7 +1157,7 @@ func TestManagerResolveConsole(t *testing.T) {
 			kubernetesMonitor: NewKubernetesMonitor(testLog, client.NewCLIClients(), rwFactory),
 			log:               testLog,
 		}
-		m.podmanMonitor.WithConsole(nil)
+		m.podmanMonitor.WithConsole(nil, nil)
 		return m, ctrl
 	}
 

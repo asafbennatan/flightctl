@@ -358,18 +358,19 @@ func (m *manager) CollectOCITargets(ctx context.Context, current, desired *v1bet
 }
 
 // WithConsole injects app console dependencies after construction and creates
-// the owned AppConsoleManager. dialFn overrides the default serial console dial (nil = production default).
-// Must be called before RunConsole.
+// the owned AppConsoleManager. serialDialFn and vncDialFn override the production dial functions
+// for the respective console types (nil = production default). Must be called before RunConsole.
 func (m *manager) WithConsole(
 	deviceName string,
 	grpcClient grpc_v1.RouterServiceClient,
-	dialFn appconsole.DialFunc,
+	serialDialFn appconsole.DialFunc,
+	vncDialFn appconsole.DialFunc,
 ) {
 	if grpcClient == nil {
 		m.log.Warn("remote access gRPC client not available — app console disabled")
 		return
 	}
-	m.podmanMonitor.WithConsole(dialFn)
+	m.podmanMonitor.WithConsole(serialDialFn, vncDialFn)
 	m.appConsole = appconsole.NewManager(grpcClient, deviceName, appconsole.ResolverFunc(m.resolveConsole), m.log)
 }
 

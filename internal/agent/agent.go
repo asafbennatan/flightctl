@@ -409,7 +409,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.log,
 	)
 
-	applicationsManager.WithConsole(deviceName, remoteAccessGrpcClient, nil)
+	applicationsManager.WithConsole(deviceName, remoteAccessGrpcClient, nil, nil)
 
 	applicationsController := applications.NewController(
 		podmanClientFactory,
