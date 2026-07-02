@@ -66,9 +66,14 @@ func bridgeConn(ctx context.Context, label string, conn io.ReadWriteCloser, stre
 			}
 			if len(msg.Payload) > 0 {
 				logger.Debugf("gRPC→%s: %d bytes", label, len(msg.Payload))
-				if _, writeErr := conn.Write(msg.Payload); writeErr != nil {
-					logger.Debugf("write to %s connection failed: %v", label, writeErr)
-					return
+				remaining := msg.Payload
+				for len(remaining) > 0 {
+					n, writeErr := conn.Write(remaining)
+					if writeErr != nil {
+						logger.Debugf("write to %s connection failed: %v", label, writeErr)
+						return
+					}
+					remaining = remaining[n:]
 				}
 			}
 		}

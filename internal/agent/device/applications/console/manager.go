@@ -141,6 +141,10 @@ func (m *Manager) Start(ctx context.Context, entry v1beta1.DeviceRemoteSession) 
 		m.log.Errorf("gRPC client not available for app console session %s", entry.SessionID)
 		return
 	}
+	if m.resolver == nil {
+		m.log.Errorf("app console resolver not configured for session %s", entry.SessionID)
+		return
+	}
 
 	session, resolveErr := m.resolver.ResolveConsole(entry.AppName, entry.ConsoleType)
 
