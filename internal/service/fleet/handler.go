@@ -114,7 +114,7 @@ func (h *ServiceHandler) ReplaceFleet(ctx context.Context, orgId uuid.UUID, name
 		}
 	}
 
-	result, created, err := h.store.CreateOrUpdate(ctx, orgId, &fleet, nil, false, h.callbackFleetUpdated)
+	result, created, err := h.store.CreateOrUpdate(ctx, orgId, &fleet, nil, h.callbackFleetUpdated)
 	return result, common.StoreErrorToApiStatus(err, created, domain.FleetKind, &name)
 }
 
@@ -178,7 +178,7 @@ func (h *ServiceHandler) PatchFleet(ctx context.Context, orgId uuid.UUID, name s
 		}
 	}
 
-	result, err := h.store.Update(ctx, orgId, newObj, nil, false, h.callbackFleetUpdated)
+	result, err := h.store.Update(ctx, orgId, newObj, nil, h.callbackFleetUpdated)
 	return result, common.StoreErrorToApiStatus(err, false, domain.FleetKind, &name)
 }
 
