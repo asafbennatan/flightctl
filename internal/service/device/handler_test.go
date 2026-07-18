@@ -178,6 +178,52 @@ func TestReplaceDevice(t *testing.T) {
 	})
 }
 
+// TestReplaceDeviceOwnership mirrors fleet.TestReplaceFleetOwnership: an external caller
+// (enforceOwnership=true) must be denied a spec change on an owned device, while an
+// internal/ResourceSync caller (enforceOwnership=false) must still be allowed through.
+func TestReplaceDeviceOwnership(t *testing.T) {
+	owner := "Fleet/f1"
+
+	t.Run("When replacing an owned device with a changed spec it should return conflict", func(t *testing.T) {
+		st, _, svc := newTestHandler()
+		ctx := context.Background()
+		orgId := uuid.New()
+		st.device.devices["owned-device"] = &domain.Device{
+			Metadata: domain.ObjectMeta{Name: lo.ToPtr("owned-device"), Owner: lo.ToPtr(owner)},
+			Spec:     &domain.DeviceSpec{Os: &domain.DeviceOsSpec{Image: "img"}},
+		}
+
+		updated := domain.Device{
+			Metadata: domain.ObjectMeta{Name: lo.ToPtr("owned-device")},
+			Spec:     &domain.DeviceSpec{Os: &domain.DeviceOsSpec{Image: "img-updated"}},
+		}
+
+		_, status := svc.ReplaceDevice(ctx, orgId, "owned-device", updated, nil, true)
+		require.Equal(t, int32(http.StatusConflict), status.Code)
+		require.Equal(t, "img", st.device.devices["owned-device"].Spec.Os.Image)
+	})
+
+	t.Run("When enforceOwnership is false it should allow updating an owned device", func(t *testing.T) {
+		st, _, svc := newTestHandler()
+		ctx := context.Background()
+		orgId := uuid.New()
+		st.device.devices["owned-device"] = &domain.Device{
+			Metadata: domain.ObjectMeta{Name: lo.ToPtr("owned-device"), Owner: lo.ToPtr(owner)},
+			Spec:     &domain.DeviceSpec{Os: &domain.DeviceOsSpec{Image: "img"}},
+		}
+
+		updated := domain.Device{
+			Metadata: domain.ObjectMeta{Name: lo.ToPtr("owned-device")},
+			Spec:     &domain.DeviceSpec{Os: &domain.DeviceOsSpec{Image: "img-updated"}},
+		}
+
+		result, status := svc.ReplaceDevice(ctx, orgId, "owned-device", updated, nil, false)
+		require.Equal(t, int32(http.StatusOK), status.Code)
+		require.NotNil(t, result)
+		require.Equal(t, "img-updated", st.device.devices["owned-device"].Spec.Os.Image)
+	})
+}
+
 func TestDeleteDevice(t *testing.T) {
 	t.Run("When the device does not exist it should return not found", func(t *testing.T) {
 		_, _, svc := newTestHandler()
@@ -247,6 +293,48 @@ func TestPatchDevice(t *testing.T) {
 		_, status := svc.PatchDevice(context.Background(), orgId, "bar", patch, true)
 		require.Equal(t, int32(http.StatusNotFound), status.Code)
 		require.Equal(t, domain.StatusResourceNotFound("Device", "bar"), status)
+	})
+}
+
+// TestPatchDeviceOwnership mirrors fleet.TestPatchFleetOwnership: an external caller
+// (enforceOwnership=true) must be denied a spec-changing patch on an owned device, while an
+// internal/ResourceSync caller (enforceOwnership=false) must still be allowed through.
+func TestPatchDeviceOwnership(t *testing.T) {
+	owner := "Fleet/f1"
+
+	t.Run("When patching an owned device spec it should return conflict", func(t *testing.T) {
+		st, _, svc := newTestHandler()
+		ctx := context.Background()
+		orgId := uuid.New()
+		st.device.devices["owned-device"] = &domain.Device{
+			Metadata: domain.ObjectMeta{Name: lo.ToPtr("owned-device"), Owner: lo.ToPtr(owner)},
+			Spec:     &domain.DeviceSpec{Os: &domain.DeviceOsSpec{Image: "img"}},
+		}
+
+		var value interface{} = "img-updated"
+		patch := domain.PatchRequest{{Op: "replace", Path: "/spec/os/image", Value: &value}}
+
+		_, status := svc.PatchDevice(ctx, orgId, "owned-device", patch, true)
+		require.Equal(t, int32(http.StatusConflict), status.Code)
+		require.Equal(t, "img", st.device.devices["owned-device"].Spec.Os.Image)
+	})
+
+	t.Run("When enforceOwnership is false it should allow patching an owned device", func(t *testing.T) {
+		st, _, svc := newTestHandler()
+		ctx := context.Background()
+		orgId := uuid.New()
+		st.device.devices["owned-device"] = &domain.Device{
+			Metadata: domain.ObjectMeta{Name: lo.ToPtr("owned-device"), Owner: lo.ToPtr(owner)},
+			Spec:     &domain.DeviceSpec{Os: &domain.DeviceOsSpec{Image: "img"}},
+		}
+
+		var value interface{} = "img-updated"
+		patch := domain.PatchRequest{{Op: "replace", Path: "/spec/os/image", Value: &value}}
+
+		result, status := svc.PatchDevice(ctx, orgId, "owned-device", patch, false)
+		require.Equal(t, int32(http.StatusOK), status.Code)
+		require.NotNil(t, result)
+		require.Equal(t, "img-updated", st.device.devices["owned-device"].Spec.Os.Image)
 	})
 }
 
@@ -597,6 +685,24 @@ func TestUpdateDevice(t *testing.T) {
 		result, err := svc.UpdateDevice(ctx, orgId, "foo", device, nil)
 		require.NoError(t, err)
 		require.Equal(t, "img", result.Spec.Os.Image)
+	})
+
+	t.Run("When updating an owned device it should not deny the change", func(t *testing.T) {
+		st, _, svc := newTestHandler()
+		ctx := context.Background()
+		orgId := uuid.New()
+		st.device.devices["owned-device"] = &domain.Device{
+			Metadata: domain.ObjectMeta{Name: lo.ToPtr("owned-device"), Owner: lo.ToPtr("Fleet/f1")},
+			Spec:     &domain.DeviceSpec{Os: &domain.DeviceOsSpec{Image: "img"}},
+		}
+
+		device := domain.Device{
+			Metadata: domain.ObjectMeta{Name: lo.ToPtr("owned-device")},
+			Spec:     &domain.DeviceSpec{Os: &domain.DeviceOsSpec{Image: "img-updated"}},
+		}
+		result, err := svc.UpdateDevice(ctx, orgId, "owned-device", device, nil)
+		require.NoError(t, err)
+		require.Equal(t, "img-updated", result.Spec.Os.Image)
 	})
 }
 
