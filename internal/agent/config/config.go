@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/flightctl/flightctl/internal/agent/client"
@@ -81,6 +82,8 @@ const (
 	// DefaultProfilingEnabled controls whether runtime profiling (pprof) is enabled by default.
 	DefaultProfilingEnabled = false
 )
+
+var testRootDirWarningOnce sync.Once
 
 type Config struct {
 	config.ServiceConfig
@@ -230,7 +233,9 @@ func NewDefault() *Config {
 	}
 
 	if value := os.Getenv(TestRootDirEnvKey); value != "" {
-		fmt.Fprintf(os.Stderr, "WARNING: Setting testRootDir is intended for testing only. Do not use in production.\n")
+		testRootDirWarningOnce.Do(func() {
+			fmt.Fprintf(os.Stderr, "WARNING: Setting testRootDir is intended for testing only. Do not use in production.\n")
+		})
 		c.testRootDir = filepath.Clean(value)
 	}
 
