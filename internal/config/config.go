@@ -922,7 +922,8 @@ func NewDefault(opts ...ConfigOption) *Config {
 			HttpMaxRequestSize:     50 * 1024 * 1024,                  // 50MB
 			EventRetentionPeriod:   util.Duration(7 * 24 * time.Hour), // 1 week
 			AlertPollingInterval:   util.Duration(1 * time.Minute),
-			RenderedWaitTimeout:    util.Duration(2 * time.Minute),
+			// TEMPORARY(EDM-4335 scale): 0 disables GetRendered long-poll. Revert to 2m after experiment.
+			RenderedWaitTimeout: util.Duration(0),
 			HealthChecks: &HealthChecks{
 				Enabled:          true,
 				ReadinessPath:    "/readyz",

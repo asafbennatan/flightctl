@@ -11,7 +11,6 @@ import (
 	"github.com/flightctl/flightctl/internal/util"
 	"github.com/flightctl/flightctl/pkg/queues"
 	"github.com/google/uuid"
-	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 )
 
@@ -60,11 +59,17 @@ func newVersionManager(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("failed to create subscriber for rendered version: %v", err)
 	}
+	// Zero disables long-poll (immediate 204 when version unchanged).
+	// Negative values fall back to the default timeout.
+	timeout := renderedWaitTimeout
+	if timeout < 0 {
+		timeout = renderedVersionDefaultTimeout
+	}
 	return &VersionManager{
 		kvStore:             kvStore,
 		broadcaster:         broadcaster,
 		subscriber:          subscriber,
-		renderedWaitTimeout: lo.Ternary(renderedWaitTimeout > 0, renderedWaitTimeout, renderedVersionDefaultTimeout),
+		renderedWaitTimeout: timeout,
 		log:                 log,
 	}, nil
 }
@@ -109,6 +114,10 @@ func (m *VersionManager) WaitForNotification(ctx context.Context, orgId uuid.UUI
 		m.log.Warnf("WaitForNotification: failed to check console notification for %s/%s: %v", orgId, name, err)
 	} else if pending != nil {
 		return Notification{Type: NotificationTypeConsole}, true, nil
+	}
+
+	if m.renderedWaitTimeout == 0 {
+		return Notification{}, false, nil
 	}
 
 	timeout := time.NewTimer(m.renderedWaitTimeout)
