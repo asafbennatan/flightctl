@@ -30,10 +30,10 @@ const (
 )
 
 // GetPackageModeAgentImage returns the OCI image reference for the package-mode agent container.
-// The image must be loaded into local podman storage before tests run (in CI, this is done
-// by loading the cs9-regular agent bundle artifact).
+// The image must be loaded into local podman/docker storage before tests run (in CI, this is
+// done by loading the agent-images bundle, which includes the package variant).
 func GetPackageModeAgentImage() string {
-	return "quay.io/flightctl/flightctl-device:base-cs9-regular"
+	return "quay.io/flightctl/flightctl-device:package"
 }
 
 // PackageModeAgent represents a testcontainer running the flightctl agent in package mode.
@@ -44,7 +44,8 @@ type PackageModeAgent struct {
 }
 
 // StartPackageModeAgent starts a privileged systemd container with the flightctl agent.
-// The container runs cs9-regular (no bootc/rpm-ostree) so the agent reports osMode=package.
+// The container runs the package variant (bootc base with bootc/rpm-ostree
+// removed from PATH) so the agent reports osMode=package.
 // registryHost/registryPort configure insecure TLS access to the e2e registry (same role as
 // inject_agent_files_into_qcow.sh for VM images).
 func StartPackageModeAgent(ctx context.Context, agentConfigDir, registryHost, registryPort string) (*PackageModeAgent, error) {
@@ -167,7 +168,7 @@ func (a *PackageModeAgent) setupContainerEnvironment(ctx context.Context, regist
 	if err := a.setupRegistryAccess(ctx, registryHost, registryPort); err != nil {
 		return fmt.Errorf("setup registry access: %w", err)
 	}
-	// firewalld is enabled in cs9-regular and interferes with nested podman networking.
+	// firewalld is enabled in the package variant and interferes with nested podman networking.
 	if err := a.execOK(ctx, "systemctl disable --now firewalld.service >/dev/null 2>&1 || true"); err != nil {
 		return fmt.Errorf("disable firewalld: %w", err)
 	}

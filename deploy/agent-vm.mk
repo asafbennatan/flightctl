@@ -30,7 +30,7 @@ clean-agent-vm: bin/flightctl-dev-vm
 .PHONY: clean-agent-vm
 
 # Package-mode agent container (requires CS9 make e2e-agent-images).
-PACKAGE_MODE_AGENT_IMAGE ?= quay.io/flightctl/flightctl-device:base-cs9-regular
+PACKAGE_MODE_AGENT_IMAGE ?= quay.io/flightctl/flightctl-device:package
 
 agent-container:
 	@echo "Starting package-mode agent container from $(PACKAGE_MODE_AGENT_IMAGE)"

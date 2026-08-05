@@ -113,12 +113,6 @@ jobs:
           path: test-artifacts
           merge-multiple: true
 
-      - name: Download cs9-regular bundle for package-mode testcontainers
-        uses: actions/download-artifact@v4
-        with:
-          name: agent-images-bundle-cs9-regular-${{ inputs.tag }}
-          path: test-artifacts-cs9-regular
-
       - name: Stage test artifacts
         env:
           OS_ID: ${{ inputs.os_id }}
@@ -127,7 +121,7 @@ jobs:
           echo "Downloaded test artifacts:"
           tree test-artifacts
 
-          # Stage agent bundle
+          # Stage agent bundle (includes package-mode OCI image)
           mkdir -p bin/agent-artifacts
           if [ ! -f "test-artifacts/agent-images-bundle-${OS_ID}.tar" ]; then
             echo "ERROR: Agent bundle not found"
@@ -135,15 +129,6 @@ jobs:
           fi
           mv "test-artifacts/agent-images-bundle-${OS_ID}.tar" bin/agent-artifacts/
           echo "Agent bundle: bin/agent-artifacts/agent-images-bundle-${OS_ID}.tar"
-
-          # Stage cs9-regular bundle for package-mode testcontainers (all e2e slices)
-          if [ ! -f "test-artifacts-cs9-regular/agent-images-bundle-cs9-regular.tar" ]; then
-            echo "ERROR: cs9-regular agent bundle not found (required for package-mode e2e)"
-            exit 1
-          fi
-          mv "test-artifacts-cs9-regular/agent-images-bundle-cs9-regular.tar" bin/agent-artifacts/
-          echo "✓ Package-mode image bundle: bin/agent-artifacts/agent-images-bundle-cs9-regular.tar"
-          rm -rf test-artifacts-cs9-regular
 
           # Stage the primary qcow2 used by prepare-e2e-qcow-config
           mkdir -p bin/output/qcow2
@@ -161,25 +146,27 @@ jobs:
           tree bin
           df -h
 
-      - name: Load cs9-regular images for package-mode testcontainers
+      - name: Load agent bundle images for package-mode testcontainers
+        env:
+          OS_ID: ${{ inputs.os_id }}
         run: |
           set -euo pipefail
-          BUNDLE="bin/agent-artifacts/agent-images-bundle-cs9-regular.tar"
+          BUNDLE="bin/agent-artifacts/agent-images-bundle-${OS_ID}.tar"
           if [ ! -f "${BUNDLE}" ]; then
-            echo "ERROR: No cs9-regular bundle found at ${BUNDLE}"
+            echo "ERROR: No agent bundle found at ${BUNDLE}"
             exit 1
           fi
-          echo "Loading cs9-regular images for package-mode testcontainers..."
+          echo "Loading agent bundle images for package-mode testcontainers..."
           # testcontainers-go uses Docker (not Podman) on GHA runners because
           # /var/run/docker.sock exists; load into the matching runtime.
           if [ -S /var/run/docker.sock ]; then
             docker load -i "${BUNDLE}"
-            docker images | grep cs9-regular || true
+            docker images | grep -E 'flightctl-device.*(package|base-)' || true
           else
             podman load -i "${BUNDLE}"
-            podman images | grep cs9-regular || true
+            podman images | grep -E 'flightctl-device.*(package|base-)' || true
           fi
-          echo "✓ cs9-regular images loaded"
+          echo "✓ Agent bundle images loaded"
 
       # ========== PREP E2E ENV ==========
       - name: Wait for API readiness

@@ -95,16 +95,6 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Upload package-mode agent OCI bundle
-        if: ${{ inputs.os_id == 'cs9-bootc' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: agent-images-bundle-cs9-regular-${{ inputs.tag }}
-          path: bin/agent-artifacts/agent-images-bundle-cs9-regular.tar
-          compression-level: 0
-          if-no-files-found: error
-          retention-days: 1
-
       - name: Upload qcow2 image (per flavor)
         uses: actions/upload-artifact@v4
         with:

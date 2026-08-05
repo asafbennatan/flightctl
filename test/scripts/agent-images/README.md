@@ -11,11 +11,10 @@ And can be triggered from the top-level makefile with: `make e2e-agent-images`
 The `AGENT_OS_ID` parameter controls which OS flavor to build:
 
 ```bash
-# Build for default OS (cs9-bootc): bootc base + variants + bundle + qcow2,
-# plus the package-mode OCI test image (create_package_mode_image.sh)
+# Build for default OS (cs9-bootc): bootc base + variants (incl. package) + qcow2 + agent bundle
 make e2e-agent-images
 
-# Build for CS10 bootc only (no package-mode OCI)
+# Build for CS10 bootc (agent bundle also includes the package variant)
 AGENT_OS_ID=cs10-bootc make e2e-agent-images
 ```
 
@@ -23,15 +22,13 @@ AGENT_OS_ID=cs10-bootc make e2e-agent-images
 
 `make e2e-agent-images` delegates to:
 
-1. **Bootc agent images**: `create_agent_images.sh` → `scripts/build.sh --base`, then
-   `scripts/build_and_qcow2.sh` (variants, bundle, qcow2)
+1. **Agent images**: `create_agent_images.sh` → `scripts/build.sh --base` (bootc base), then
+   `scripts/build_and_qcow2.sh` (variants including `package`, agent bundle, qcow2)
 2. **App images**: `create_application_image.sh`
-3. **Package-mode OCI** (CS9 only): `create_package_mode_image.sh` builds
-   `containerfiles/cs9-regular/Containerfile` and writes
-   `bin/agent-artifacts/agent-images-bundle-cs9-regular.tar`
 
 Bootc `AGENT_OS_ID` values are `cs9-bootc` (default) and `cs10-bootc`. Package-mode is
-not an OS flavor; it is an extra OCI image for testcontainers.
+the `package` variant under `variants/package/` (layered on the bootc base with
+`bootc`/`rpm-ostree` removed from PATH so the agent reports `osMode=package`).
 
 ## OS Flavors and Tagging
 
@@ -42,24 +39,23 @@ Bootc flavors with dedicated Containerfiles:
 
 Package-mode testcontainer image:
 
-- **cs9-regular** Containerfile under `containerfiles/cs9-regular/` (built by
-  `create_package_mode_image.sh`, not via `AGENT_OS_ID`)
+- **`package`** variant under `variants/package/` (bootc base; image-OS tools disabled)
 
 ### Building Different Flavors
 
 ```bash
-# Build cs9-bootc images (default, community)
+# Build cs9-bootc base (default, community)
 ./scripts/build.sh --base
 
-# Build cs10-bootc images (community)
+# Build cs10-bootc base (community)
 AGENT_OS_ID=cs10-bootc ./scripts/build.sh --base
+
+# Build variants (includes package) against the bootc base for this OS_ID
+./scripts/build.sh --variants
 
 # Build Red Hat variants
 DISTRO=redhat AGENT_OS_ID=cs9-bootc ./scripts/build.sh --base
 DISTRO=redhat AGENT_OS_ID=cs10-bootc ./scripts/build.sh --base
-
-# Package-mode OCI only
-./create_package_mode_image.sh
 ```
 
 ### Image Tagging
@@ -72,13 +68,13 @@ Images are tagged with OS flavor identifiers for easy selection:
 - `quay.io/flightctl/flightctl-device:base` (latest flavor)
 - `quay.io/flightctl/flightctl-device:base-cs9-bootc`
 - `quay.io/flightctl/flightctl-device:base-${TAG}`
-- `quay.io/flightctl/flightctl-device:base-cs9-regular` / `:base-cs9-regular-${TAG}` (package-mode OCI)
 
 **Variant Images:**
 - `quay.io/flightctl/flightctl-device:v2-cs9-bootc-${TAG}`
 - `quay.io/flightctl/flightctl-device:v2-cs10-bootc-${TAG}`
 - `quay.io/flightctl/flightctl-device:v2` (latest flavor)
 - `quay.io/flightctl/flightctl-device:v2-cs9-bootc`
+- `quay.io/flightctl/flightctl-device:package` / `:package-${OS_ID}` / `:package-${OS_ID}-${TAG}` (package-mode OCI)
 
 This allows selecting specific OS versions in deployment configurations.
 
@@ -92,8 +88,6 @@ agent-images/
 ├── containerfiles/        # OS flavor-specific Containerfiles
 │   ├── cs9-bootc/         # CentOS Stream 9 bootc
 │   │   └── Containerfile
-│   ├── cs9-regular/       # Package-mode base image
-│   │   └── Containerfile
 │   ├── cs9-bootc-redhat/  # RHEL 9 bootc
 │   │   └── Containerfile
 │   ├── cs10-bootc/        # CentOS Stream 10 bootc
@@ -101,7 +95,8 @@ agent-images/
 │   └── cs10-bootc-redhat/ # RHEL 10 bootc
 │       └── Containerfile
 ├── variants/              # Variant-specific files
-│   ├── v2/, v3/, ..., v10/   # Each contains Containerfile and variant-specific files
+│   ├── v2/, v3/, ..., v12/  # Layered on bootc base
+│   └── package/             # Package-mode (bootc base; no image-OS switch)
 ├── apps/                  # Application images (Containerfile.<app-name>.<version>)
 ├── common/                # Shared files used by variants/apps
 ├── scripts/               # Build automation scripts
@@ -110,12 +105,11 @@ agent-images/
 │   ├── bundle.sh          # Create image bundles
 │   ├── qcow2.sh           # Generate QCOW2 disk images
 │   └── upload-images.sh   # Upload images to registry
-├── create_agent_images.sh        # Bootc agent images wrapper
-├── create_application_image.sh   # App OCI images
-└── create_package_mode_image.sh  # Package-mode agent OCI (CS9)
+├── create_agent_images.sh        # Agent images wrapper
+└── create_application_image.sh   # App OCI images
 ```
 
-The images are built using the `Containerfile` files in the respective directories. For functionality or service deployment changes, update the appropriate `containerfiles/*/Containerfile`, `variants/vX/Containerfile`, or create new variants as needed.
+The images are built using the `Containerfile` files in the respective directories. For functionality or service deployment changes, update the appropriate `containerfiles/*/Containerfile`, `variants/*/Containerfile`, or create new variants as needed.
 
 ## Build Scripts
 
@@ -126,7 +120,6 @@ The `scripts/` directory contains modular build automation:
 - **`bundle.sh`** - Creates tar bundles of built images for distribution
 - **`qcow2.sh`** - Generates bootable QCOW2 disk images using bootc-image-builder
 - **`upload-images.sh`** - Uploads image bundles to container registries
-- **`../create_package_mode_image.sh`** - Builds the package-mode agent OCI image + bundle
 
 Use `./scripts/build.sh --help` for detailed usage and options.
 
@@ -141,19 +134,20 @@ Each image is tagged with multiple tags for flexibility:
 | `<name>-${OS_ID}`         | `quay.io/flightctl/flightctl-device:base-cs9-bootc` |
 | `<name>-${TAG}`           | `quay.io/flightctl/flightctl-device:base-v0.5.0`    |
 
-Where `<name>` is `base`, `v2`, `v3`, etc.
+Where `<name>` is `base`, `v2`, `v3`, …, or `package`.
 
 ### Build Outputs
 
-| Name   | QCOW2 Image                      | Container Image Tags                        |
-|--------|----------------------------------|---------------------------------------------|
-| base   | `bin/output/qcow2/disk.qcow2`    | `base`, `base-${OS_ID}`, `base-${TAG}`, `base-${OS_ID}-${TAG}` |
-| v2     | N/A                              | `v2`, `v2-${OS_ID}`, `v2-${TAG}`, `v2-${OS_ID}-${TAG}` |
-| v3     | N/A                              | `v3`, `v3-${OS_ID}`, `v3-${TAG}`, `v3-${OS_ID}-${TAG}` |
+| Name    | QCOW2 Image                      | Container Image Tags                        |
+|---------|----------------------------------|---------------------------------------------|
+| base    | `bin/output/qcow2/disk.qcow2`    | `base`, `base-${OS_ID}`, `base-${TAG}`, `base-${OS_ID}-${TAG}` |
+| v2      | N/A                              | `v2`, `v2-${OS_ID}`, `v2-${TAG}`, `v2-${OS_ID}-${TAG}` |
+| v3      | N/A                              | `v3`, `v3-${OS_ID}`, `v3-${TAG}`, `v3-${OS_ID}-${TAG}` |
+| package | N/A                              | `package`, `package-${OS_ID}`, `package-${TAG}`, `package-${OS_ID}-${TAG}` |
 
 > **Note:** `qcow2.sh` writes the disk image to `bin/output/agent-qcow2-${OS_ID}/qcow2/disk.qcow2`.
 > When using `create_agent_images.sh` for bootc flavors, the image is moved to `bin/output/qcow2/disk.qcow2`.
-> Package-mode (`cs9-regular`) produces an OCI bundle only (`bin/agent-artifacts/agent-images-bundle-cs9-regular.tar`).
+> The `package` variant is included in `bin/agent-artifacts/agent-images-bundle-${AGENT_OS_ID}.tar`.
 
 ### Local Usage and Registry Remapping
 

@@ -90,23 +90,46 @@ else
   echo "Skipping variants build for ${OS_ID}"
 fi
 
-# Bundle creation: always create a bundle from matching images (base + any variants).
+# Bundle creation: bootc images for this OS_ID plus the package variant plain tag
+# (harness uses :package; the *-OS_ID-* filter alone would omit it).
 # This runs after variants complete (if applicable) in the wait block below.
 create_bundle() {
+  local bundle_tar="${ARTIFACTS_OUTPUT_DIR}/agent-images-bundle-${OS_ID}.tar"
   printf '%s\n' "----------" "Creating bundle" "----------"
-  sudo -E "${SCRIPT_DIR}/bundle.sh" \
-    --filter "label=io.flightctl.e2e.component" \
-    --filter "reference=${IMAGE_REPO}:*-${OS_ID}-*" \
-    --output-path "${ARTIFACTS_OUTPUT_DIR}/agent-images-bundle-${OS_ID}.tar" 2>&1 | tee -a "${variants_log}"
+  mapfile -t refs < <(
+    {
+      sudo podman images --format '{{.Repository}}:{{.Tag}}' \
+        --filter "label=io.flightctl.e2e.component=device" \
+        --filter "reference=${IMAGE_REPO}:*-${OS_ID}-*" || true
+      # Harness uses the plain :package tag; include OS-scoped package tags too.
+      sudo podman images --format '{{.Repository}}:{{.Tag}}' \
+        --filter "label=io.flightctl.e2e.component=device" \
+        --filter "reference=${IMAGE_REPO}:package" || true
+      sudo podman images --format '{{.Repository}}:{{.Tag}}' \
+        --filter "label=io.flightctl.e2e.component=device" \
+        --filter "reference=${IMAGE_REPO}:package-${OS_ID}" || true
+    } | grep -v '^<none>:<none>$' | grep -v '^$' | sort -u || true
+  )
+  if [ "${#refs[@]}" -eq 0 ]; then
+    echo "::error::No ${OS_ID}/package device images found to bundle" | tee -a "${variants_log}"
+    exit 1
+  fi
+  {
+    echo "Bundling ${#refs[@]} images:"
+    for ref in "${refs[@]}"; do
+      printf '\t- %s\n' "${ref}"
+    done
+  } | tee -a "${variants_log}"
+  rm -f "${bundle_tar}"
+  sudo podman save --multi-image-archive -o "${bundle_tar}" "${refs[@]}" 2>&1 | tee -a "${variants_log}"
   sudo chown -R "$(id -un)":"$(id -gn)" "${ARTIFACTS_OUTPUT_DIR}" || true
 
   if [ "${DO_PUSH}" = "true" ]; then
-    BUNDLE_TAR="${ARTIFACTS_OUTPUT_DIR}/agent-images-bundle-${OS_ID}.tar"
-    if [ -f "${BUNDLE_TAR}" ]; then
+    if [ -f "${bundle_tar}" ]; then
       echo "Pushing images from bundle..."
-      "${SCRIPT_DIR}/upload-images.sh" "${BUNDLE_TAR}" 2>&1 | tee -a "${variants_log}"
+      "${SCRIPT_DIR}/upload-images.sh" "${bundle_tar}" 2>&1 | tee -a "${variants_log}"
     else
-      echo "Warning: Bundle not found at ${BUNDLE_TAR}, skipping push"
+      echo "Warning: Bundle not found at ${bundle_tar}, skipping push"
     fi
   fi
 }

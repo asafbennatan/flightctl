@@ -20,7 +20,7 @@ Defined in **test/test.mk** (included from root Makefile). Coverage reports go t
   - **Full flow (deploy + e2e):** `make e2e-test` – deploys cluster, builds e2e agent images, prepares qcow2, runs e2e.  
   - **Cluster already up:** `make in-cluster-e2e-test` – skips deploy, runs e2e.  
   - **Filter:** `GO_E2E_DIRS=test/e2e/agent`, `GINKGO_FOCUS="description"`, `GINKGO_PROCS=N`.  
-  - **Package-mode CI/local scope:** `GO_E2E_DIRS=./test/e2e/package_mode` runs the dedicated package-mode suite against a `cs9-regular` testcontainer (requires the agent config under `bin/agent/etc/flightctl` and the `cs9-regular` OCI image loaded locally).
+  - **Package-mode CI/local scope:** `GO_E2E_DIRS=./test/e2e/package_mode` runs the dedicated package-mode suite against the `package` variant testcontainer (requires the agent config under `bin/agent/etc/flightctl` and the `package` OCI image loaded locally).
   - Some e2e suites (e.g. quadlets) need a quadlet-capable VM; see `test/e2e/quadlets/README.md` and `test/e2e/tpm/README.md`. Rollout tests use multiple VMs and have higher RAM requirements; see `test/e2e/rollout/README.md`.
 
 ## E2E layout and harness
@@ -36,21 +36,19 @@ Defined in **test/test.mk** (included from root Makefile). Coverage reports go t
 ## Package-mode E2E
 
 Package-mode E2E tests (`./test/e2e/package_mode`) verify device behavior when the agent
-runs on a traditional RPM-based OS (no bootc or rpm-ostree). The tests use a **testcontainer**
-running the `cs9-regular` OCI image with systemd as init, allowing nested Podman for
-application deployment.
+cannot switch OS image (`osMode=package`). The tests use a **testcontainer** running the
+`package` agent-image variant (bootc base with `bootc`/`rpm-ostree` removed from PATH) with
+systemd as init, allowing nested Podman for application deployment.
 
 **CI integration:**
 
-- On CS9, `make e2e-agent-images` also builds the package-mode OCI image
-  (`create_package_mode_image.sh`) and the cs9-bootc agent-images job uploads
-  `agent-images-bundle-cs9-regular` alongside the bootc bundle + qcow.
-- E2E jobs download and load that bundle into local Podman/Docker storage before
-  running tests.
+- `make e2e-agent-images` builds the `package` variant with other variants and includes it
+  in the agent bundle for that `AGENT_OS_ID`.
+- E2E jobs load that agent bundle into local Docker/Podman for the testcontainer.
 - Package-mode tests run alongside other e2e tests (no dedicated matrix row); the suite
   starts a testcontainer instead of a VM.
 
-**Local build** (default CS9 `make e2e-agent-images` includes the package-mode image):
+**Local build:**
 
 ```bash
 make e2e-agent-images
@@ -65,7 +63,7 @@ make e2e-agent-images
   - Configures e2e registry CA + insecure registries.conf (same role as qcow injection for VMs)
   - Disables firewalld (interferes with nested Podman)
   - Waits for the `flightctl-agent` systemd service to be active
-- The container uses the `quay.io/flightctl/flightctl-device:base-cs9-regular` image
+- The container uses the `quay.io/flightctl/flightctl-device:package` image
 - Tests verify osMode=package capability, config deployment, and podman application lifecycle
 
 **Mixed-fleet tests:**

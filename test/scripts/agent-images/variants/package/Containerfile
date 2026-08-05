@@ -1,0 +1,25 @@
+# quay.io/flightctl/flightctl-device:package
+#
+# Bootc base with image-OS tooling removed from PATH so DetectMode reports
+# package mode (no bootc/rpm-ostree → cannot switch OS image).
+# Greenboot is masked to match real package-mode installs (no greenboot).
+
+ARG BASE_IMAGE=quay.io/flightctl/flightctl-device:base
+
+FROM ${BASE_IMAGE}
+
+RUN for bin in bootc rpm-ostree; do \
+      if [ -e "/usr/bin/${bin}" ]; then \
+        mv "/usr/bin/${bin}" "/usr/bin/${bin}.disabled"; \
+      fi; \
+    done && \
+    systemctl mask \
+      greenboot-healthcheck.service \
+      greenboot-status.service \
+      greenboot-task-runner.service \
+      greenboot-loader-entry.service \
+      greenboot-grub2-set-counter.service \
+      greenboot-grub2-set-success.service \
+      greenboot-rpm-ostree-grub2-check-fallback.service \
+      flightctl-configure-greenboot.service \
+      || true
