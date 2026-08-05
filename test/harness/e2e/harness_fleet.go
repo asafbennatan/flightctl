@@ -121,7 +121,7 @@ func (h *Harness) CreateOrUpdateTestFleet(testFleetName string, fleetSpecOrSelec
 
 	resp, err := h.Client.ReplaceFleetWithResponse(h.Context, testFleetName, testFleet)
 	if err != nil {
-		return err
+		return fmt.Errorf("replace fleet %q: %w", testFleetName, err)
 	}
 	// Replace creates with 201 or updates with 200; anything else is a failed apply.
 	if resp.StatusCode() != 200 && resp.StatusCode() != 201 {

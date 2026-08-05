@@ -122,6 +122,17 @@ create_bundle() {
 }
 
 QCOW2_PID=""
+cleanup_background_builds() {
+  local pid
+  for pid in "${QCOW2_PID}" "${VARIANTS_PID}"; do
+    if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+      kill "${pid}" 2>/dev/null || true
+      wait "${pid}" 2>/dev/null || true
+    fi
+  done
+}
+trap cleanup_background_builds EXIT
+
 if [ "${SKIP_QCOW_BUILD}" != "true" ]; then
   if [[ "${OS_ID}" == *-regular ]]; then
     echo "::error::QCOW2 build is not supported for ${OS_ID} (qcow2_regular.sh removed; set SKIP_QCOW_BUILD=true)"
@@ -143,6 +154,7 @@ variants_exit=0
 qcow2_exit=0
 if [ -n "${VARIANTS_PID}" ]; then
   wait "${VARIANTS_PID}" || variants_exit=$?
+  VARIANTS_PID=""
 fi
 
 if [ "${variants_exit}" -ne 0 ]; then
@@ -156,11 +168,13 @@ create_bundle
 
 if [ -n "${QCOW2_PID}" ]; then
   wait "${QCOW2_PID}" || qcow2_exit=$?
+  QCOW2_PID=""
 fi
-if [ -n "${QCOW2_PID}" ] && [ "${qcow2_exit}" -ne 0 ]; then
+if [ "${qcow2_exit}" -ne 0 ]; then
   echo "::error::QCOW2 build failed with exit code ${qcow2_exit}"
   echo "The logs for the qcow2 build are saved to ${qcow2_log}"
   exit "${qcow2_exit}"
 fi
 
+trap - EXIT
 echo "Build for ${OS_ID} completed successfully."

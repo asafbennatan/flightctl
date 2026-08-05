@@ -226,7 +226,10 @@ func (a *PackageModeAgent) execOK(ctx context.Context, cmd string) error {
 	if err != nil {
 		return fmt.Errorf("exec %q: %w", cmd, err)
 	}
-	out, _ := io.ReadAll(reader)
+	out, readErr := io.ReadAll(reader)
+	if readErr != nil {
+		return fmt.Errorf("read exec output %q: %w", cmd, readErr)
+	}
 	if exitCode != 0 {
 		return fmt.Errorf("exec %q: exit code %d: %s", cmd, exitCode, string(out))
 	}
@@ -303,37 +306,56 @@ func (a *PackageModeAgent) Stop(ctx context.Context) error {
 
 // GetAgentLogs returns the flightctl-agent journal logs with enrollment QR noise filtered out.
 func (a *PackageModeAgent) GetAgentLogs(ctx context.Context) (string, error) {
-	// Prefer structured/useful lines; keep /enroll/ for GetEnrollmentID. Drop QR block noise.
-	cmd := `journalctl -u flightctl-agent --no-pager -o cat -n 2000 | grep -E 'level=|/enroll/|Waiting for enrollment|Bootstrap|Starting Flight|Spec reconciliation|application|pull|error|Error' | grep -v '█' | grep -v '▀' | tail -n 400`
-	exitCode, reader, err := a.Container.Exec(ctx, []string{"sh", "-c", cmd})
+	exitCode, reader, err := a.Container.Exec(ctx, []string{
+		"journalctl", "-u", "flightctl-agent", "--no-pager", "-o", "cat", "-n", "2000",
+	})
 	if err != nil {
 		return "", fmt.Errorf("get agent logs: %w", err)
 	}
+	out, readErr := io.ReadAll(reader)
+	if readErr != nil {
+		return "", fmt.Errorf("read agent logs: %w", readErr)
+	}
 	if exitCode != 0 {
-		// grep returns 1 when there are no matches; still try a raw tail.
-		exitCode, reader, err = a.Container.Exec(ctx, []string{"journalctl", "-u", "flightctl-agent", "--no-pager", "-o", "cat", "-n", "200"})
-		if err != nil {
-			return "", fmt.Errorf("get agent logs fallback: %w", err)
-		}
-		if exitCode != 0 {
-			return "", fmt.Errorf("get agent logs: exit code %d", exitCode)
-		}
+		return "", fmt.Errorf("get agent logs: exit code %d: %s", exitCode, string(out))
 	}
-	var buf strings.Builder
-	if _, err := io.Copy(&buf, reader); err != nil {
-		return "", fmt.Errorf("read agent logs: %w", err)
-	}
-	return filterPackageModeAgentLogNoise(buf.String()), nil
+	return filterPackageModeAgentLogs(string(out)), nil
 }
 
-func filterPackageModeAgentLogNoise(logs string) string {
-	var out strings.Builder
+func filterPackageModeAgentLogs(logs string) string {
+	var useful []string
 	for _, line := range strings.Split(logs, "\n") {
 		if strings.Contains(line, "█") || strings.Contains(line, "▀") {
 			continue
 		}
-		out.WriteString(line)
-		out.WriteByte('\n')
+		if !packageModeAgentLogLineUseful(line) {
+			continue
+		}
+		useful = append(useful, line)
 	}
-	return out.String()
+	if len(useful) > 400 {
+		useful = useful[len(useful)-400:]
+	}
+	if len(useful) == 0 {
+		return ""
+	}
+	return strings.Join(useful, "\n") + "\n"
+}
+
+func packageModeAgentLogLineUseful(line string) bool {
+	switch {
+	case strings.Contains(line, "level="),
+		strings.Contains(line, "/enroll/"),
+		strings.Contains(line, "Waiting for enrollment"),
+		strings.Contains(line, "Bootstrap"),
+		strings.Contains(line, "Starting Flight"),
+		strings.Contains(line, "Spec reconciliation"),
+		strings.Contains(line, "application"),
+		strings.Contains(line, "pull"),
+		strings.Contains(line, "error"),
+		strings.Contains(line, "Error"):
+		return true
+	default:
+		return false
+	}
 }
