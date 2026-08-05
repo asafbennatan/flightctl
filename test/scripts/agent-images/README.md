@@ -11,13 +11,13 @@ And can be triggered from the top-level makefile with: `make e2e-agent-images`
 The `AGENT_OS_ID` parameter controls which OS flavor to build:
 
 ```bash
-# Build for default OS (cs9-bootc)
+# Build for default OS (cs9-bootc): base + variants + bundle + qcow2
 make e2e-agent-images
 
-# Build package-mode images
-BUILD_TYPE=regular AGENT_OS_ID=cs9-regular make e2e-agent-images
+# Build package-mode OCI image + bundle (no qcow2)
+AGENT_OS_ID=cs9-regular make e2e-agent-images
 
-# Build for specific OS
+# Build for specific bootc OS
 AGENT_OS_ID=cs10-bootc make e2e-agent-images
 ```
 
@@ -25,18 +25,12 @@ AGENT_OS_ID=cs10-bootc make e2e-agent-images
 
 The script is a wrapper that delegates to the modular build system:
 1. **Base image**: Built using `scripts/build.sh --base`
-2. **Bootc path**: `scripts/build_and_qcow2.sh` builds variants and a bootc qcow2
-3. **Package-mode path**: `BUILD_TYPE=regular AGENT_OS_ID=cs9-regular` builds the package-mode base OCI image only (`SKIP_QCOW_BUILD=true` by default; package-mode qcow2 is unsupported)
+2. **Bootc flavors** (`*-bootc`): `scripts/build_and_qcow2.sh` builds variants, bundle, and qcow2
+3. **Package-mode flavor** (`cs9-regular`): base OCI image + bundle only
 
-The build process automatically handles different OS flavors (cs9-bootc, cs9-regular, cs10-bootc)
-and RPM source detection (local, COPR, or Brew registry).
-
-`BUILD_TYPE=regular` is a package-mode-only path in `create_agent_images.sh`. There,
-omitting `AGENT_OS_ID` defaults it to `cs9-regular`, and any other `AGENT_OS_ID`
-with `BUILD_TYPE=regular` fails fast.
-
-For the `make e2e-agent-images` entrypoint, pass `AGENT_OS_ID=cs9-regular`
-explicitly. Make still defaults `AGENT_OS_ID` to `cs9-bootc`.
+The build process handles different OS flavors (cs9-bootc, cs9-regular, cs10-bootc)
+and RPM source detection (local, COPR, or Brew registry). Make defaults
+`AGENT_OS_ID` to `cs9-bootc`.
 
 ## OS Flavors and Tagging
 
@@ -124,10 +118,9 @@ The images are built using the `Containerfile` files in the respective directori
 The `scripts/` directory contains modular build automation:
 
 - **`build.sh`** - Main build script with options: `--base`, `--variants`, `--apps`
-- **`build_and_qcow2.sh`** - Orchestrates variant and QCOW2 builds; for `*-regular` it is QCOW2-only by default unless `SKIP_VARIANTS_BUILD=false` is set explicitly
+- **`build_and_qcow2.sh`** - Orchestrates bootc variant, bundle, and QCOW2 builds
 - **`bundle.sh`** - Creates tar bundles of built images for distribution
 - **`qcow2.sh`** - Generates bootable QCOW2 disk images using bootc-image-builder
-- **`qcow2_regular.sh`** - Generates package-mode QCOW2 images from a bootable cloud image via host-side `dnf --installroot` plus `virt-customize` post-config
 - **`upload-images.sh`** - Uploads image bundles to container registries
 
 Use `./scripts/build.sh --help` for detailed usage and options.
@@ -154,27 +147,8 @@ Where `<name>` is `base`, `v2`, `v3`, etc.
 | v3     | N/A                              | `v3`, `v3-${OS_ID}`, `v3-${TAG}`, `v3-${OS_ID}-${TAG}` |
 
 > **Note:** `qcow2.sh` writes the disk image to `bin/output/agent-qcow2-${OS_ID}/qcow2/disk.qcow2`.
-> When using `create_agent_images.sh`, the image is moved to `bin/output/qcow2/disk.qcow2`.
-
-For `BUILD_TYPE=regular AGENT_OS_ID=cs9-regular`, `create_agent_images.sh` still writes the final QCOW2 to the same `bin/output/qcow2/disk.qcow2` path, but it is produced by `scripts/qcow2_regular.sh` from the configured cloud image instead of `bootc-image-builder`.
-
-That means the package-mode OCI base and package-mode qcow2 are parallel build paths:
-- `containerfiles/cs9-regular/Containerfile` is the source of truth for the OCI base image
-- `scripts/qcow2_regular.sh` is the source of truth for the package-mode qcow2 disk customization
-
-They are intentionally parallel because the qcow2 must start from a **bootable** CentOS
-GenericCloud image (kernel/bootloader). The OCI image is a container rootfs and is not
-exported as the disk.
-
-`qcow2_regular.sh` mounts that cloud disk on the host (`guestmount`) and installs packages
-via `dnf --installroot` inside a CentOS Stream 9 container (runner network, not libguestfs
-guest networking). Flightctl RPMs use `tsflags=noscripts` — agent/selinux `%post` is
-unreliable under guestmount FUSE. After unmount, `virt-customize` loads the
-`flightctl_agent` SELinux module (build fails if it is missing), finishes user/linger
-setup, and runs `--selinux-relabel`. Guest `dnf` inside `virt-customize` is avoided.
-
-Agent config, certificates, and registry remapping are expected to be injected into the
-qcow2 after build via the existing e2e injection flow.
+> When using `create_agent_images.sh` for bootc flavors, the image is moved to `bin/output/qcow2/disk.qcow2`.
+> Package-mode (`cs9-regular`) produces an OCI bundle only (`bin/agent-artifacts/agent-images-bundle-cs9-regular.tar`).
 
 ### Local Usage and Registry Remapping
 

@@ -42,8 +42,9 @@ application deployment.
 
 **CI integration:**
 
-- The `cs9-regular` flavor builds an OCI image (no QCOW2) via `build-agent-images-unified`
-  with `build_type: regular`, `upload_bundle: true`, and `skip_qcow_build: true`.
+- `cs9-regular` is built as a normal OCI image via `build-package-mode-agent-image`
+  (`build-agent-oci-image.yaml`) — base image + bundle only, separate from the bootc
+  variants+qcow pipeline in `build-agent-images.yaml`.
 - E2E jobs download and load the cs9-regular bundle into local Podman storage before
   running tests.
 - Package-mode tests run alongside other e2e tests (no dedicated matrix row); the suite
@@ -52,7 +53,7 @@ application deployment.
 **Local build:**
 
 ```bash
-BUILD_TYPE=regular AGENT_OS_ID=cs9-regular SKIP_QCOW_BUILD=true make e2e-agent-images
+AGENT_OS_ID=cs9-regular make e2e-agent-images
 ```
 
 **Test architecture:**

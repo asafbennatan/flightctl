@@ -109,24 +109,24 @@ jobs:
         include:
           - os_id: cs9-bootc
             rpm_suffix: centos-stream+epel-next-9-x86_64
-            build_type: bootc
-            upload_bundle: true
-          - os_id: cs9-regular
-            rpm_suffix: centos-stream+epel-next-9-x86_64
-            build_type: regular
-            upload_bundle: true
-            skip_qcow_build: true
           - os_id: cs10-bootc
             rpm_suffix: epel-10-x86_64
-            build_type: bootc
-            upload_bundle: true
     uses: ./.github/workflows/build-agent-images.yaml
     with:
       rpm_suffix: ${{ matrix.rpm_suffix }}
       os_id: ${{ matrix.os_id }}
-      build_type: ${{ matrix.build_type }}
-      upload_bundle: ${{ matrix.upload_bundle }}
-      skip_qcow_build: ${{ matrix.skip_qcow_build || false }}
+      tag: ${{ needs.compute-tag.outputs.tag }}
+
+  # Package-mode agent image (OCI only; not the bootc variants+qcow pipeline).
+  build-package-mode-agent-image:
+    needs: [compute-tag, build-rpms]
+    if: |
+      needs.compute-tag.outputs.any_changed == 'true' &&
+      (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-e2e'))
+    uses: ./.github/workflows/build-agent-oci-image.yaml
+    with:
+      rpm_suffix: centos-stream+epel-next-9-x86_64
+      os_id: cs9-regular
       tag: ${{ needs.compute-tag.outputs.tag }}
 
   discover-e2e-tests:
@@ -234,6 +234,7 @@ jobs:
       - build-images-and-charts
       - build-flightctl-cli
       - build-agent-images-unified
+      - build-package-mode-agent-image
       - discover-e2e-tests
     if: |
       needs.compute-tag.outputs.any_changed == 'true' &&

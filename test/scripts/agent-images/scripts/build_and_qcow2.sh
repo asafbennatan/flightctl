@@ -27,6 +27,7 @@ TAG="${TAG:-$SOURCE_GIT_TAG}"
 IMAGE_REPO="${IMAGE_REPO:-quay.io/flightctl/flightctl-device}"
 DO_PUSH=false
 SKIP_QCOW_BUILD="${SKIP_QCOW_BUILD:-false}"
+SKIP_VARIANTS_BUILD="${SKIP_VARIANTS_BUILD:-false}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -54,20 +55,11 @@ fi
 export OS_ID="${OS_ID_ENV}"
 export AGENT_OS_ID="${OS_ID}"
 
-if [[ "${OS_ID}" == *-regular ]]; then
-  SKIP_VARIANTS_BUILD="${SKIP_VARIANTS_BUILD:-true}"
-else
-  SKIP_VARIANTS_BUILD="${SKIP_VARIANTS_BUILD:-false}"
-fi
-
 # Handle v7/v12 variant exclusion for CS10 (no MicroShift support)
 if [ -z "${EXCLUDE_VARIANTS+x}" ]; then
     if [ "${AGENT_OS_ID}" = "cs10-bootc" ]; then
         export EXCLUDE_VARIANTS="v7 v12"
         echo "cs10: v7,v12 excluded (no MicroShift for cs10)"
-    elif [ "${AGENT_OS_ID}" = "cs9-regular" ]; then
-        export EXCLUDE_VARIANTS="v7 v11 v12"
-        echo "cs9-regular: v7, v11, v12 excluded (bootc-specific variants)"
     fi
 fi
 
@@ -79,9 +71,7 @@ mkdir -p "${LOG_DIR}"
 variants_log="${LOG_DIR}/variants.log"
 qcow2_log="${LOG_DIR}/qcow2.log"
 
-# Keep the top-level banner generic because *-regular defaults to a qcow-only
-# flow here, while bootc flavors still build variants, a bundle, and qcow2.
-echo "Building artifacts for ${OS_ID}"
+echo "Building variants, bundle, and qcow2 for ${OS_ID}"
 echo "Variants log: ${variants_log}"
 echo "QCOW2 log: ${qcow2_log}"
 
@@ -134,10 +124,6 @@ cleanup_background_builds() {
 trap cleanup_background_builds EXIT
 
 if [ "${SKIP_QCOW_BUILD}" != "true" ]; then
-  if [[ "${OS_ID}" == *-regular ]]; then
-    echo "::error::QCOW2 build is not supported for ${OS_ID} (qcow2_regular.sh removed; set SKIP_QCOW_BUILD=true)"
-    exit 1
-  fi
   (
     set -euo pipefail
     echo "Building qcow2 for ${OS_ID}"
@@ -177,4 +163,4 @@ if [ "${qcow2_exit}" -ne 0 ]; then
 fi
 
 trap - EXIT
-echo "Build for ${OS_ID} completed successfully."
+echo "Build and qcow2 for ${OS_ID} completed successfully."
