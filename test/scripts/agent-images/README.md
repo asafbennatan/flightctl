@@ -11,45 +11,45 @@ And can be triggered from the top-level makefile with: `make e2e-agent-images`
 The `AGENT_OS_ID` parameter controls which OS flavor to build:
 
 ```bash
-# Build for default OS (cs9-bootc): base + variants + bundle + qcow2
+# Build for default OS (cs9-bootc): bootc base + variants + bundle + qcow2,
+# plus the package-mode OCI test image (create_package_mode_image.sh)
 make e2e-agent-images
 
-# Build package-mode OCI image + bundle (no qcow2)
-AGENT_OS_ID=cs9-regular make e2e-agent-images
-
-# Build for specific bootc OS
+# Build for CS10 bootc only (no package-mode OCI)
 AGENT_OS_ID=cs10-bootc make e2e-agent-images
 ```
 
 ## Build Process
 
-The script is a wrapper that delegates to the modular build system:
-1. **Base image**: Built using `scripts/build.sh --base`
-2. **Bootc flavors** (`*-bootc`): `scripts/build_and_qcow2.sh` builds variants, bundle, and qcow2
-3. **Package-mode flavor** (`cs9-regular`): base OCI image + bundle only
+`make e2e-agent-images` delegates to:
 
-The build process handles different OS flavors (cs9-bootc, cs9-regular, cs10-bootc)
-and RPM source detection (local, COPR, or Brew registry). Make defaults
-`AGENT_OS_ID` to `cs9-bootc`.
+1. **Bootc agent images**: `create_agent_images.sh` → `scripts/build.sh --base`, then
+   `scripts/build_and_qcow2.sh` (variants, bundle, qcow2)
+2. **App images**: `create_application_image.sh`
+3. **Package-mode OCI** (CS9 only): `create_package_mode_image.sh` builds
+   `containerfiles/cs9-regular/Containerfile` and writes
+   `bin/agent-artifacts/agent-images-bundle-cs9-regular.tar`
+
+Bootc `AGENT_OS_ID` values are `cs9-bootc` (default) and `cs10-bootc`. Package-mode is
+not an OS flavor; it is an extra OCI image for testcontainers.
 
 ## OS Flavors and Tagging
 
-The build system supports multiple OS flavors with dedicated Containerfiles:
+Bootc flavors with dedicated Containerfiles:
 
 - **cs9-bootc** - Based on CentOS Stream 9 bootc (default)
-- **cs9-regular** - Package-mode base for non-bootc E2E coverage
 - **cs10-bootc** - Based on CentOS Stream 10 bootc
 
-Each flavor has its own explicit Containerfile eliminating conditional logic.
+Package-mode testcontainer image:
+
+- **cs9-regular** Containerfile under `containerfiles/cs9-regular/` (built by
+  `create_package_mode_image.sh`, not via `AGENT_OS_ID`)
 
 ### Building Different Flavors
 
 ```bash
 # Build cs9-bootc images (default, community)
 ./scripts/build.sh --base
-
-# Build cs9-regular package-mode images
-AGENT_OS_ID=cs9-regular ./scripts/build.sh --base
 
 # Build cs10-bootc images (community)
 AGENT_OS_ID=cs10-bootc ./scripts/build.sh --base
@@ -58,7 +58,8 @@ AGENT_OS_ID=cs10-bootc ./scripts/build.sh --base
 DISTRO=redhat AGENT_OS_ID=cs9-bootc ./scripts/build.sh --base
 DISTRO=redhat AGENT_OS_ID=cs10-bootc ./scripts/build.sh --base
 
-# cs9-regular package-mode does not support DISTRO=redhat/RHEM
+# Package-mode OCI only
+./create_package_mode_image.sh
 ```
 
 ### Image Tagging
@@ -71,6 +72,7 @@ Images are tagged with OS flavor identifiers for easy selection:
 - `quay.io/flightctl/flightctl-device:base` (latest flavor)
 - `quay.io/flightctl/flightctl-device:base-cs9-bootc`
 - `quay.io/flightctl/flightctl-device:base-${TAG}`
+- `quay.io/flightctl/flightctl-device:base-cs9-regular` / `:base-cs9-regular-${TAG}` (package-mode OCI)
 
 **Variant Images:**
 - `quay.io/flightctl/flightctl-device:v2-cs9-bootc-${TAG}`
@@ -108,7 +110,9 @@ agent-images/
 │   ├── bundle.sh          # Create image bundles
 │   ├── qcow2.sh           # Generate QCOW2 disk images
 │   └── upload-images.sh   # Upload images to registry
-└── create_agent_images.sh # Main wrapper script
+├── create_agent_images.sh        # Bootc agent images wrapper
+├── create_application_image.sh   # App OCI images
+└── create_package_mode_image.sh  # Package-mode agent OCI (CS9)
 ```
 
 The images are built using the `Containerfile` files in the respective directories. For functionality or service deployment changes, update the appropriate `containerfiles/*/Containerfile`, `variants/vX/Containerfile`, or create new variants as needed.
@@ -122,6 +126,7 @@ The `scripts/` directory contains modular build automation:
 - **`bundle.sh`** - Creates tar bundles of built images for distribution
 - **`qcow2.sh`** - Generates bootable QCOW2 disk images using bootc-image-builder
 - **`upload-images.sh`** - Uploads image bundles to container registries
+- **`../create_package_mode_image.sh`** - Builds the package-mode agent OCI image + bundle
 
 Use `./scripts/build.sh --help` for detailed usage and options.
 

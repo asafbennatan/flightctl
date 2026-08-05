@@ -202,10 +202,9 @@ export REGISTRY_ENDPOINT
 # Determine OS_ID strictly from AGENT_OS_ID (single source of truth)
 AGENT_OS_ID="${AGENT_OS_ID:-cs9-bootc}"
 case "${AGENT_OS_ID}" in
-    cs9-bootc)   OS_ID="cs9-bootc" ;;
-    cs9-regular) OS_ID="cs9-regular" ;;
-    cs10*) OS_ID="cs10-bootc" ;;
-    *)     OS_ID="${AGENT_OS_ID}" ;;
+    cs9-bootc) OS_ID="cs9-bootc" ;;
+    cs10*)     OS_ID="cs10-bootc" ;;
+    *)         OS_ID="${AGENT_OS_ID}" ;;
 esac
 
 # Export so downstream scripts see the selected flavor
@@ -219,17 +218,6 @@ build_base() {
         echo "Building base image"
     fi
     sudo -E "${SCRIPT_DIR}/scripts/build.sh" --base
-}
-
-build_agent_bundle() {
-    echo "Creating agent image bundle for OS_ID=${OS_ID}"
-    local artifacts_dir="${ARTIFACTS_OUTPUT_DIR:-${ROOT_DIR}/bin/agent-artifacts}"
-    mkdir -p "${artifacts_dir}"
-    sudo -E "${SCRIPT_DIR}/scripts/bundle.sh" \
-        --filter "label=io.flightctl.e2e.component" \
-        --filter "reference=${IMAGE_REPO}:*-${OS_ID}-*" \
-        --output-path "${artifacts_dir}/agent-images-bundle-${OS_ID}.tar"
-    sudo chown -R "${USER}:$(id -gn "${USER}")" "${artifacts_dir}" || true
 }
 
 build_variants_and_qcow2() {
@@ -274,14 +262,5 @@ build_variants_and_qcow2() {
     fi
 }
 
-case "${OS_ID}" in
-    *-regular)
-        # Package-mode: OCI base image + bundle only (no variants/qcow).
-        build_base
-        build_agent_bundle
-        ;;
-    *)
-        build_base
-        build_variants_and_qcow2
-        ;;
-esac
+build_base
+build_variants_and_qcow2

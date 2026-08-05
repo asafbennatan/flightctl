@@ -42,18 +42,18 @@ application deployment.
 
 **CI integration:**
 
-- `cs9-regular` is built as a normal OCI image via `build-package-mode-agent-image`
-  (`build-agent-oci-image.yaml`) — base image + bundle only, separate from the bootc
-  variants+qcow pipeline in `build-agent-images.yaml`.
-- E2E jobs download and load the cs9-regular bundle into local Podman storage before
+- On CS9, `make e2e-agent-images` also builds the package-mode OCI image
+  (`create_package_mode_image.sh`) and the cs9-bootc agent-images job uploads
+  `agent-images-bundle-cs9-regular` alongside the bootc bundle + qcow.
+- E2E jobs download and load that bundle into local Podman/Docker storage before
   running tests.
 - Package-mode tests run alongside other e2e tests (no dedicated matrix row); the suite
   starts a testcontainer instead of a VM.
 
-**Local build:**
+**Local build** (default CS9 `make e2e-agent-images` includes the package-mode image):
 
 ```bash
-AGENT_OS_ID=cs9-regular make e2e-agent-images
+make e2e-agent-images
 ```
 
 **Test architecture:**

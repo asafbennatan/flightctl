@@ -4,6 +4,7 @@ AGENT_OS_ID ?= cs9-bootc
 APP_BUNDLE := $(ROOT_DIR)/bin/app-images-bundle.tar
 AGENT_BUNDLE_DIR := $(ROOT_DIR)/bin/agent-artifacts
 AGENT_BUNDLE := $(AGENT_BUNDLE_DIR)/agent-images-bundle-$(AGENT_OS_ID).tar
+PACKAGE_MODE_BUNDLE := $(AGENT_BUNDLE_DIR)/agent-images-bundle-cs9-regular.tar
 
 bin/output/qcow2/disk.qcow2: $(E2E_AGENT_IMAGES_SENTINEL)
 
@@ -32,6 +33,17 @@ $(E2E_AGENT_IMAGES_SENTINEL): | bin
 	else \
 		echo "App bundle already exists at $(APP_BUNDLE)"; \
 	fi
+	@case "$(AGENT_OS_ID)" in \
+		cs9-bootc) \
+			if [ ! -f "$(PACKAGE_MODE_BUNDLE)" ]; then \
+				echo "Building package-mode agent OCI image"; \
+				BREW_BUILD_URL=$(BREW_BUILD_URL) SOURCE_GIT_TAG=$(SOURCE_GIT_TAG) SOURCE_GIT_TREE_STATE=$(SOURCE_GIT_TREE_STATE) SOURCE_GIT_COMMIT=$(SOURCE_GIT_COMMIT) \
+					FLIGHTCTL_RPM=$(FLIGHTCTL_RPM) ARTIFACTS_OUTPUT_DIR=$(AGENT_BUNDLE_DIR) $(ROOT_DIR)/test/scripts/agent-images/create_package_mode_image.sh; \
+			else \
+				echo "Package-mode agent bundle already exists at $(PACKAGE_MODE_BUNDLE)"; \
+			fi; \
+			;; \
+	esac
 	touch $(E2E_AGENT_IMAGES_SENTINEL)
 
 # DEPRECATED: push-e2e-agent-images is no longer called from prepare-e2e-test
