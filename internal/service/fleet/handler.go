@@ -109,19 +109,36 @@ func (h *ServiceHandler) ReplaceFleet(ctx context.Context, orgId uuid.UUID, name
 		return nil, status
 	}
 
-	if enforceOwnership {
-		existing, getErr := h.store.Get(ctx, orgId, name)
-		if getErr != nil {
-			if !errors.Is(getErr, flterrors.ErrResourceNotFound) {
-				return nil, common.StoreErrorToApiStatus(getErr, false, domain.FleetKind, &name)
-			}
-		} else if fleetOwnershipConflict(existing, &fleet) {
-			return nil, common.StoreErrorToApiStatus(flterrors.ErrUpdatingResourceWithOwnerNotAllowed, false, domain.FleetKind, &name)
-		}
+	existing, getErr := h.store.Get(ctx, orgId, name)
+	if getErr != nil && !errors.Is(getErr, flterrors.ErrResourceNotFound) {
+		return nil, common.StoreErrorToApiStatus(getErr, false, domain.FleetKind, &name)
+	}
+	if existing != nil && enforceOwnership && fleetOwnershipConflict(existing, &fleet) {
+		return nil, common.StoreErrorToApiStatus(flterrors.ErrUpdatingResourceWithOwnerNotAllowed, false, domain.FleetKind, &name)
 	}
 
-	result, created, err := h.store.CreateOrUpdate(ctx, orgId, &fleet, nil, h.callbackFleetUpdated)
-	return result, common.StoreErrorToApiStatus(err, created, domain.FleetKind, &name)
+	if existing == nil {
+		result, err := h.store.Create(ctx, orgId, &fleet, h.callbackFleetUpdated)
+		return result, common.StoreErrorToApiStatus(err, true, domain.FleetKind, &name)
+	}
+
+	result, err := h.store.Mutate(ctx, orgId, name, existing, func(current *domain.Fleet) error {
+		if enforceOwnership && fleetOwnershipConflict(current, &fleet) {
+			return flterrors.ErrUpdatingResourceWithOwnerNotAllowed
+		}
+		current.Spec = fleet.Spec
+		if fleet.Metadata.Labels != nil {
+			current.Metadata.Labels = fleet.Metadata.Labels
+		}
+		if fleet.Metadata.Annotations != nil {
+			current.Metadata.Annotations = fleet.Metadata.Annotations
+		}
+		if fleet.Metadata.Owner != nil {
+			current.Metadata.Owner = fleet.Metadata.Owner
+		}
+		return pruneFleetLifecycleOnCurrent(current)
+	}, h.callbackFleetUpdated)
+	return result, common.StoreErrorToApiStatus(err, false, domain.FleetKind, &name)
 }
 
 // fleetOwnershipConflict reports whether replacing/patching an owned fleet's spec or
@@ -195,7 +212,12 @@ func (h *ServiceHandler) PatchFleet(ctx context.Context, orgId uuid.UUID, name s
 		return nil, common.StoreErrorToApiStatus(flterrors.ErrUpdatingResourceWithOwnerNotAllowed, false, domain.FleetKind, &name)
 	}
 
-	result, err := h.store.Update(ctx, orgId, newObj, nil, h.callbackFleetUpdated)
+	result, err := h.store.Mutate(ctx, orgId, name, currentObj, func(current *domain.Fleet) error {
+		// Annotations/owner were nil'd as managed fields; keep current's then prune lifecycle.
+		current.Spec = newObj.Spec
+		current.Metadata.Labels = newObj.Metadata.Labels
+		return pruneFleetLifecycleOnCurrent(current)
+	}, h.callbackFleetUpdated)
 	return result, common.StoreErrorToApiStatus(err, false, domain.FleetKind, &name)
 }
 

@@ -5,7 +5,6 @@ import (
 	b64 "encoding/base64"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/flightctl/flightctl/internal/domain"
 	"github.com/flightctl/flightctl/internal/flterrors"
@@ -25,6 +24,8 @@ type Store interface {
 	Create(ctx context.Context, orgId uuid.UUID, fleet *domain.Fleet, eventCallback store.EventCallback) (*domain.Fleet, error)
 	Update(ctx context.Context, orgId uuid.UUID, fleet *domain.Fleet, fieldsToUnset []string, eventCallback store.EventCallback) (*domain.Fleet, error)
 	CreateOrUpdate(ctx context.Context, orgId uuid.UUID, fleet *domain.Fleet, fieldsToUnset []string, eventCallback store.EventCallback) (*domain.Fleet, bool, error)
+	// Mutate applies handler logic under resource_version CAS. previous skips the first Get.
+	Mutate(ctx context.Context, orgId uuid.UUID, name string, previous *domain.Fleet, apply FleetApplyFunc, eventCallback store.EventCallback) (*domain.Fleet, error)
 	Get(ctx context.Context, orgId uuid.UUID, name string, opts ...GetOption) (*domain.Fleet, error)
 	List(ctx context.Context, orgId uuid.UUID, listParams store.ListParams, opts ...ListOption) (*domain.FleetList, error)
 	Delete(ctx context.Context, orgId uuid.UUID, name string, eventCallback store.EventCallback) error
@@ -165,9 +166,11 @@ func (s *FleetStore) Create(ctx context.Context, orgId uuid.UUID, resource *doma
 }
 
 func (s *FleetStore) Update(ctx context.Context, orgId uuid.UUID, resource *domain.Fleet, fieldsToUnset []string, eventCallback store.EventCallback) (*domain.Fleet, error) {
-	newFleet, oldFleet, err := s.genericStore.Update(ctx, orgId, resource, fieldsToUnset, nil)
-	s.callEventCallback(ctx, eventCallback, orgId, lo.FromPtr(resource.Metadata.Name), oldFleet, newFleet, false, err)
-	return newFleet, err
+	name := lo.FromPtr(resource.Metadata.Name)
+	return s.Mutate(ctx, orgId, name, nil, func(current *domain.Fleet) error {
+		applyFleetResourceUpdate(current, resource, fieldsToUnset)
+		return nil
+	}, eventCallback)
 }
 
 func (s *FleetStore) CreateOrUpdate(ctx context.Context, orgId uuid.UUID, resource *domain.Fleet, fieldsToUnset []string, eventCallback store.EventCallback) (*domain.Fleet, bool, error) {
@@ -421,7 +424,11 @@ func (s *FleetStore) Delete(ctx context.Context, orgId uuid.UUID, name string, e
 	return err
 }
 func (s *FleetStore) UpdateStatus(ctx context.Context, orgId uuid.UUID, resource *domain.Fleet) (*domain.Fleet, error) {
-	return s.genericStore.UpdateStatus(ctx, orgId, resource)
+	name := lo.FromPtr(resource.Metadata.Name)
+	return s.Mutate(ctx, orgId, name, nil, func(current *domain.Fleet) error {
+		current.Status = resource.Status
+		return nil
+	}, nil)
 }
 
 func (s *FleetStore) UnsetOwner(ctx context.Context, tx *gorm.DB, orgId uuid.UUID, owner string) error {
@@ -454,126 +461,58 @@ func (s *FleetStore) UnsetOwnerByKind(ctx context.Context, tx *gorm.DB, orgId uu
 	return store.ErrorFromGormError(result.Error)
 }
 
-func (s *FleetStore) updateConditions(ctx context.Context, orgId uuid.UUID, name string, conditions []domain.Condition, eventCallback store.EventCallback) (bool, error) {
-	existingRecord := model.Fleet{Resource: model.Resource{OrgID: orgId, Name: name}}
-	result := s.getDB(ctx).Take(&existingRecord)
-	if result.Error != nil {
-		return false, store.ErrorFromGormError(result.Error)
-	}
-
-	if existingRecord.Status == nil {
-		existingRecord.Status = model.MakeJSONField(domain.FleetStatus{})
-	}
-	if existingRecord.Status.Data.Conditions == nil {
-		existingRecord.Status.Data.Conditions = []domain.Condition{}
-	}
-
-	// Make a full copy of the existing conditions
-	existingConditions := make([]domain.Condition, len(existingRecord.Status.Data.Conditions))
-	copy(existingConditions, existingRecord.Status.Data.Conditions)
-
-	changed := false
-	for _, condition := range conditions {
-		if domain.SetStatusCondition(&existingRecord.Status.Data.Conditions, condition) {
-			changed = true
-		}
-	}
-	if !changed {
-		return false, nil
-	}
-
-	result = s.getDB(ctx).Model(existingRecord).Where("resource_version = ?", lo.FromPtr(existingRecord.ResourceVersion)).Updates(map[string]interface{}{
-		"status":           existingRecord.Status,
-		"resource_version": gorm.Expr("resource_version + 1"),
-	})
-	err := store.ErrorFromGormError(result.Error)
-	if err != nil {
-		return strings.Contains(err.Error(), "deadlock"), err
-	}
-	if result.RowsAffected == 0 {
-		return true, flterrors.ErrNoRowsUpdated
-	}
-
-	oldFleet, _ := existingRecord.ToApiResource()
-	oldFleet.Status.Conditions = existingConditions
-	newFleet, _ := existingRecord.ToApiResource()
-	s.callEventCallback(ctx, eventCallback, orgId, name, oldFleet, newFleet, false, err)
-	return false, nil
-}
-
 func (s *FleetStore) UpdateConditions(ctx context.Context, orgId uuid.UUID, name string, conditions []domain.Condition, eventCallback store.EventCallback) error {
-	return retryUpdate(func() (bool, error) {
-		return s.updateConditions(ctx, orgId, name, conditions, eventCallback)
-	})
-}
-
-func (s *FleetStore) updateAnnotations(ctx context.Context, existingRecord model.Fleet, existingAnnotations map[string]string) (bool, error) {
-	result := s.getDB(ctx).Model(existingRecord).Where("resource_version = ?", lo.FromPtr(existingRecord.ResourceVersion)).Updates(map[string]interface{}{
-		"annotations":      model.MakeJSONMap(existingAnnotations),
-		"resource_version": gorm.Expr("resource_version + 1"),
-	})
-	if err := store.ErrorFromGormError(result.Error); err != nil {
-		return strings.Contains(err.Error(), "deadlock"), err
-	}
-	if result.RowsAffected == 0 {
-		return true, flterrors.ErrNoRowsUpdated
-	}
-	return false, nil
-}
-
-func (s *FleetStore) UpdateAnnotations(ctx context.Context, orgId uuid.UUID, name string, annotations map[string]string, deleteKeys []string, eventCallback store.EventCallback) error {
-	existingRecord := model.Fleet{Resource: model.Resource{OrgID: orgId, Name: name}}
-	result := s.getDB(ctx).Take(&existingRecord)
-	if result.Error != nil {
-		return store.ErrorFromGormError(result.Error)
-	}
-
-	existingAnnotations := util.EnsureMap(existingRecord.Annotations)
-	newAnnotations := util.MergeLabels(existingAnnotations, annotations)
-	for _, deleteKey := range deleteKeys {
-		delete(newAnnotations, deleteKey)
-	}
-	err := retryUpdate(func() (bool, error) {
-		return s.updateAnnotations(ctx, existingRecord, newAnnotations)
-	})
-
-	oldFleet := &domain.Fleet{Metadata: domain.ObjectMeta{
-		Annotations: &existingAnnotations,
-	}}
-	newFleet := &domain.Fleet{Metadata: domain.ObjectMeta{
-		Annotations: &newAnnotations,
-	}}
-	s.callEventCallback(ctx, eventCallback, orgId, name, oldFleet, newFleet, false, err)
+	_, err := s.Mutate(ctx, orgId, name, nil, func(current *domain.Fleet) error {
+		if current.Status == nil {
+			current.Status = &domain.FleetStatus{}
+		}
+		if current.Status.Conditions == nil {
+			current.Status.Conditions = []domain.Condition{}
+		}
+		changed := false
+		for _, condition := range conditions {
+			if domain.SetStatusCondition(&current.Status.Conditions, condition) {
+				changed = true
+			}
+		}
+		if !changed {
+			return errMutateSkipWrite
+		}
+		return nil
+	}, eventCallback)
 	return err
 }
 
-// mutateAnnotation freshly reads the fleet's current annotations on every attempt and calls
-// mutate with the current value of key (the empty string if unset), storing the returned value
-// back under that same key. Mirrors DeviceStore.mutateAnnotation: re-invoking mutate against the
-// freshly-read value on every retry makes it safe for atomic read-modify-write updates under
-// concurrent writers, unlike UpdateAnnotations above which computes its value once outside the
-// retry loop.
-func (s *FleetStore) mutateAnnotation(ctx context.Context, orgId uuid.UUID, name string, key string, mutate func(current string) (string, error)) (bool, error) {
-	existingRecord := model.Fleet{Resource: model.Resource{OrgID: orgId, Name: name}}
-	result := s.getDB(ctx).Take(&existingRecord)
-	if result.Error != nil {
-		return false, store.ErrorFromGormError(result.Error)
-	}
-	existingAnnotations := util.EnsureMap(existingRecord.Annotations)
-
-	newValue, err := mutate(existingAnnotations[key])
-	if err != nil {
-		return false, err
-	}
-	existingAnnotations[key] = newValue
-
-	return s.updateAnnotations(ctx, existingRecord, existingAnnotations)
+func (s *FleetStore) UpdateAnnotations(ctx context.Context, orgId uuid.UUID, name string, annotations map[string]string, deleteKeys []string, eventCallback store.EventCallback) error {
+	_, err := s.Mutate(ctx, orgId, name, nil, func(current *domain.Fleet) error {
+		merged := util.MergeLabels(util.EnsureMap(lo.FromPtr(current.Metadata.Annotations)), annotations)
+		for _, deleteKey := range deleteKeys {
+			delete(merged, deleteKey)
+		}
+		current.Metadata.Annotations = &merged
+		return nil
+	}, eventCallback)
+	return err
 }
 
+// MutateAnnotation re-invokes mutate against the current key value on every CAS attempt.
+// An empty return value deletes the key.
 func (s *FleetStore) MutateAnnotation(ctx context.Context, orgId uuid.UUID, name string, key string, mutate func(current string) (string, error)) error {
-	return retryUpdate(func() (bool, error) {
-		return s.mutateAnnotation(ctx, orgId, name, key, mutate)
-	})
+	_, err := s.Mutate(ctx, orgId, name, nil, func(current *domain.Fleet) error {
+		ann := util.EnsureMap(lo.FromPtr(current.Metadata.Annotations))
+		newValue, err := mutate(ann[key])
+		if err != nil {
+			return err
+		}
+		if newValue == "" {
+			delete(ann, key)
+		} else {
+			ann[key] = newValue
+		}
+		current.Metadata.Annotations = &ann
+		return nil
+	}, nil)
+	return err
 }
 
 func (s *FleetStore) OverwriteRepositoryRefs(ctx context.Context, orgId uuid.UUID, name string, repositoryNames ...string) error {

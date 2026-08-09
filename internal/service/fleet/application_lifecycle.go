@@ -7,7 +7,25 @@ import (
 	"github.com/flightctl/flightctl/internal/domain"
 	"github.com/flightctl/flightctl/internal/service/common"
 	"github.com/google/uuid"
+	"github.com/samber/lo"
 )
+
+// pruneFleetLifecycleOnCurrent drops fleet lifecycle defaults for apps no longer in the template.
+func pruneFleetLifecycleOnCurrent(fleet *domain.Fleet) error {
+	if fleet == nil {
+		return nil
+	}
+	pruned, changed, err := domain.PruneApplicationLifecycleAnnotationMap(
+		lo.FromPtr(fleet.Metadata.Annotations),
+		fleet.Spec.Template.Spec.Applications,
+		domain.FleetAnnotationApplicationLifecycle,
+	)
+	if err != nil || !changed {
+		return err
+	}
+	fleet.Metadata.Annotations = &pruned
+	return nil
+}
 
 // StopFleetApplication sets a fleet-level default so that the named application's desiredState
 // is "stopped" on every device currently owned by this fleet, independent of the application's

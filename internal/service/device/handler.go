@@ -248,23 +248,51 @@ func (h *DeviceServiceHandler) ReplaceDevice(ctx context.Context, orgId uuid.UUI
 		return nil, status
 	}
 
-	if enforceOwnership || enforceCapabilities {
-		existing, getErr := h.deviceStore.Get(ctx, orgId, name)
-		if getErr != nil && !errors.Is(getErr, flterrors.ErrResourceNotFound) {
-			return nil, common.StoreErrorToApiStatus(getErr, false, domain.DeviceKind, &name)
-		}
-		if existing != nil && enforceOwnership && len(lo.FromPtr(existing.Metadata.Owner)) != 0 && !domain.DeviceSpecsAreEqual(lo.FromPtr(existing.Spec), lo.FromPtr(device.Spec)) {
-			return nil, common.StoreErrorToApiStatus(flterrors.ErrUpdatingResourceWithOwnerNotAllowed, false, domain.DeviceKind, &name)
-		}
-		if existing != nil && enforceCapabilities && isPackageModeOsImageConflict(existing, &device) {
-			return nil, domain.StatusBadRequest(flterrors.ErrOsImageNotSupportedOnPackageMode.Error())
-		}
+	existing, getErr := h.deviceStore.Get(ctx, orgId, name)
+	if getErr != nil && !errors.Is(getErr, flterrors.ErrResourceNotFound) {
+		return nil, common.StoreErrorToApiStatus(getErr, false, domain.DeviceKind, &name)
+	}
+	if existing != nil && enforceOwnership && len(lo.FromPtr(existing.Metadata.Owner)) != 0 && !domain.DeviceSpecsAreEqual(lo.FromPtr(existing.Spec), lo.FromPtr(device.Spec)) {
+		return nil, common.StoreErrorToApiStatus(flterrors.ErrUpdatingResourceWithOwnerNotAllowed, false, domain.DeviceKind, &name)
+	}
+	if existing != nil && enforceCapabilities && isPackageModeOsImageConflict(existing, &device) {
+		return nil, domain.StatusBadRequest(flterrors.ErrOsImageNotSupportedOnPackageMode.Error())
 	}
 
 	_ = common.UpdateServiceSideStatus(ctx, orgId, &device, h.fleetStore, h.log)
 
-	result, created, err := h.deviceStore.CreateOrUpdate(ctx, orgId, &device, fieldsToUnset, DeviceVerificationCallback, h.callbackDeviceUpdated)
-	return result, common.StoreErrorToApiStatus(err, created, domain.DeviceKind, &name)
+	if existing == nil {
+		result, err := h.deviceStore.Create(ctx, orgId, &device, h.callbackDeviceUpdated)
+		return result, common.StoreErrorToApiStatus(err, true, domain.DeviceKind, &name)
+	}
+
+	result, err := h.deviceStore.Mutate(ctx, orgId, name, existing, func(current *domain.Device) error {
+		if err := rejectDecommissionedDevice(current); err != nil {
+			return err
+		}
+		if enforceOwnership && len(lo.FromPtr(current.Metadata.Owner)) != 0 && !domain.DeviceSpecsAreEqual(lo.FromPtr(current.Spec), lo.FromPtr(device.Spec)) {
+			return flterrors.ErrUpdatingResourceWithOwnerNotAllowed
+		}
+		if enforceCapabilities && isPackageModeOsImageConflict(current, &device) {
+			return flterrors.ErrOsImageNotSupportedOnPackageMode
+		}
+		// Copy request onto current (nil metadata on request preserves current via fieldsToUnset semantics).
+		if device.Spec != nil {
+			current.Spec = device.Spec
+		}
+		if device.Metadata.Labels != nil || lo.Contains(fieldsToUnset, "labels") {
+			current.Metadata.Labels = device.Metadata.Labels
+		}
+		if device.Metadata.Annotations != nil || lo.Contains(fieldsToUnset, "annotations") {
+			current.Metadata.Annotations = device.Metadata.Annotations
+		}
+		if device.Metadata.Owner != nil || lo.Contains(fieldsToUnset, "owner") {
+			current.Metadata.Owner = device.Metadata.Owner
+		}
+		_ = common.UpdateServiceSideStatus(ctx, orgId, current, h.fleetStore, h.log)
+		return pruneLifecycleOnCurrent(current)
+	}, h.callbackDeviceUpdated)
+	return result, common.StoreErrorToApiStatus(err, false, domain.DeviceKind, &name)
 }
 
 func (h *DeviceServiceHandler) UpdateDevice(ctx context.Context, orgId uuid.UUID, name string, device domain.Device, fieldsToUnset []string) (*domain.Device, error) {
@@ -283,7 +311,25 @@ func (h *DeviceServiceHandler) UpdateDevice(ctx context.Context, orgId uuid.UUID
 	_ = common.UpdateServiceSideStatus(ctx, orgId, &device, h.fleetStore, h.log)
 
 	// Ownership is never enforced on UpdateDevice (agent/console trusted path).
-	return h.deviceStore.Update(ctx, orgId, &device, fieldsToUnset, DeviceVerificationCallback, h.callbackDeviceUpdated)
+	return h.deviceStore.Mutate(ctx, orgId, name, nil, func(current *domain.Device) error {
+		if err := rejectDecommissionedDevice(current); err != nil {
+			return err
+		}
+		if device.Spec != nil {
+			current.Spec = device.Spec
+		}
+		if device.Metadata.Labels != nil || lo.Contains(fieldsToUnset, "labels") {
+			current.Metadata.Labels = device.Metadata.Labels
+		}
+		if device.Metadata.Annotations != nil || lo.Contains(fieldsToUnset, "annotations") {
+			current.Metadata.Annotations = device.Metadata.Annotations
+		}
+		if device.Metadata.Owner != nil || lo.Contains(fieldsToUnset, "owner") {
+			current.Metadata.Owner = device.Metadata.Owner
+		}
+		_ = common.UpdateServiceSideStatus(ctx, orgId, current, h.fleetStore, h.log)
+		return pruneLifecycleOnCurrent(current)
+	}, h.callbackDeviceUpdated)
 }
 
 func (h *DeviceServiceHandler) DeleteDevice(ctx context.Context, orgId uuid.UUID, name string) domain.Status {
@@ -506,7 +552,19 @@ func (h *DeviceServiceHandler) PatchDevice(ctx context.Context, orgId uuid.UUID,
 
 	_ = common.UpdateServiceSideStatus(ctx, orgId, newObj, h.fleetStore, h.log)
 
-	result, err := h.deviceStore.Update(ctx, orgId, newObj, nil, DeviceVerificationCallback, h.callbackDeviceUpdated)
+	result, err := h.deviceStore.Mutate(ctx, orgId, name, currentObj, func(current *domain.Device) error {
+		if err := rejectDecommissionedDevice(current); err != nil {
+			return err
+		}
+		// Annotations/owner were nil'd as managed fields; keep current's then prune lifecycle.
+		current.Spec = newObj.Spec
+		current.Metadata.Labels = newObj.Metadata.Labels
+		if newObj.Status != nil {
+			current.Status = newObj.Status
+		}
+		_ = common.UpdateServiceSideStatus(ctx, orgId, current, h.fleetStore, h.log)
+		return pruneLifecycleOnCurrent(current)
+	}, h.callbackDeviceUpdated)
 	return result, common.StoreErrorToApiStatus(err, false, domain.DeviceKind, &name)
 }
 

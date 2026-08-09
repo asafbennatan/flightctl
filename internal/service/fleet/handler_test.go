@@ -2,7 +2,9 @@ package fleet
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -18,6 +20,21 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func deepCopyFleet(src *domain.Fleet) *domain.Fleet {
+	if src == nil {
+		return nil
+	}
+	b, err := json.Marshal(src)
+	if err != nil {
+		panic(fmt.Sprintf("deepCopyFleet failed in test: %v", err))
+	}
+	var dst domain.Fleet
+	if err := json.Unmarshal(b, &dst); err != nil {
+		panic(fmt.Sprintf("deepCopyFleet failed in test: %v", err))
+	}
+	return &dst
+}
 
 const (
 	statusSuccessCode     = int32(200)
@@ -89,11 +106,35 @@ func (f *fakeFleetStore) Update(ctx context.Context, orgId uuid.UUID, fleet *dom
 	if fleet.Metadata.Owner == nil {
 		fleet.Metadata.Owner = old.Metadata.Owner
 	}
+	if fleet.Metadata.Annotations == nil {
+		fleet.Metadata.Annotations = old.Metadata.Annotations
+	}
 	f.fleets[name] = fleet
 	if eventCallback != nil {
 		eventCallback(ctx, domain.FleetKind, orgId, name, old, fleet, false, nil)
 	}
 	return fleet, nil
+}
+
+func (f *fakeFleetStore) Mutate(ctx context.Context, orgId uuid.UUID, name string, previous *domain.Fleet, apply fleetstore.FleetApplyFunc, eventCallback store.EventCallback) (*domain.Fleet, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	old, exists := f.fleets[name]
+	if !exists {
+		return nil, flterrors.ErrResourceNotFound
+	}
+	current := deepCopyFleet(old)
+	if apply != nil {
+		if err := apply(current); err != nil {
+			return nil, err
+		}
+	}
+	f.fleets[name] = current
+	if eventCallback != nil {
+		eventCallback(ctx, domain.FleetKind, orgId, name, old, current, false, nil)
+	}
+	return deepCopyFleet(current), nil
 }
 
 func (f *fakeFleetStore) CreateOrUpdate(ctx context.Context, orgId uuid.UUID, fleet *domain.Fleet, fieldsToUnset []string, eventCallback store.EventCallback) (*domain.Fleet, bool, error) {

@@ -48,6 +48,9 @@ func (m *MockDevice) Create(ctx context.Context, orgId uuid.UUID, device *domain
 func (m *MockDevice) Update(ctx context.Context, orgId uuid.UUID, device *domain.Device, fieldsToUnset []string, validationCallback devicestore.DeviceStoreValidationCallback, callback store.EventCallback) (*domain.Device, error) {
 	return nil, nil
 }
+func (m *MockDevice) Mutate(ctx context.Context, orgId uuid.UUID, name string, previous *domain.Device, apply devicestore.DeviceApplyFunc, callback store.EventCallback) (*domain.Device, error) {
+	return nil, nil
+}
 func (m *MockDevice) CreateOrUpdate(ctx context.Context, orgId uuid.UUID, device *domain.Device, fieldsToUnset []string, validationCallback devicestore.DeviceStoreValidationCallback, callback store.EventCallback) (*domain.Device, bool, error) {
 	return nil, false, nil
 }

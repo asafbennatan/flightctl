@@ -135,3 +135,42 @@ func TestStopStartFleetApplication(t *testing.T) {
 		require.Equal(fleetName, ev.created[0].InvolvedObject.Name)
 	})
 }
+
+func TestReplaceFleetPrunesStaleApplicationLifecycleOverride(t *testing.T) {
+	ctx := context.Background()
+	require := require.New(t)
+	h, _, _, orgId, fleetName := newLifecycleTestFleet(t, "app-1")
+
+	_, status := h.StopFleetApplication(ctx, orgId, fleetName, "app-1")
+	require.Equal(int32(http.StatusOK), status.Code)
+
+	withoutApp := domain.Fleet{
+		Metadata: domain.ObjectMeta{Name: lo.ToPtr(fleetName)},
+	}
+	fleet, status := h.ReplaceFleet(ctx, orgId, fleetName, withoutApp, false)
+	require.Equal(int32(http.StatusOK), status.Code)
+	_, hasLifecycle := lo.FromPtr(fleet.Metadata.Annotations)[domain.FleetAnnotationApplicationLifecycle]
+	require.False(hasLifecycle, "lifecycle default for removed template app must be pruned")
+
+	containerApp := domain.ContainerApplication{
+		AppType: domain.AppTypeContainer,
+		Name:    lo.ToPtr("app-1"),
+	}
+	require.NoError(containerApp.FromImageApplicationProviderSpec(domain.ImageApplicationProviderSpec{Image: "quay.io/test/app:v1"}))
+	var app domain.ApplicationProviderSpec
+	require.NoError(app.FromContainerApplication(containerApp))
+	withApp := domain.Fleet{
+		Metadata: domain.ObjectMeta{Name: lo.ToPtr(fleetName)},
+	}
+	withApp.Spec.Template.Spec.Applications = &[]domain.ApplicationProviderSpec{app}
+
+	fleet, status = h.ReplaceFleet(ctx, orgId, fleetName, withApp, false)
+	require.Equal(int32(http.StatusOK), status.Code)
+	annotations := lo.FromPtr(fleet.Metadata.Annotations)
+	_, hasLifecycle = annotations[domain.FleetAnnotationApplicationLifecycle]
+	require.False(hasLifecycle)
+
+	apps := *fleet.Spec.Template.Spec.Applications
+	require.NoError(domain.OverlayApplicationLifecycle(&apps, "", annotations[domain.FleetAnnotationApplicationLifecycle]))
+	require.Equal(domain.ApplicationDesiredStateRunning, apps[0].GetDesiredState())
+}

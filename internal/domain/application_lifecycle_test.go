@@ -268,3 +268,77 @@ func TestApplicationsContainName(t *testing.T) {
 		assert.False(t, ApplicationsContainName(&apps, "app-2"))
 	})
 }
+
+func TestPruneApplicationLifecycleAnnotationMap(t *testing.T) {
+	t.Run("When a lifecycle key is stale it should delete that key and leave others", func(t *testing.T) {
+		annotations := map[string]string{
+			DeviceAnnotationApplicationLifecycle: `{"app-1":{"desiredState":"stopped"}}`,
+			"other":                              "keep",
+		}
+		pruned, changed, err := PruneApplicationLifecycleAnnotationMap(
+			annotations, &[]ApplicationProviderSpec{}, DeviceAnnotationApplicationLifecycle)
+		require.NoError(t, err)
+		assert.True(t, changed)
+		assert.Equal(t, map[string]string{"other": "keep"}, pruned)
+		assert.Contains(t, annotations, DeviceAnnotationApplicationLifecycle, "input map must not be mutated when unchanged keys remain")
+	})
+
+	t.Run("When nothing is stale it should return the same map", func(t *testing.T) {
+		apps := []ApplicationProviderSpec{newTestApp(t, "app-1")}
+		annotations := map[string]string{
+			DeviceAnnotationApplicationLifecycle: `{"app-1":{"desiredState":"stopped"}}`,
+		}
+		pruned, changed, err := PruneApplicationLifecycleAnnotationMap(
+			annotations, &apps, DeviceAnnotationApplicationLifecycle)
+		require.NoError(t, err)
+		assert.False(t, changed)
+		assert.Equal(t, annotations, pruned)
+	})
+}
+
+func TestPruneApplicationLifecycleOverrides(t *testing.T) {
+	t.Run("When apps still contain the overridden name it should leave the annotation unchanged", func(t *testing.T) {
+		apps := []ApplicationProviderSpec{newTestApp(t, "app-1")}
+		raw := `{"app-1":{"desiredState":"stopped","desiredStateVersion":1}}`
+		encoded, deleteAnnotation, changed, err := PruneApplicationLifecycleOverrides(raw, &apps)
+		require.NoError(t, err)
+		assert.False(t, changed)
+		assert.False(t, deleteAnnotation)
+		assert.Equal(t, raw, encoded)
+	})
+
+	t.Run("When the overridden app is removed it should delete the annotation", func(t *testing.T) {
+		apps := []ApplicationProviderSpec{}
+		encoded, deleteAnnotation, changed, err := PruneApplicationLifecycleOverrides(
+			`{"app-1":{"desiredState":"stopped","desiredStateVersion":1}}`, &apps)
+		require.NoError(t, err)
+		assert.True(t, changed)
+		assert.True(t, deleteAnnotation)
+		assert.Empty(t, encoded)
+	})
+
+	t.Run("When one of two overridden apps is removed it should keep the remaining entry", func(t *testing.T) {
+		apps := []ApplicationProviderSpec{newTestApp(t, "app-2")}
+		encoded, deleteAnnotation, changed, err := PruneApplicationLifecycleOverrides(
+			`{"app-1":{"desiredState":"stopped"},"app-2":{"restartGeneration":3}}`, &apps)
+		require.NoError(t, err)
+		assert.True(t, changed)
+		assert.False(t, deleteAnnotation)
+		assert.JSONEq(t, `{"app-2":{"restartGeneration":3}}`, encoded)
+	})
+
+	t.Run("When the annotation is empty it should report no change", func(t *testing.T) {
+		apps := []ApplicationProviderSpec{newTestApp(t, "app-1")}
+		encoded, deleteAnnotation, changed, err := PruneApplicationLifecycleOverrides("", &apps)
+		require.NoError(t, err)
+		assert.False(t, changed)
+		assert.False(t, deleteAnnotation)
+		assert.Empty(t, encoded)
+	})
+
+	t.Run("When the annotation is invalid JSON it should return an error", func(t *testing.T) {
+		apps := []ApplicationProviderSpec{newTestApp(t, "app-1")}
+		_, _, _, err := PruneApplicationLifecycleOverrides("not-json", &apps)
+		assert.Error(t, err)
+	})
+}

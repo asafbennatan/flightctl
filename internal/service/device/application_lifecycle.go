@@ -11,6 +11,35 @@ import (
 	"github.com/samber/lo"
 )
 
+// pruneLifecycleOnCurrent drops lifecycle overrides for apps no longer in Spec.Applications.
+func pruneLifecycleOnCurrent(device *domain.Device) error {
+	if device == nil {
+		return nil
+	}
+	var apps *[]domain.ApplicationProviderSpec
+	if device.Spec != nil {
+		apps = device.Spec.Applications
+	}
+	pruned, changed, err := domain.PruneApplicationLifecycleAnnotationMap(
+		lo.FromPtr(device.Metadata.Annotations),
+		apps,
+		domain.DeviceAnnotationApplicationLifecycle,
+		domain.DeviceAnnotationFleetApplicationLifecycle,
+	)
+	if err != nil || !changed {
+		return err
+	}
+	device.Metadata.Annotations = &pruned
+	return nil
+}
+
+func rejectDecommissionedDevice(current *domain.Device) error {
+	if current != nil && current.Spec != nil && current.Spec.Decommissioning != nil {
+		return flterrors.ErrDecommission
+	}
+	return nil
+}
+
 // StopDeviceApplication sets a device-level override so that the named application's
 // desiredState is "stopped", independent of the application's declarative spec. The override
 // is stamped with a fresh version so it wins over an earlier fleet-level default for the same

@@ -122,6 +122,25 @@ func (s *fakeDeviceStore) CreateOrUpdate(ctx context.Context, orgId uuid.UUID, d
 	return deepCopyDevice(d), created, nil
 }
 
+func (s *fakeDeviceStore) Mutate(ctx context.Context, orgId uuid.UUID, name string, previous *domain.Device, apply devicestore.DeviceApplyFunc, eventCallback store.EventCallback) (*domain.Device, error) {
+	old, ok := s.devices[name]
+	if !ok {
+		return nil, flterrors.ErrResourceNotFound
+	}
+	current := deepCopyDevice(old)
+	if apply != nil {
+		if err := apply(current); err != nil {
+			return nil, err
+		}
+	}
+	d := deepCopyDevice(current)
+	s.devices[name] = d
+	if eventCallback != nil {
+		eventCallback(ctx, domain.DeviceKind, orgId, name, old, d, false, nil)
+	}
+	return deepCopyDevice(d), nil
+}
+
 func (s *fakeDeviceStore) Update(ctx context.Context, orgId uuid.UUID, device *domain.Device, fieldsToUnset []string, validationCallback devicestore.DeviceStoreValidationCallback, eventCallback store.EventCallback) (*domain.Device, error) {
 	name := lo.FromPtr(device.Metadata.Name)
 	old, ok := s.devices[name]

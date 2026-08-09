@@ -79,6 +79,9 @@ func (f *fakeDeviceStore) Create(context.Context, uuid.UUID, *domain.Device, sto
 func (f *fakeDeviceStore) Update(context.Context, uuid.UUID, *domain.Device, []string, devicestore.DeviceStoreValidationCallback, store.EventCallback) (*domain.Device, error) {
 	panic("not implemented")
 }
+func (f *fakeDeviceStore) Mutate(context.Context, uuid.UUID, string, *domain.Device, devicestore.DeviceApplyFunc, store.EventCallback) (*domain.Device, error) {
+	panic("not implemented")
+}
 func (f *fakeDeviceStore) CreateOrUpdate(context.Context, uuid.UUID, *domain.Device, []string, devicestore.DeviceStoreValidationCallback, store.EventCallback) (*domain.Device, bool, error) {
 	panic("not implemented")
 }
@@ -228,6 +231,9 @@ func (f *fakeFleetStore) Create(context.Context, uuid.UUID, *domain.Fleet, store
 	panic("not implemented")
 }
 func (f *fakeFleetStore) Update(context.Context, uuid.UUID, *domain.Fleet, []string, store.EventCallback) (*domain.Fleet, error) {
+	panic("not implemented")
+}
+func (f *fakeFleetStore) Mutate(context.Context, uuid.UUID, string, *domain.Fleet, fleetstore.FleetApplyFunc, store.EventCallback) (*domain.Fleet, error) {
 	panic("not implemented")
 }
 func (f *fakeFleetStore) CreateOrUpdate(context.Context, uuid.UUID, *domain.Fleet, []string, store.EventCallback) (*domain.Fleet, bool, error) {
