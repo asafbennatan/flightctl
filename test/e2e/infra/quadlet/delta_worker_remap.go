@@ -8,15 +8,24 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var workerRegistriesDirs = []string{
-	"/etc/flightctl/flightctl-delta-worker/registries.conf.d",
-	"/etc/flightctl/flightctl-worker/registries.conf.d",
+var workerRegistryConfigs = []struct {
+	registriesDir string
+	certsDir      string
+	containerFile string
+}{
+	{
+		registriesDir: "/etc/flightctl/flightctl-delta-worker/registries.conf.d",
+		certsDir:      "/etc/flightctl/flightctl-delta-worker/certs.d",
+		containerFile: "flightctl-delta-worker.container",
+	},
+	{
+		registriesDir: "/etc/flightctl/flightctl-worker/registries.conf.d",
+		certsDir:      "/etc/flightctl/flightctl-worker/certs.d",
+		containerFile: "flightctl-worker.container",
+	},
 }
 
-var workerRegistryCertsDirs = []string{
-	"/etc/flightctl/flightctl-delta-worker/certs.d",
-	"/etc/flightctl/flightctl-worker/certs.d",
-}
+const registryCertDropInName = "e2e-registry-ca.conf"
 
 func (p *InfraProvider) ApplyDeltaWorkerRegistryRemap(registryURL string) error {
 	remap, insecure := infra.DeltaWorkerRegistryRemapFiles(registryURL)
@@ -28,21 +37,38 @@ func (p *InfraProvider) ApplyDeltaWorkerRegistryRemap(registryURL string) error 
 	if err != nil {
 		return err
 	}
-	for _, dir := range workerRegistriesDirs {
-		if err := p.writeRegistriesDir(dir, remap, insecure); err != nil {
+	for _, worker := range workerRegistryConfigs {
+		if err := p.writeRegistriesDir(worker.registriesDir, remap, insecure); err != nil {
 			return err
 		}
-	}
-	for _, dir := range workerRegistryCertsDirs {
-		registryCertDir := filepath.Join(dir, certDir)
+		registryCertDir := filepath.Join(worker.certsDir, certDir)
 		if _, err := p.RunCommand("mkdir", "-p", registryCertDir); err != nil {
 			return fmt.Errorf("mkdir %s: %w", registryCertDir, err)
 		}
 		if err := p.WriteHostFile(filepath.Join(registryCertDir, "ca.crt"), caCert); err != nil {
 			return err
 		}
+		if err := p.writeRegistryCertMount(worker.containerFile, registryCertDir, certDir); err != nil {
+			return err
+		}
+	}
+	if _, err := p.RunCommand("systemctl", "daemon-reload"); err != nil {
+		return fmt.Errorf("reload Quadlet units after writing registry CA mounts: %w", err)
 	}
 	logrus.Infof("Quadlet: wrote worker registry remap for %s", registryURL)
+	return nil
+}
+
+func (p *InfraProvider) writeRegistryCertMount(containerFile, sourceDir, certDir string) error {
+	dropInDir := quadletDropInDir(containerFile)
+	if _, err := p.RunCommand("mkdir", "-p", dropInDir); err != nil {
+		return fmt.Errorf("mkdir %s: %w", dropInDir, err)
+	}
+	content := fmt.Sprintf("[Container]\nMount=type=bind,source=%s,destination=/etc/containers/certs.d/%s,ro,relabel=shared\n", sourceDir, certDir)
+	dropInPath := filepath.Join(dropInDir, registryCertDropInName)
+	if err := p.WriteHostFile(dropInPath, []byte(content)); err != nil {
+		return err
+	}
 	return nil
 }
 
