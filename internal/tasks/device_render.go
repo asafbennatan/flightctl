@@ -77,6 +77,9 @@ func deviceRender(ctx context.Context, orgId uuid.UUID, event domain.Event, devi
 	err := logic.RenderDevice(renderCtx)
 	if err != nil {
 		log.Errorf("failed rendering device %s/%s: %v", orgId, event.InvolvedObject.Name, err)
+		if errors.Is(err, errStandalonePreparingCleanup) {
+			return err
+		}
 	} else {
 		log.Infof("completed rendering device %s/%s", orgId, event.InvolvedObject.Name)
 	}
@@ -152,12 +155,14 @@ func (t *DeviceRenderLogic) RenderDevice(ctx context.Context) error {
 	specHash := hashRenderedWithSpec(device.Spec, t.vmRenderOptions.LauncherImage)
 
 	// bypassHashCheck is true for event reasons that must always produce a fresh render even
-	// though specHash (computed from device.Spec alone) hasn't changed: dependency changes and
-	// application lifecycle changes affect the rendered output without changing device.Spec.
+	// though specHash (computed from device.Spec alone) hasn't changed: dependency changes,
+	// application lifecycle changes, and delta generation completion affect rendered output
+	// without changing device.Spec.
 	bypassHashCheck := lo.Contains([]domain.EventReason{
 		domain.EventReasonDependencyChangeDetected,
 		domain.EventReasonFleetRolloutDeviceSelected,
 		domain.EventReasonApplicationLifecycleChanged,
+		domain.EventReasonDeltaGenerationCompleted,
 	}, t.event.Reason)
 
 	if device.Metadata.Annotations != nil {
@@ -279,7 +284,9 @@ func (t *DeviceRenderLogic) RenderDevice(ctx context.Context) error {
 	if err := common.ApiStatusToErr(status); err != nil {
 		return t.setErrorStatus(ctx, err)
 	}
-	t.clearStandalonePreparing(ctx, device)
+	if err := t.clearStandalonePreparing(ctx, device); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -287,19 +294,24 @@ type preparingClearer interface {
 	Clear(ctx context.Context, orgId uuid.UUID, kind, name string) error
 }
 
-func (t *DeviceRenderLogic) clearStandalonePreparing(ctx context.Context, device *domain.Device) {
+func (t *DeviceRenderLogic) clearStandalonePreparing(ctx context.Context, device *domain.Device) error {
 	if t.preparing == nil || device == nil {
-		return
+		return nil
 	}
 	if device.Metadata.Owner != nil && *device.Metadata.Owner != "" {
-		return
+		return nil
 	}
 	if err := t.preparing.Clear(ctx, t.orgId, domain.DeviceKind, t.event.InvolvedObject.Name); err != nil {
 		t.log.Warnf("failed clearing leftover DeviceDeltaPreparing for device %s/%s: %v", t.orgId, t.event.InvolvedObject.Name, err)
+		return fmt.Errorf("%w: %w", errStandalonePreparingCleanup, err)
 	}
+	return nil
 }
 
-var errIgnitionConversion = errors.New("failed converting ignition config to rendered config")
+var (
+	errIgnitionConversion         = errors.New("failed converting ignition config to rendered config")
+	errStandalonePreparingCleanup = errors.New("failed clearing standalone DeviceDeltaPreparing")
+)
 
 type RenderedSpec struct {
 	OsImage      string

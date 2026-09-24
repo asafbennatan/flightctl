@@ -17,6 +17,7 @@ import (
 	"github.com/flightctl/flightctl/internal/oci"
 	deviceservice "github.com/flightctl/flightctl/internal/service/device"
 	"github.com/samber/lo"
+	"github.com/sirupsen/logrus"
 )
 
 const generationMemoTTL = 15 * time.Minute
@@ -157,7 +158,7 @@ func (t *DeviceRenderLogic) resolveOSDeltaHint(ctx context.Context, device *doma
 	}
 	t.log.Infof("os delta hint query device=%s/%s repo=%s sourceDigest=%s targetDigest=%s osImage=%s",
 		t.orgId, t.event.InvolvedObject.Name, repo, src, tgt, rendered.OsImage)
-	gen, err := lookupCachedGeneration(ctx, t.kvStore, t.deltaLookup, key, "", delta.WithStatus(model.DeltaGenerationSucceeded))
+	gen, err := t.lookupOSDeltaGeneration(ctx, key)
 	if err != nil {
 		t.log.Warnf("os delta hint lookup failed device=%s/%s repo=%s sourceDigest=%s targetDigest=%s: %v",
 			t.orgId, t.event.InvolvedObject.Name, repo, src, tgt, err)
@@ -185,6 +186,42 @@ func (t *DeviceRenderLogic) resolveOSDeltaHint(ctx context.Context, device *doma
 	return &deviceservice.RenderedOSHints{DeltaImage: img, UpdatedSize: size}
 }
 
+func (t *DeviceRenderLogic) lookupOSDeltaGeneration(ctx context.Context, key delta.GenerationKey) (*model.DeltaGeneration, error) {
+	statusOption := delta.WithStatus(model.DeltaGenerationSucceeded)
+	if t.event.Reason != domain.EventReasonDeltaGenerationCompleted {
+		return lookupCachedGeneration(ctx, t.kvStore, t.deltaLookup, key, "", statusOption)
+	}
+
+	// Completion changes the answer for a previously cached miss, so invalidate
+	// that memo and query the generation store directly before rendering again.
+	cacheKey := generationMemoKey(key, "")
+	cacheInvalidated := true
+	if t.kvStore != nil {
+		if err := t.kvStore.Delete(ctx, cacheKey); err != nil {
+			cacheInvalidated = false
+			t.log.WithError(err).Warnf("failed invalidating OS delta hint memo for device %s/%s", t.orgId, t.event.InvolvedObject.Name)
+		}
+	}
+	if t.deltaLookup == nil {
+		return nil, nil
+	}
+	gen, err := t.deltaLookup.GetDeltaGeneration(ctx, key, statusOption)
+	if err != nil {
+		if errors.Is(err, flterrors.ErrResourceNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if gen != nil && cacheInvalidated {
+		cacheGenerationMemo(ctx, t.kvStore, key, "", generationMemo{
+			Status:    gen.Status,
+			DeltaRef:  gen.DeltaRef,
+			SizeBytes: gen.SizeBytes,
+		}, t.log)
+	}
+	return gen, nil
+}
+
 func generationMemoKey(key delta.GenerationKey, ref string) string {
 	return fmt.Sprintf("deltaHint/%s/%s/%s/%s/%s", key.OrgID, key.ImageRepository, key.SourceDigest, key.TargetDigest, ref)
 }
@@ -206,19 +243,25 @@ func lookupCachedGeneration(ctx context.Context, kv kvstore.KVStore, store gener
 	gen, err := store.GetDeltaGeneration(ctx, key, opts...)
 	if err != nil {
 		if errors.Is(err, flterrors.ErrResourceNotFound) {
-			_ = writeGenerationMemo(ctx, kv, key, ref, generationMemo{Missing: true})
+			cacheGenerationMemo(ctx, kv, key, ref, generationMemo{Missing: true}, logrus.StandardLogger())
 			return nil, nil
 		}
 		return nil, err
 	}
 	if gen != nil {
-		_ = writeGenerationMemo(ctx, kv, key, ref, generationMemo{
+		cacheGenerationMemo(ctx, kv, key, ref, generationMemo{
 			Status:    gen.Status,
 			DeltaRef:  gen.DeltaRef,
 			SizeBytes: gen.SizeBytes,
-		})
+		}, logrus.StandardLogger())
 	}
 	return gen, nil
+}
+
+func cacheGenerationMemo(ctx context.Context, kv kvstore.KVStore, key delta.GenerationKey, ref string, memo generationMemo, log logrus.FieldLogger) {
+	if err := writeGenerationMemo(ctx, kv, key, ref, memo); err != nil {
+		log.WithError(err).Warnf("failed caching delta generation memo org=%s repo=%s sourceDigest=%s targetDigest=%s", key.OrgID, key.ImageRepository, key.SourceDigest, key.TargetDigest)
+	}
 }
 
 func generationFromMemo(key delta.GenerationKey, memo generationMemo) *model.DeltaGeneration {
@@ -248,5 +291,11 @@ func writeGenerationMemo(ctx context.Context, kv kvstore.KVStore, key delta.Gene
 	if _, err := kv.SetNX(ctx, cacheKey, raw); err != nil {
 		return err
 	}
-	return kv.SetExpire(ctx, cacheKey, generationMemoTTL)
+	if err := kv.SetExpire(ctx, cacheKey, generationMemoTTL); err != nil {
+		if deleteErr := kv.Delete(ctx, cacheKey); deleteErr != nil {
+			return errors.Join(fmt.Errorf("set delta generation memo expiration: %w", err), fmt.Errorf("delete memo without expiration: %w", deleteErr))
+		}
+		return fmt.Errorf("set delta generation memo expiration; deleted memo without expiration: %w", err)
+	}
+	return nil
 }
