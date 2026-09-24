@@ -108,6 +108,22 @@ func (r *Registry) Start(ctx context.Context, network string, reuse bool) error 
 	if err != nil {
 		return fmt.Errorf("failed to start registry container: %w", err)
 	}
+	containerInfo, err := container.Inspect(ctx)
+	if err != nil {
+		return fmt.Errorf("inspect registry container: %w", err)
+	}
+	if containerInfo == nil || containerInfo.Config == nil || !registryStorageDeleteEnabled(containerInfo.Config.Env) {
+		logrus.Infof("Recreating registry container because storage deletion is not enabled")
+		if err := container.Terminate(ctx); err != nil {
+			return fmt.Errorf("remove registry container with incompatible configuration: %w", err)
+		}
+		req.SkipReaper = false
+		container, err = CreateContainer(ctx, req, false, WithNetwork(network), WithHostAccess())
+		if err != nil {
+			return fmt.Errorf("restart registry container with deletion enabled: %w", err)
+		}
+		r.Reused = false
+	}
 	r.container = container
 	hostIP := GetHostIP()
 	r.Port = registryHostPort
@@ -137,6 +153,15 @@ func (r *Registry) Start(ctx context.Context, network string, reuse bool) error 
 		return fmt.Errorf("failed to start authenticated registry endpoint: %w", err)
 	}
 	return nil
+}
+
+func registryStorageDeleteEnabled(env []string) bool {
+	for _, entry := range env {
+		if entry == "REGISTRY_STORAGE_DELETE_ENABLED=true" {
+			return true
+		}
+	}
+	return false
 }
 
 // startAuthenticatedEndpoint starts an nginx container that wraps the TLS registry

@@ -171,9 +171,8 @@ type InfraProvider interface {
 	// ApplyDeltaWorkerRegistryRemap writes containers/image remaps so the delta
 	// worker and render worker rewrite quay.io/flightctl refs to the e2e registry.
 	// Callers restart those services via Lifecycle.
-	// For K8s: ConfigMap mounted at /etc/containers/registries.conf.d (not baked into Helm).
-	// For Quadlet: files under /etc/flightctl/flightctl-delta-worker/registries.conf.d
-	// and /etc/flightctl/flightctl-worker/registries.conf.d.
+	// For K8s: ConfigMap mounted at /etc/containers/registries.conf.d and certs.d (not baked into Helm).
+	// For Quadlet: files under /etc/flightctl/flightctl-delta-worker and /etc/flightctl/flightctl-worker.
 	ApplyDeltaWorkerRegistryRemap(registryURL string) error
 }
 

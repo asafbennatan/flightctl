@@ -138,6 +138,7 @@ jobs:
           CONTAINER_RUNTIME="$(detect_testcontainers_runtime)"
           echo "Detected testcontainers runtime: ${CONTAINER_RUNTIME} (DOCKER_HOST=${DOCKER_HOST:-unset})"
           layout="$(mktemp -d)"
+          trap 'rm -rf -- "${layout}"' EXIT
           tar -xf "${BUNDLE}" -C "${layout}"
           src="oci:${layout}/oci:package"
           if [[ "${CONTAINER_RUNTIME}" == "podman" ]]; then
@@ -150,6 +151,7 @@ jobs:
             skopeo copy --preserve-digests "${src}" "docker-daemon:${PACKAGE_REF}"
           fi
           rm -rf "${layout}"
+          trap - EXIT
 
           # Cleanup
           rm -rf test-artifacts

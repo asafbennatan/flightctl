@@ -3,6 +3,8 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"time"
 
 	"github.com/flightctl/flightctl/test/e2e/infra"
 	"github.com/sirupsen/logrus"
@@ -12,16 +14,28 @@ import (
 )
 
 const (
-	e2eDeltaWorkerRegistriesCM     = "e2e-delta-worker-registries"
-	e2eDeltaWorkerRegistriesVolume = "e2e-delta-worker-registries"
-	e2eDeltaWorkerRegistriesMount  = "/etc/containers/registries.conf.d"
-	deltaWorkerContainerName       = "flightctl-delta-worker"
-	workerContainerName            = "flightctl-worker"
+	e2eDeltaWorkerRegistriesCM      = "e2e-delta-worker-registries"
+	e2eDeltaWorkerRegistriesVolume  = "e2e-delta-worker-registries"
+	e2eDeltaWorkerRegistriesMount   = "/etc/containers/registries.conf.d"
+	e2eDeltaWorkerRegistryCertsVol  = "e2e-delta-worker-registry-certs"
+	e2eDeltaWorkerRegistryCertsDir  = "/etc/containers/certs.d"
+	deltaWorkerRegistryRemapTimeout = 30 * time.Second
+	deltaWorkerContainerName        = "flightctl-delta-worker"
+	workerContainerName             = "flightctl-worker"
 )
 
 func (p *InfraProvider) ApplyDeltaWorkerRegistryRemap(registryURL string) error {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), deltaWorkerRegistryRemapTimeout)
+	defer cancel()
 	remap, insecure := infra.DeltaWorkerRegistryRemapFiles(registryURL)
+	caCert, err := infra.DeltaWorkerRegistryCACert()
+	if err != nil {
+		return err
+	}
+	certDir, err := infra.DeltaWorkerRegistryCertDir(registryURL)
+	if err != nil {
+		return err
+	}
 	targets := []struct {
 		svc       infra.ServiceName
 		container string
@@ -34,21 +48,22 @@ func (p *InfraProvider) ApplyDeltaWorkerRegistryRemap(registryURL string) error 
 		if err != nil {
 			return fmt.Errorf("%s remap: %w", t.container, err)
 		}
-		if err := p.upsertDeltaWorkerRegistriesConfigMap(ctx, ns, remap, insecure); err != nil {
+		if err := p.upsertDeltaWorkerRegistriesConfigMap(ctx, ns, remap, insecure, string(caCert)); err != nil {
 			return err
 		}
-		if err := p.mountDeltaWorkerRegistries(ctx, ns, deploymentName, t.container); err != nil {
+		if err := p.mountDeltaWorkerRegistries(ctx, ns, deploymentName, t.container, certDir); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (p *InfraProvider) upsertDeltaWorkerRegistriesConfigMap(ctx context.Context, ns, remap, insecure string) error {
+func (p *InfraProvider) upsertDeltaWorkerRegistriesConfigMap(ctx context.Context, ns, remap, insecure, caCert string) error {
 	cmClient := p.client.CoreV1().ConfigMaps(ns)
 	data := map[string]string{
 		"flightctl-remap.conf": remap,
 		"flightctl-e2e.conf":   insecure,
+		"registry-ca.crt":      caCert,
 	}
 	existing, err := cmClient.Get(ctx, e2eDeltaWorkerRegistriesCM, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
@@ -76,7 +91,7 @@ func (p *InfraProvider) upsertDeltaWorkerRegistriesConfigMap(ctx context.Context
 	return nil
 }
 
-func (p *InfraProvider) mountDeltaWorkerRegistries(ctx context.Context, ns, deploymentName, containerName string) error {
+func (p *InfraProvider) mountDeltaWorkerRegistries(ctx context.Context, ns, deploymentName, containerName, certDir string) error {
 	deplClient := p.client.AppsV1().Deployments(ns)
 	depl, err := deplClient.Get(ctx, deploymentName, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
@@ -88,11 +103,27 @@ func (p *InfraProvider) mountDeltaWorkerRegistries(ctx context.Context, ns, depl
 	}
 
 	hasVolume := false
+	hasCertVolume := false
 	for _, v := range depl.Spec.Template.Spec.Volumes {
 		if v.Name == e2eDeltaWorkerRegistriesVolume {
 			hasVolume = true
-			break
 		}
+		if v.Name == e2eDeltaWorkerRegistryCertsVol {
+			hasCertVolume = true
+		}
+	}
+	if !hasCertVolume {
+		mode := int32(0444)
+		depl.Spec.Template.Spec.Volumes = append(depl.Spec.Template.Spec.Volumes, corev1.Volume{
+			Name: e2eDeltaWorkerRegistryCertsVol,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: e2eDeltaWorkerRegistriesCM},
+					Items:                []corev1.KeyToPath{{Key: "registry-ca.crt", Path: filepath.Join(certDir, "ca.crt")}},
+					DefaultMode:          &mode,
+				},
+			},
+		})
 	}
 	if !hasVolume {
 		mode := int32(0444)
@@ -119,10 +150,13 @@ func (p *InfraProvider) mountDeltaWorkerRegistries(ctx context.Context, ns, depl
 	}
 
 	hasMount := false
+	hasCertMount := false
 	for _, m := range depl.Spec.Template.Spec.Containers[idx].VolumeMounts {
 		if m.Name == e2eDeltaWorkerRegistriesVolume {
 			hasMount = true
-			break
+		}
+		if m.Name == e2eDeltaWorkerRegistryCertsVol {
+			hasCertMount = true
 		}
 	}
 	if !hasMount {
@@ -135,8 +169,18 @@ func (p *InfraProvider) mountDeltaWorkerRegistries(ctx context.Context, ns, depl
 			},
 		)
 	}
+	if !hasCertMount {
+		depl.Spec.Template.Spec.Containers[idx].VolumeMounts = append(
+			depl.Spec.Template.Spec.Containers[idx].VolumeMounts,
+			corev1.VolumeMount{
+				Name:      e2eDeltaWorkerRegistryCertsVol,
+				MountPath: e2eDeltaWorkerRegistryCertsDir,
+				ReadOnly:  true,
+			},
+		)
+	}
 
-	if hasVolume && hasMount {
+	if hasVolume && hasMount && hasCertVolume && hasCertMount {
 		return nil
 	}
 	if _, err := deplClient.Update(ctx, depl, metav1.UpdateOptions{}); err != nil {

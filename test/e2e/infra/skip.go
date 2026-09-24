@@ -78,7 +78,7 @@ func SkipIfOciDeltaUnavailable(ctx context.Context, providers *Providers) {
 	if !exists {
 		Skip("flightctl-delta-worker is not deployed")
 	}
-	out, err := providers.Infra.ExecInService(ServiceDeltaWorker, []string{"command", "-v", "oci-delta"})
+	out, err := providers.Infra.ExecInService(ServiceDeltaWorker, []string{"sh", "-c", "command -v oci-delta"})
 	if err != nil || strings.TrimSpace(out) == "" {
 		Skip("oci-delta is not available in the delta-worker")
 	}

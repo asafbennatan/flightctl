@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/flightctl/flightctl/api/core/v1beta1"
@@ -60,19 +59,8 @@ var _ = Describe("OS delta hold", Label("delta"), Serial, func() {
 		v2Image := harness.GetDeviceImageRefForFleet(auxSvcs.Registry.Host, auxSvcs.Registry.Port, util.DeviceTags.V2)
 		Expect(harness.CreateOrUpdateTestFleet(fleetName, osFleetSpec(harness, fleetName, util.DeviceTags.V2, policy))).To(Succeed())
 
-		Consistently(func() bool {
-			fleet, err := harness.GetFleet(fleetName)
-			if err != nil {
-				return true
-			}
-			failIfDeltaPreparingFailed(fleet)
-			return fleetConditionTrue(fleet, v1beta1.ConditionTypeFleetDeltaPreparing)
-		}, "30s", POLLING).Should(BeFalse())
-
-		harness.WaitForDeviceContents(deviceId, "device spec is V2 and UpToDate without waiting for generation", func(device *v1beta1.Device) bool {
-			return deviceOsImage(device) == v2Image &&
-				device.Status != nil && device.Status.Updated.Status == v1beta1.DeviceUpdatedStatusUpToDate
-		}, TIMEOUT)
+		waitForRolloutWithoutDeltaPreparing(harness, fleetName, deviceId, v2Image,
+			"device spec is V2 and UpToDate without waiting for generation", TIMEOUT)
 	})
 
 	It("When maxWaitForDelta expires it should roll out the OS without a deltaImage hint", func() {
@@ -124,25 +112,8 @@ var _ = Describe("OS delta hold", Label("delta"), Serial, func() {
 		v2Image := harness.GetDeviceImageRefForFleet(auxSvcs.Registry.Host, auxSvcs.Registry.Port, util.DeviceTags.V2)
 		Expect(harness.CreateOrUpdateTestFleet(fleetName, osFleetSpec(harness, fleetName, util.DeviceTags.V2, nil))).To(Succeed())
 
-		Consistently(func() bool {
-			fleet, err := harness.GetFleet(fleetName)
-			if err != nil {
-				return true
-			}
-			failIfDeltaPreparingFailed(fleet)
-			return fleetConditionTrue(fleet, v1beta1.ConditionTypeFleetDeltaPreparing)
-		}, "30s", POLLING).Should(BeFalse())
-
-		harness.WaitForDeviceContents(deviceId, "device UpToDate on V2 without deltaImage", func(device *v1beta1.Device) bool {
-			if deviceOsImage(device) != v2Image {
-				return false
-			}
-			if device.Status == nil || device.Status.Updated.Status != v1beta1.DeviceUpdatedStatusUpToDate {
-				return false
-			}
-			rendered := tryRenderedDevice(harness, deviceId)
-			return renderedOsImage(rendered) == v2Image && renderedDeltaImage(rendered) == ""
-		}, LONGTIMEOUT)
+		waitForRolloutWithoutDeltaPreparing(harness, fleetName, deviceId, v2Image,
+			"device UpToDate on V2 without deltaImage", LONGTIMEOUT)
 	})
 })
 
@@ -202,9 +173,44 @@ func waitDeviceUpToDate(harness *e2e.Harness, deviceId, description string) {
 	}, TIMEOUT)
 }
 
+func waitForRolloutWithoutDeltaPreparing(harness *e2e.Harness, fleetName, deviceId, v2Image, description, timeout string) {
+	Eventually(func() error {
+		fleet, err := harness.GetFleet(fleetName)
+		if err != nil {
+			return fmt.Errorf("get fleet %s: %w", fleetName, err)
+		}
+		failIfDeltaPreparingFailed(fleet)
+		if fleetConditionTrue(fleet, v1beta1.ConditionTypeFleetDeltaPreparing) {
+			return fmt.Errorf("fleet %s unexpectedly entered FleetDeltaPreparing", fleetName)
+		}
+
+		device, err := harness.GetDevice(deviceId)
+		if err != nil {
+			return fmt.Errorf("get device %s: %w", deviceId, err)
+		}
+		failIfDeviceDeltaPreparingFailed(device)
+		if deviceConditionTrue(device, v1beta1.ConditionTypeDeviceDeltaPreparing) {
+			return fmt.Errorf("device %s unexpectedly entered DeviceDeltaPreparing", deviceId)
+		}
+		if deviceOsImage(device) != v2Image || device.Status == nil || device.Status.Updated.Status != v1beta1.DeviceUpdatedStatusUpToDate {
+			return fmt.Errorf("device %s has not reached UpToDate on %q", deviceId, v2Image)
+		}
+
+		rendered, err := tryRenderedDevice(harness, deviceId)
+		if err != nil {
+			return err
+		}
+		if renderedOsImage(rendered) != v2Image || renderedDeltaImage(rendered) != "" {
+			return fmt.Errorf("device %s rendered OS is %q with delta hint %q", deviceId, renderedOsImage(rendered), renderedDeltaImage(rendered))
+		}
+		return nil
+	}, timeout, POLLING).Should(BeNil(), description)
+}
+
 func waitSettledOSDeltaUpdate(harness *e2e.Harness, fleetName, deviceId, v2Image string, wantDelta bool) {
-	lastMsg := ""
-	lastChange := time.Now()
+	fleetProgress := generationProgressTracker{lastChange: time.Now()}
+	deviceProgress := generationProgressTracker{lastChange: time.Now()}
+	sawPreparing := false
 	Eventually(func() error {
 		if fleetName != "" {
 			fleet, err := harness.GetFleet(fleetName)
@@ -218,7 +224,9 @@ func waitSettledOSDeltaUpdate(harness *e2e.Harness, fleetName, deviceId, v2Image
 				conditions = fleet.Status.Conditions
 				gen = fleet.Status.DeltaGeneration
 			}
-			if err := preparingStillRunning("fleet", conditions, v1beta1.ConditionTypeFleetDeltaPreparing, gen, &lastMsg, &lastChange); err != nil {
+			preparing, _ := preparingTrueMessage(conditions, v1beta1.ConditionTypeFleetDeltaPreparing)
+			sawPreparing = sawPreparing || preparing
+			if err := preparingStillRunning("fleet", conditions, v1beta1.ConditionTypeFleetDeltaPreparing, gen, &fleetProgress); err != nil {
 				return err
 			}
 		}
@@ -231,19 +239,24 @@ func waitSettledOSDeltaUpdate(harness *e2e.Harness, fleetName, deviceId, v2Image
 		if device.Status == nil {
 			return fmt.Errorf("device %s has no status", deviceId)
 		}
-		if err := preparingStillRunning("device", device.Status.Conditions, v1beta1.ConditionTypeDeviceDeltaPreparing, device.Status.DeltaGeneration, &lastMsg, &lastChange); err != nil {
+		preparing, _ := preparingTrueMessage(device.Status.Conditions, v1beta1.ConditionTypeDeviceDeltaPreparing)
+		sawPreparing = sawPreparing || preparing
+		if err := preparingStillRunning("device", device.Status.Conditions, v1beta1.ConditionTypeDeviceDeltaPreparing, device.Status.DeltaGeneration, &deviceProgress); err != nil {
 			return err
 		}
 		if device.Status.Updated.Status != v1beta1.DeviceUpdatedStatusUpToDate {
 			return fmt.Errorf("device %s updated status is %s", deviceId, device.Status.Updated.Status)
 		}
+		if !sawPreparing {
+			return fmt.Errorf("device %s rollout completed without observing DeltaPreparing", deviceId)
+		}
 		if wantDelta && device.Status.Os.LastDelta != nil && device.Status.Os.LastDelta.FallbackReason != nil {
 			return fmt.Errorf("device %s fell back: %s", deviceId, *device.Status.Os.LastDelta.FallbackReason)
 		}
 
-		rendered := tryRenderedDevice(harness, deviceId)
-		if rendered == nil {
-			return fmt.Errorf("device %s has no rendered spec", deviceId)
+		rendered, err := tryRenderedDevice(harness, deviceId)
+		if err != nil {
+			return err
 		}
 		if renderedOsImage(rendered) != v2Image {
 			return fmt.Errorf("device %s rendered OS is %q", deviceId, renderedOsImage(rendered))
@@ -259,18 +272,23 @@ func waitSettledOSDeltaUpdate(harness *e2e.Harness, fleetName, deviceId, v2Image
 	}, GENERATE_CAP, POLLING).Should(BeNil())
 }
 
-func preparingStillRunning(kind string, conditions []v1beta1.Condition, condType v1beta1.ConditionType, gen *v1beta1.DeltaGenerationStatus, lastMsg *string, lastChange *time.Time) error {
+type generationProgressTracker struct {
+	lastMsg    string
+	lastChange time.Time
+}
+
+func preparingStillRunning(kind string, conditions []v1beta1.Condition, condType v1beta1.ConditionType, gen *v1beta1.DeltaGenerationStatus, tracker *generationProgressTracker) error {
 	preparing, _ := preparingTrueMessage(conditions, condType)
 	if !preparing {
 		return nil
 	}
 	msg := generationProgressKey(gen)
-	if msg != *lastMsg {
+	if msg != tracker.lastMsg {
 		GinkgoWriter.Printf("%s delta generation: %s\n", kind, msg)
-		*lastMsg = msg
-		*lastChange = time.Now()
+		tracker.lastMsg = msg
+		tracker.lastChange = time.Now()
 	}
-	if time.Since(*lastChange) > progressStall {
+	if time.Since(tracker.lastChange) > progressStall {
 		return fmt.Errorf("%s delta generation stalled for %s at %q", kind, progressStall, msg)
 	}
 	return fmt.Errorf("%s delta generation still running: %s", kind, msg)
@@ -288,12 +306,7 @@ func generationProgressKey(st *v1beta1.DeltaGenerationStatus) string {
 	if st == nil {
 		return ""
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "%d/%d", st.Completed, st.Total)
-	if st.LastUpdated != nil {
-		fmt.Fprintf(&b, " t=%d", st.LastUpdated.Unix())
-	}
-	return b.String()
+	return fmt.Sprintf("%d/%d", st.Completed, st.Total)
 }
 
 func fleetConditionTrue(fleet *v1beta1.Fleet, condType v1beta1.ConditionType) bool {
@@ -316,6 +329,14 @@ func failIfDeviceDeltaPreparingFailed(device *v1beta1.Device) {
 		return
 	}
 	failIfPreparingFailed(device.Status.Conditions, v1beta1.ConditionTypeDeviceDeltaPreparing)
+}
+
+func deviceConditionTrue(device *v1beta1.Device, condType v1beta1.ConditionType) bool {
+	if device == nil || device.Status == nil {
+		return false
+	}
+	cond := v1beta1.FindStatusCondition(device.Status.Conditions, condType)
+	return cond != nil && cond.Status == v1beta1.ConditionStatusTrue
 }
 
 func failIfPreparingFailed(conditions []v1beta1.Condition, condType v1beta1.ConditionType) {
@@ -348,10 +369,16 @@ func renderedDeltaImage(device *v1beta1.Device) string {
 	return *device.Spec.Os.DeltaImage
 }
 
-func tryRenderedDevice(harness *e2e.Harness, deviceId string) *v1beta1.Device {
+func tryRenderedDevice(harness *e2e.Harness, deviceId string) (*v1beta1.Device, error) {
 	resp, err := harness.Client.GetRenderedDeviceWithResponse(harness.Context, deviceId, nil)
-	if err != nil || resp == nil {
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("get rendered device %s: %w", deviceId, err)
 	}
-	return resp.JSON200
+	if resp == nil {
+		return nil, fmt.Errorf("get rendered device %s: nil response", deviceId)
+	}
+	if resp.JSON200 == nil {
+		return nil, fmt.Errorf("get rendered device %s: HTTP %d (%s)", deviceId, resp.StatusCode(), resp.Status())
+	}
+	return resp.JSON200, nil
 }

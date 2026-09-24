@@ -98,9 +98,6 @@ func clearDeltaGenerations() error {
 	if p == nil || p.Infra == nil {
 		return fmt.Errorf("providers not initialized")
 	}
-	if !p.Infra.BuiltinDatabaseWorkloadAvailable() {
-		return fmt.Errorf("built-in flightctl database is required to clear delta generations")
-	}
 	_, err := infra.QueryDB(p, "TRUNCATE TABLE delta_prepare_generations, delta_prepares, delta_generations")
 	if err != nil {
 		return fmt.Errorf("truncate delta tables: %w", err)

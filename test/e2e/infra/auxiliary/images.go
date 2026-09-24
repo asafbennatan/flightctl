@@ -317,14 +317,19 @@ func (s *Services) skopeoCopy(ctx context.Context, ref, src, dst string, preserv
 }
 
 func skopeoDigest(ctx context.Context, image string, insecureTLS bool) (string, error) {
+	inspectCtx, cancel := context.WithTimeout(ctx, perCopyTimeout)
+	defer cancel()
 	args := []string{"inspect", "--format", "{{.Digest}}"}
 	if insecureTLS {
 		args = append(args, "--tls-verify=false")
 	}
 	args = append(args, image)
-	cmd := exec.CommandContext(ctx, "skopeo", args...)
+	cmd := exec.CommandContext(inspectCtx, "skopeo", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		if inspectCtx.Err() != nil {
+			return "", fmt.Errorf("skopeo inspect for %s did not complete within %s: %w", image, perCopyTimeout, inspectCtx.Err())
+		}
 		return "", fmt.Errorf("%w: %s", err, string(out))
 	}
 	return strings.TrimSpace(string(out)), nil
