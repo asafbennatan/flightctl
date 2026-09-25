@@ -36,7 +36,7 @@ var _ = Describe("OS delta hold", Label("delta"), Serial, func() {
 
 		deviceId, _ := harness.EnrollAndWaitForOnlineStatus(map[string]string{fleetLabelKey: fleetName})
 		waitDeviceUpToDate(harness, deviceId, "device UpToDate on current OS")
-		skipGenerateAndHold(harness, deviceId)
+		requireDeltaGenerationSupport(harness, deviceId)
 
 		v2Image := harness.GetDeviceImageRefForFleet(auxSvcs.Registry.Host, auxSvcs.Registry.Port, util.DeviceTags.V2)
 
@@ -73,7 +73,7 @@ var _ = Describe("OS delta hold", Label("delta"), Serial, func() {
 
 		deviceId, _ := harness.EnrollAndWaitForOnlineStatus(map[string]string{fleetLabelKey: fleetName})
 		waitDeviceUpToDate(harness, deviceId, "device UpToDate on current OS")
-		skipGenerateAndHold(harness, deviceId)
+		requireDeltaGenerationSupport(harness, deviceId)
 
 		v2Image := harness.GetDeviceImageRefForFleet(auxSvcs.Registry.Host, auxSvcs.Registry.Port, util.DeviceTags.V2)
 		Expect(harness.CreateOrUpdateTestFleet(fleetName, osFleetSpec(harness, fleetName, util.DeviceTags.V2, policy))).To(Succeed())
@@ -87,7 +87,7 @@ var _ = Describe("OS delta hold", Label("delta"), Serial, func() {
 
 		deviceId, _ := harness.EnrollAndWaitForOnlineStatus()
 		waitDeviceUpToDate(harness, deviceId, "device UpToDate on current OS")
-		skipGenerateAndHold(harness, deviceId)
+		requireDeltaGenerationSupport(harness, deviceId)
 
 		v2Image := harness.GetDeviceImageRefForFleet(auxSvcs.Registry.Host, auxSvcs.Registry.Port, util.DeviceTags.V2)
 		Expect(harness.UpdateDeviceWithRetries(deviceId, func(device *v1beta1.Device) {
@@ -152,19 +152,31 @@ func osFleetSpec(harness *e2e.Harness, fleetName, imageTag string, policy *v1bet
 	}
 }
 
-func skipGenerateAndHold(harness *e2e.Harness, deviceId string) {
-	infra.SkipIfOciDeltaUnavailable(harness.Context, setup.GetDefaultProviders())
+func requireDeltaGenerationSupport(harness *e2e.Harness, deviceId string) {
+	infra.RequireOciDeltaAvailable(harness.Context, setup.GetDefaultProviders())
 	device, err := harness.GetDevice(deviceId)
-	Expect(err).ToNot(HaveOccurred())
+	if err != nil {
+		Fail(fmt.Sprintf("get device %s: %v", deviceId, err))
+		return
+	}
+	if device == nil {
+		Fail(fmt.Sprintf("device %s was not returned", deviceId))
+		return
+	}
 	if device.Status == nil {
-		Skip("device has no status")
+		Fail("device has no status")
+		return
 	}
-	if device.Status.SystemInfo.DeltaEligible == nil || !*device.Status.SystemInfo.DeltaEligible {
-		Skip("device status.systemInfo.deltaEligible is not true")
+	if device.Status.SystemInfo.DeltaEligible == nil {
+		Fail("device status.systemInfo.deltaEligible is not set")
+		return
 	}
-	if device.Status.SystemInfo.BootcVersion == nil || *device.Status.SystemInfo.BootcVersion == "" {
-		Skip("device status.systemInfo.bootcVersion is not set")
+	Expect(*device.Status.SystemInfo.DeltaEligible).To(BeTrue())
+	if device.Status.SystemInfo.BootcVersion == nil {
+		Fail("device status.systemInfo.bootcVersion is not set")
+		return
 	}
+	Expect(*device.Status.SystemInfo.BootcVersion).ToNot(BeEmpty())
 }
 
 func waitDeviceUpToDate(harness *e2e.Harness, deviceId, description string) {

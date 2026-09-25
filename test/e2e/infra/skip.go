@@ -69,18 +69,25 @@ func observabilityPrometheusSkipMessage(envType string) string {
 	}
 }
 
-// SkipIfOciDeltaUnavailable skips when the delta-worker is missing or has no oci-delta binary.
-func SkipIfOciDeltaUnavailable(ctx context.Context, providers *Providers) {
+// RequireOciDeltaAvailable fails when the delta-worker is missing or has no oci-delta binary.
+func RequireOciDeltaAvailable(ctx context.Context, providers *Providers) {
 	exists, err := providers.Infra.ServiceExists(ctx, ServiceDeltaWorker)
 	if err != nil {
 		Fail(fmt.Sprintf("unable to check delta-worker: %v", err))
+		return
 	}
 	if !exists {
-		Skip("flightctl-delta-worker is not deployed")
+		Fail("flightctl-delta-worker is not deployed")
+		return
 	}
 	out, err := providers.Infra.ExecInService(ServiceDeltaWorker, []string{"sh", "-c", "command -v oci-delta"})
-	if err != nil || strings.TrimSpace(out) == "" {
-		Skip("oci-delta is not available in the delta-worker")
+	if err != nil {
+		Fail(fmt.Sprintf("unable to check oci-delta in delta-worker: %v", err))
+		return
+	}
+	if strings.TrimSpace(out) == "" {
+		Fail("oci-delta is not available in the delta-worker")
+		return
 	}
 }
 
