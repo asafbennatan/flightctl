@@ -103,7 +103,7 @@ find_package_mode_bundle() {
 }
 
 preload_package_mode_image() {
-    local bundle layout package_ref runtime source_package_ref
+    local archive archive_digest archive_ref bundle config_digest expected_digest image_id layout loaded_digest package_ref runtime source_package_ref
 
     if ! should_preload_package_mode_image; then
         return 0
@@ -148,16 +148,34 @@ preload_package_mode_image() {
             rm -rf -- "${layout}"
             return 1
         fi
-        if ! CONTAINER_HOST="${DOCKER_HOST}" skopeo copy --preserve-digests \
-            "oci:${layout}/oci:package" "containers-storage:${source_package_ref}"; then
+        local src="oci:${layout}/oci:package"
+        expected_digest="$(skopeo inspect --format '{{.Digest}}' "${src}")"
+        config_digest="$(skopeo inspect --format '{{.Id}}' "${src}")"
+        archive="${layout}/package.oci.tar"
+        archive_ref="oci-archive:${archive}:package"
+        if ! skopeo copy --preserve-digests "${src}" "${archive_ref}"; then
+            rm -rf -- "${layout}"
+            return 1
+        fi
+        archive_digest="$(skopeo inspect --format '{{.Digest}}' "${archive_ref}")"
+        if [[ "${archive_digest}" != "${expected_digest}" ]]; then
+            echo "ERROR: OCI archive changed manifest digest: source ${expected_digest}, archive ${archive_digest}"
+            rm -rf -- "${layout}"
+            return 1
+        fi
+        if ! podman --url "${DOCKER_HOST}" load -i "${archive}"; then
+            rm -rf -- "${layout}"
+            return 1
+        fi
+        image_id="${config_digest#sha256:}"
+        loaded_digest="$(podman --url "${DOCKER_HOST}" image inspect --format '{{.Digest}}' "${image_id}")"
+        if [[ "${loaded_digest}" != "${expected_digest}" ]]; then
+            echo "ERROR: Podman load changed manifest digest: source ${expected_digest}, loaded ${loaded_digest}"
             rm -rf -- "${layout}"
             return 1
         fi
         rm -rf -- "${layout}"
-        podman --url "${DOCKER_HOST}" image exists "${source_package_ref}"
-        if [[ "${package_ref}" != "${source_package_ref}" ]]; then
-            podman --url "${DOCKER_HOST}" tag "${source_package_ref}" "${package_ref}"
-        fi
+        podman --url "${DOCKER_HOST}" tag "${image_id}" "${package_ref}"
         podman --url "${DOCKER_HOST}" image exists "${package_ref}"
     else
         echo "ERROR: package-mode OCI images require Podman to preserve the manifest digest; Docker daemon import is unsupported"

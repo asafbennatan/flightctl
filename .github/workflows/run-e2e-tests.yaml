@@ -175,10 +175,28 @@ jobs:
           trap 'rm -rf -- "${layout}"' EXIT
           tar -xf "${BUNDLE}" -C "${layout}"
           src="oci:${layout}/oci:package"
-          echo "Loading package-mode image into Podman image storage with digest preservation"
-          export CONTAINER_HOST="${DOCKER_HOST}"
-          skopeo copy --preserve-digests "${src}" "containers-storage:${PACKAGE_REF}"
-          podman image exists "${PACKAGE_REF}"
+          expected_digest="$(skopeo inspect --format '{{.Digest}}' "${src}")"
+          config_digest="$(skopeo inspect --format '{{.Id}}' "${src}")"
+          archive="${layout}/package.oci.tar"
+          archive_ref="oci-archive:${archive}:package"
+          echo "Creating an OCI archive while preserving ${expected_digest}"
+          skopeo copy --preserve-digests "${src}" "${archive_ref}"
+          archive_digest="$(skopeo inspect --format '{{.Digest}}' "${archive_ref}")"
+          if [[ "${archive_digest}" != "${expected_digest}" ]]; then
+            echo "ERROR: OCI archive changed manifest digest: source ${expected_digest}, archive ${archive_digest}"
+            exit 1
+          fi
+
+          echo "Loading OCI archive into Podman through its API"
+          podman --url "${DOCKER_HOST}" load -i "${archive}"
+          image_id="${config_digest#sha256:}"
+          loaded_digest="$(podman --url "${DOCKER_HOST}" image inspect --format '{{.Digest}}' "${image_id}")"
+          if [[ "${loaded_digest}" != "${expected_digest}" ]]; then
+            echo "ERROR: Podman load changed manifest digest: source ${expected_digest}, loaded ${loaded_digest}"
+            exit 1
+          fi
+          podman --url "${DOCKER_HOST}" tag "${image_id}" "${PACKAGE_REF}"
+          podman --url "${DOCKER_HOST}" image exists "${PACKAGE_REF}"
           rm -rf "${layout}"
           trap - EXIT
 
