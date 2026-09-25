@@ -176,7 +176,7 @@ jobs:
           tar -xf "${BUNDLE}" -C "${layout}"
           src="oci:${layout}/oci:package"
           expected_digest="$(skopeo inspect --format '{{.Digest}}' "${src}")"
-          config_digest="$(skopeo inspect --format '{{.Id}}' "${src}")"
+          config_digest="$(skopeo inspect --raw "${src}" | jq -er '.config.digest')"
           archive="${layout}/package.oci.tar"
           archive_ref="oci-archive:${archive}:package"
           echo "Creating an OCI archive while preserving ${expected_digest}"
