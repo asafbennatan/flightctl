@@ -70,8 +70,6 @@ periodic:
 {{- end}}
 {{- end}}
 {{- end}}
-{{- end}}
-{{- end}}
 {{- if eq .vulnerabilityReporting.enabled true}}
 vulnerabilityReporting:
   enabled: true
