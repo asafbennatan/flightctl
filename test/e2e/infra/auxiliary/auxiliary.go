@@ -23,7 +23,7 @@ var (
 
 // ApplyDeltaWorkerRegistryRemap is set by infra/setup. It writes remap config
 // through InfraProvider and restarts the delta worker and render worker through Lifecycle.
-var ApplyDeltaWorkerRegistryRemap func(registryURL string) error
+var ApplyDeltaWorkerRegistryRemap func(ctx context.Context, registryURL string) error
 
 // Services holds the E2E aux services (registry, git, prometheus, jaeger, keycloak, trustify, file server, telemetry HTTP collector).
 // Same for all deployment types; created once and reused. Each service is nil until started.

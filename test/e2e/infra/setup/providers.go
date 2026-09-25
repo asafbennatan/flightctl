@@ -4,6 +4,7 @@
 package setup
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -19,7 +20,10 @@ func init() {
 	auxiliary.ApplyDeltaWorkerRegistryRemap = applyDeltaWorkerRegistryRemap
 }
 
-func applyDeltaWorkerRegistryRemap(registryURL string) error {
+func applyDeltaWorkerRegistryRemap(ctx context.Context, registryURL string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("delta worker registry remap: %w", err)
+	}
 	if err := EnsureDefaultProviders(nil); err != nil {
 		return fmt.Errorf("delta worker registry remap: %w", err)
 	}
@@ -30,7 +34,7 @@ func applyDeltaWorkerRegistryRemap(registryURL string) error {
 	if p.Lifecycle == nil {
 		return fmt.Errorf("delta worker registry remap: lifecycle not set")
 	}
-	if err := p.Infra.ApplyDeltaWorkerRegistryRemap(registryURL); err != nil {
+	if err := p.Infra.ApplyDeltaWorkerRegistryRemap(ctx, registryURL); err != nil {
 		return err
 	}
 	if err := restartIfRunning(p, infra.ServiceDeltaWorker, "delta-worker"); err != nil {

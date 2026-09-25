@@ -144,7 +144,7 @@ func (r *Registry) Start(ctx context.Context, network string, reuse bool) error 
 	if ApplyDeltaWorkerRegistryRemap == nil {
 		return fmt.Errorf("delta worker registry remap: infra hook not registered")
 	}
-	if err := ApplyDeltaWorkerRegistryRemap(r.URL); err != nil {
+	if err := ApplyDeltaWorkerRegistryRemap(ctx, r.URL); err != nil {
 		return fmt.Errorf("configure registry remap: %w", err)
 	}
 	logrus.Infof("Registry container started: %s (TLS enabled)", r.URL)

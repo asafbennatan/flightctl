@@ -24,8 +24,8 @@ const (
 	workerContainerName             = "flightctl-worker"
 )
 
-func (p *InfraProvider) ApplyDeltaWorkerRegistryRemap(registryURL string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), deltaWorkerRegistryRemapTimeout)
+func (p *InfraProvider) ApplyDeltaWorkerRegistryRemap(ctx context.Context, registryURL string) error {
+	ctx, cancel := context.WithTimeout(ctx, deltaWorkerRegistryRemapTimeout)
 	defer cancel()
 	remap, insecure := infra.DeltaWorkerRegistryRemapFiles(registryURL)
 	caCert, err := infra.DeltaWorkerRegistryCACert()

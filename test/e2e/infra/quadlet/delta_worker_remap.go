@@ -1,6 +1,7 @@
 package quadlet
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
@@ -27,7 +28,10 @@ var workerRegistryConfigs = []struct {
 
 const registryCertDropInName = "e2e-registry-ca.conf"
 
-func (p *InfraProvider) ApplyDeltaWorkerRegistryRemap(registryURL string) error {
+func (p *InfraProvider) ApplyDeltaWorkerRegistryRemap(ctx context.Context, registryURL string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	remap, insecure := infra.DeltaWorkerRegistryRemapFiles(registryURL)
 	caCert, err := infra.DeltaWorkerRegistryCACert()
 	if err != nil {
@@ -38,46 +42,46 @@ func (p *InfraProvider) ApplyDeltaWorkerRegistryRemap(registryURL string) error 
 		return err
 	}
 	for _, worker := range workerRegistryConfigs {
-		if err := p.writeRegistriesDir(worker.registriesDir, remap, insecure); err != nil {
+		if err := p.writeRegistriesDir(ctx, worker.registriesDir, remap, insecure); err != nil {
 			return err
 		}
 		registryCertDir := filepath.Join(worker.certsDir, certDir)
-		if _, err := p.RunCommand("mkdir", "-p", registryCertDir); err != nil {
+		if _, err := p.RunCommandContext(ctx, "mkdir", "-p", registryCertDir); err != nil {
 			return fmt.Errorf("mkdir %s: %w", registryCertDir, err)
 		}
-		if err := p.WriteHostFile(filepath.Join(registryCertDir, "ca.crt"), caCert); err != nil {
+		if err := p.writeHostFileContext(ctx, filepath.Join(registryCertDir, "ca.crt"), caCert); err != nil {
 			return err
 		}
-		if err := p.writeRegistryCertMount(worker.containerFile, registryCertDir, certDir); err != nil {
+		if err := p.writeRegistryCertMount(ctx, worker.containerFile, registryCertDir, certDir); err != nil {
 			return err
 		}
 	}
-	if _, err := p.RunCommand("systemctl", "daemon-reload"); err != nil {
+	if _, err := p.RunCommandContext(ctx, "systemctl", "daemon-reload"); err != nil {
 		return fmt.Errorf("reload Quadlet units after writing registry CA mounts: %w", err)
 	}
 	logrus.Infof("Quadlet: wrote worker registry remap for %s", registryURL)
 	return nil
 }
 
-func (p *InfraProvider) writeRegistryCertMount(containerFile, sourceDir, certDir string) error {
+func (p *InfraProvider) writeRegistryCertMount(ctx context.Context, containerFile, sourceDir, certDir string) error {
 	dropInDir := quadletDropInDir(containerFile)
-	if _, err := p.RunCommand("mkdir", "-p", dropInDir); err != nil {
+	if _, err := p.RunCommandContext(ctx, "mkdir", "-p", dropInDir); err != nil {
 		return fmt.Errorf("mkdir %s: %w", dropInDir, err)
 	}
 	content := fmt.Sprintf("[Container]\nMount=type=bind,source=%s,destination=/etc/containers/certs.d/%s,ro,relabel=shared\n", sourceDir, certDir)
 	dropInPath := filepath.Join(dropInDir, registryCertDropInName)
-	if err := p.WriteHostFile(dropInPath, []byte(content)); err != nil {
+	if err := p.writeHostFileContext(ctx, dropInPath, []byte(content)); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (p *InfraProvider) writeRegistriesDir(dir, remap, insecure string) error {
-	if _, err := p.RunCommand("mkdir", "-p", dir); err != nil {
+func (p *InfraProvider) writeRegistriesDir(ctx context.Context, dir, remap, insecure string) error {
+	if _, err := p.RunCommandContext(ctx, "mkdir", "-p", dir); err != nil {
 		return fmt.Errorf("mkdir %s: %w", dir, err)
 	}
-	if err := p.WriteHostFile(filepath.Join(dir, "flightctl-remap.conf"), []byte(remap)); err != nil {
+	if err := p.writeHostFileContext(ctx, filepath.Join(dir, "flightctl-remap.conf"), []byte(remap)); err != nil {
 		return err
 	}
-	return p.WriteHostFile(filepath.Join(dir, "flightctl-e2e.conf"), []byte(insecure))
+	return p.writeHostFileContext(ctx, filepath.Join(dir, "flightctl-e2e.conf"), []byte(insecure))
 }

@@ -173,7 +173,8 @@ type InfraProvider interface {
 	// Callers restart those services via Lifecycle.
 	// For K8s: ConfigMap mounted at /etc/containers/registries.conf.d and certs.d (not baked into Helm).
 	// For Quadlet: files under /etc/flightctl/flightctl-delta-worker and /etc/flightctl/flightctl-worker.
-	ApplyDeltaWorkerRegistryRemap(registryURL string) error
+	// ctx cancels the remap operations if the E2E setup is canceled.
+	ApplyDeltaWorkerRegistryRemap(ctx context.Context, registryURL string) error
 }
 
 // DeploymentServiceNames maps deployment/service names (same in K8s and Quadlet) to ServiceName.
