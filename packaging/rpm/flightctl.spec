@@ -396,6 +396,11 @@ fi
         --var-tmp-dir "%{buildroot}%{_var}/tmp" \
         --var-lib-dir "%{buildroot}/var/lib"
 
+    # Create host-side registry configuration directories bind-mounted by the
+    # worker Quadlets. The E2E setup populates these after deployment.
+    install -d -m 0755 \
+        %{buildroot}%{_sysconfdir}/flightctl/flightctl-worker/registries.conf.d \
+        %{buildroot}%{_sysconfdir}/flightctl/flightctl-delta-worker/registries.conf.d
 
     mkdir -p %{buildroot}%{_sysconfdir}/flightctl/tpm-cas
 
