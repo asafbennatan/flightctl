@@ -287,14 +287,25 @@ func TestHandleGenerateDelta(t *testing.T) {
 	t.Run("When generate fails it should update failed", func(t *testing.T) {
 		req := require.New(t)
 		store := &fakeGenerationService{}
+		var logOutput bytes.Buffer
+		failureLog := logrus.New()
+		failureLog.SetOutput(&logOutput)
+		failureLog.SetLevel(logrus.ErrorLevel)
 		c := newTestHandler(t, store, &deltaconfig.DeltaGenerationConfig{Timeout: util.Duration(time.Minute)}, func(context.Context, uuid.UUID, string, string, string) (*existingDelta, error) {
 			return nil, nil
 		}, func(context.Context, uuid.UUID, string, string, string) (string, int64, error) {
 			return "", 0, errors.New("oci-delta exploded")
 		}, noOpEventEmitter)
+		c.log = failureLog
 		req.NoError(c.Handle(context.Background(), generateEvent(org, repo, src, tgt), log))
 		req.Len(store.updates, 2)
 		req.Equal(model.DeltaGenerationFailed, store.updates[1].Status)
+		req.Contains(logOutput.String(), "delta generation failed")
+		req.Contains(logOutput.String(), "oci-delta exploded")
+		req.Contains(logOutput.String(), repo)
+		req.Contains(logOutput.String(), src)
+		req.Contains(logOutput.String(), tgt)
+		req.Contains(logOutput.String(), "phase=checkingExisting")
 	})
 
 	t.Run("When claim is in_progress it should not steal", func(t *testing.T) {
