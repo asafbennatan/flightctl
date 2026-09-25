@@ -108,6 +108,36 @@ jobs:
           OS_ID: ${{ inputs.os_id }}
         run: |
           set -euo pipefail
+          # The bundled package image uses an OCI manifest. Skopeo's Docker daemon
+          # transport rejects it, so use Podman for this image and the later
+          # Testcontainers steps. Keep the OCI manifest and digest unchanged.
+          PODMAN_SOCKET="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
+          mkdir -p "$(dirname "${PODMAN_SOCKET}")"
+          if [[ ! -S "${PODMAN_SOCKET}" ]]; then
+            podman system service --time=0 "unix://${PODMAN_SOCKET}" \
+              > "${RUNNER_TEMP}/flightctl-e2e-podman-api.log" 2>&1 &
+            echo "$!" > "${RUNNER_TEMP}/flightctl-e2e-podman-api.pid"
+          fi
+          export DOCKER_HOST="unix://${PODMAN_SOCKET}"
+          export CONTAINER_HOST="${DOCKER_HOST}"
+          echo "DOCKER_HOST=${DOCKER_HOST}" >> "${GITHUB_ENV}"
+          echo "CONTAINER_HOST=${CONTAINER_HOST}" >> "${GITHUB_ENV}"
+
+          podman_api_ready=false
+          for _ in $(seq 1 30); do
+            if curl --silent --show-error --fail --unix-socket "${PODMAN_SOCKET}" \
+              http://localhost/_ping >/dev/null 2>&1; then
+              podman_api_ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "${podman_api_ready}" != true ]]; then
+            echo "ERROR: Podman API did not become available at ${PODMAN_SOCKET}"
+            cat "${RUNNER_TEMP}/flightctl-e2e-podman-api.log" 2>/dev/null || true
+            exit 1
+          fi
+
           # Keep runtime detection aligned with test/harness/containers/docker_host.go.
           . ./test/scripts/detect_container_runtime.sh
           configure_testcontainers_docker_host
@@ -137,19 +167,18 @@ jobs:
           PACKAGE_REF="quay.io/flightctl/flightctl-device:package"
           CONTAINER_RUNTIME="$(detect_testcontainers_runtime)"
           echo "Detected testcontainers runtime: ${CONTAINER_RUNTIME} (DOCKER_HOST=${DOCKER_HOST:-unset})"
+          if [[ "${CONTAINER_RUNTIME}" != "podman" ]]; then
+            echo "ERROR: package-mode OCI image staging requires the Podman runtime"
+            exit 1
+          fi
           layout="$(mktemp -d)"
           trap 'rm -rf -- "${layout}"' EXIT
           tar -xf "${BUNDLE}" -C "${layout}"
           src="oci:${layout}/oci:package"
-          if [[ "${CONTAINER_RUNTIME}" == "podman" ]]; then
-            echo "Loading package-mode image into Podman image storage"
-            export CONTAINER_HOST="${DOCKER_HOST}"
-            skopeo copy --preserve-digests "${src}" "containers-storage:${PACKAGE_REF}"
-            podman image exists "${PACKAGE_REF}"
-          else
-            echo "Loading package-mode image into Docker daemon"
-            skopeo copy --preserve-digests "${src}" "docker-daemon:${PACKAGE_REF}"
-          fi
+          echo "Loading package-mode image into Podman image storage with digest preservation"
+          export CONTAINER_HOST="${DOCKER_HOST}"
+          skopeo copy --preserve-digests "${src}" "containers-storage:${PACKAGE_REF}"
+          podman image exists "${PACKAGE_REF}"
           rm -rf "${layout}"
           trap - EXIT
 
@@ -257,3 +286,11 @@ jobs:
           namespace-external: 'flightctl-external'
           namespace-internal: 'flightctl-internal'
           log-directory: 'e2e-logs-${{ steps.compute-hash.outputs.hash }}-node-${{ matrix.ginkgo_node }}-logs'
+
+      - name: Stop temporary Podman API service
+        if: always()
+        run: |
+          if [[ -f "${RUNNER_TEMP}/flightctl-e2e-podman-api.pid" ]]; then
+            kill "$(cat "${RUNNER_TEMP}/flightctl-e2e-podman-api.pid")" 2>/dev/null || true
+            rm -f "${RUNNER_TEMP}/flightctl-e2e-podman-api.pid"
+          fi

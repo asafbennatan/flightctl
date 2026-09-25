@@ -103,7 +103,7 @@ find_package_mode_bundle() {
 }
 
 preload_package_mode_image() {
-    local bundle package_ref runtime source_package_ref
+    local bundle layout package_ref runtime source_package_ref
 
     if ! should_preload_package_mode_image; then
         return 0
@@ -143,14 +143,25 @@ preload_package_mode_image() {
             echo "ERROR: package-mode preload requires DOCKER_HOST for Podman runtime"
             return 1
         fi
-        podman --url "${DOCKER_HOST}" load -i "${bundle}"
+        layout="$(mktemp -d)"
+        if ! tar -xf "${bundle}" -C "${layout}"; then
+            rm -rf -- "${layout}"
+            return 1
+        fi
+        if ! CONTAINER_HOST="${DOCKER_HOST}" skopeo copy --preserve-digests \
+            "oci:${layout}/oci:package" "containers-storage:${source_package_ref}"; then
+            rm -rf -- "${layout}"
+            return 1
+        fi
+        rm -rf -- "${layout}"
         podman --url "${DOCKER_HOST}" image exists "${source_package_ref}"
         if [[ "${package_ref}" != "${source_package_ref}" ]]; then
             podman --url "${DOCKER_HOST}" tag "${source_package_ref}" "${package_ref}"
         fi
         podman --url "${DOCKER_HOST}" image exists "${package_ref}"
     else
-        skopeo copy "docker-archive:${bundle}:${source_package_ref}" "docker-daemon:${package_ref}"
+        echo "ERROR: package-mode OCI images require Podman to preserve the manifest digest; Docker daemon import is unsupported"
+        return 1
     fi
 
     export E2E_PACKAGE_MODE_IMAGE="${package_ref}"
