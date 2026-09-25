@@ -296,7 +296,7 @@ func preparingStillRunning(kind string, conditions []v1beta1.Condition, condType
 	}
 	msg := generationProgressKey(gen)
 	if msg != tracker.lastMsg {
-		GinkgoWriter.Printf("%s delta generation: %s\n", kind, msg)
+		GinkgoWriter.Printf("%s delta generation progress (still preparing): %s\n", kind, msg)
 		tracker.lastMsg = msg
 		tracker.lastChange = time.Now()
 	}

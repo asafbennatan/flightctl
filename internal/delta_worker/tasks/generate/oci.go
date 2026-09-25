@@ -265,13 +265,17 @@ func pushOCILayoutWithSize(ctx context.Context, spec *domain.OciRepoSpec, layout
 		return "", 0, fmt.Errorf("configure destination repository: %w", err)
 	}
 	dst.SkipReferrersGC = true
-	if err := copyDeltaGraph(ctx, layout, dst); err != nil {
+	if err := copyDeltaGraph(ctx, layout, dst, dst.Blobs()); err != nil {
 		return "", 0, fmt.Errorf("copy delta layout: %w", err)
 	}
 	return destRef + "@" + layout.root.Digest.String(), deltaPayloadSize(layout.manifest), nil
 }
 
-func copyDeltaGraph(ctx context.Context, layout *deltaLayout, dst content.Storage) error {
+func copyDeltaGraph(ctx context.Context, layout *deltaLayout, dst content.Storage, dstBlobs content.Storage) error {
+	if err := pushSubjectLayerAsBlob(ctx, layout, dstBlobs); err != nil {
+		return fmt.Errorf("push delta subject layer as blob: %w", err)
+	}
+
 	root := layout.root
 	manifest := layout.manifest
 	copyOptions := oras.DefaultCopyGraphOptions
@@ -289,6 +293,43 @@ func copyDeltaGraph(ctx context.Context, layout *deltaLayout, dst content.Storag
 		return filtered, nil
 	}
 	return oras.CopyGraph(ctx, layout.store, dst, root, copyOptions)
+}
+
+// pushSubjectLayerAsBlob publishes an embedded subject manifest through the
+// destination blob store. Delta artifacts can reference the target image
+// manifest both as their subject and as a layer. The graph copy omits the
+// subject edge to avoid recopying the target image graph, so the layer bytes
+// must be made available separately through the blob store.
+func pushSubjectLayerAsBlob(ctx context.Context, layout *deltaLayout, dst content.Storage) error {
+	if layout.manifest.Subject == nil {
+		return nil
+	}
+	for _, layer := range layout.manifest.Layers {
+		if !content.Equal(layer, *layout.manifest.Subject) {
+			continue
+		}
+		exists, err := dst.Exists(ctx, layer)
+		if err != nil {
+			return fmt.Errorf("check subject layer %s: %w", layer.Digest, err)
+		}
+		if exists {
+			return nil
+		}
+		reader, err := layout.store.Fetch(ctx, layer)
+		if err != nil {
+			return fmt.Errorf("fetch subject layer %s: %w", layer.Digest, err)
+		}
+		pushErr := dst.Push(ctx, layer, reader)
+		closeErr := reader.Close()
+		if pushErr != nil {
+			return fmt.Errorf("push subject layer %s: %w", layer.Digest, pushErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("close subject layer %s: %w", layer.Digest, closeErr)
+		}
+		return nil
+	}
+	return nil
 }
 
 type deltaLayout struct {

@@ -704,7 +704,7 @@ func TestReferenceForResolve_WhenDigestRefItShouldReturnDigest(t *testing.T) {
 	req.Equal(dgst, got)
 }
 
-func TestCopyDeltaGraph_WhenSubjectIsNotInDestinationItShouldCopyRootWithoutSubjectGraph(t *testing.T) {
+func TestCopyDeltaGraph_WhenSubjectManifestIsAlsoLayerItShouldPublishLayerWithoutSubjectGraph(t *testing.T) {
 	req := require.New(t)
 	ctx := context.Background()
 	layoutDir := t.TempDir()
@@ -727,9 +727,17 @@ func TestCopyDeltaGraph_WhenSubjectIsNotInDestinationItShouldCopyRootWithoutSubj
 		Layers: []ocispec.Descriptor{subjectLayer},
 	})
 	req.NoError(err)
+	subjectReader, err := src.Fetch(ctx, subject)
+	req.NoError(err)
+	subjectManifestBytes, err := io.ReadAll(subjectReader)
+	req.NoError(err)
+	req.NoError(subjectReader.Close())
 
 	layout, err := ocistore.New(layoutDir)
 	req.NoError(err)
+	req.NoError(layout.Push(ctx, subject, bytes.NewReader(subjectManifestBytes)))
+	targetManifestLayer := subject
+	targetManifestLayer.Annotations = map[string]string{"io.github.containers.delta.content": "image-manifest"}
 	deltaPayload := []byte("delta-layer")
 	deltaLayer := ocispec.Descriptor{
 		MediaType: ocispec.MediaTypeImageLayer,
@@ -739,7 +747,7 @@ func TestCopyDeltaGraph_WhenSubjectIsNotInDestinationItShouldCopyRootWithoutSubj
 	req.NoError(layout.Push(ctx, deltaLayer, bytes.NewReader(deltaPayload)))
 	layoutManifest, err := oras.PackManifest(ctx, layout, oras.PackManifestVersion1_1, ociDeltaArtifactType, oras.PackManifestOptions{
 		Subject: &subject,
-		Layers:  []ocispec.Descriptor{deltaLayer},
+		Layers:  []ocispec.Descriptor{targetManifestLayer, deltaLayer},
 		ManifestAnnotations: map[string]string{
 			ociDeltaSourceAnnotation: sourceDigest,
 		},
@@ -750,7 +758,7 @@ func TestCopyDeltaGraph_WhenSubjectIsNotInDestinationItShouldCopyRootWithoutSubj
 	loaded, err := loadDeltaLayout(ctx, layoutDir)
 	req.NoError(err)
 	req.NoError(loaded.matchesPair(sourceDigest, subject.Digest.String()))
-	req.NoError(copyDeltaGraph(ctx, loaded, dest))
+	req.NoError(copyDeltaGraph(ctx, loaded, dest, dest))
 
 	rc, err := dest.Fetch(ctx, loaded.root)
 	req.NoError(err)
@@ -762,7 +770,18 @@ func TestCopyDeltaGraph_WhenSubjectIsNotInDestinationItShouldCopyRootWithoutSubj
 	req.NotNil(manifest.Subject)
 	req.Equal(subject.Digest, manifest.Subject.Digest)
 	req.Equal(loaded.root.Digest, digest.FromBytes(b))
-	exists, err := dest.Exists(ctx, subject)
+	req.Len(manifest.Layers, 2)
+	req.Equal(subject.Digest, manifest.Layers[0].Digest)
+	req.Equal("image-manifest", manifest.Layers[0].Annotations["io.github.containers.delta.content"])
+
+	rc, err = dest.Fetch(ctx, subject)
+	req.NoError(err)
+	gotSubjectManifest, err := io.ReadAll(rc)
+	req.NoError(err)
+	req.NoError(rc.Close())
+	req.Equal(subjectManifestBytes, gotSubjectManifest)
+
+	exists, err := dest.Exists(ctx, subjectLayer)
 	req.NoError(err)
 	req.False(exists)
 }
