@@ -600,7 +600,9 @@ fi
     %dir %{_sysconfdir}/flightctl/flightctl-periodic
     %dir %{_sysconfdir}/flightctl/flightctl-ui
     %dir %{_sysconfdir}/flightctl/flightctl-worker
+    %dir %{_sysconfdir}/flightctl/flightctl-worker/registries.conf.d
     %dir %{_sysconfdir}/flightctl/flightctl-delta-worker
+    %dir %{_sysconfdir}/flightctl/flightctl-delta-worker/registries.conf.d
     %dir %{_sysconfdir}/flightctl/flightctl-telemetry-gateway
     %dir %{_sysconfdir}/flightctl/flightctl-telemetry-gateway/forward
     %dir %{_sysconfdir}/flightctl/ssh
