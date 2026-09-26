@@ -84,6 +84,9 @@ func newHandler(
 	progress *deltapreparegeneration.ProgressHandler,
 	emit EventEmitter,
 ) (*Handler, error) {
+	if log == nil {
+		return nil, fmt.Errorf("logger is required")
+	}
 	if repositories == nil {
 		return nil, fmt.Errorf("repository service is required")
 	}
@@ -355,17 +358,15 @@ func persistContext(ctx context.Context) (context.Context, context.CancelFunc) {
 }
 
 func (c *Handler) failGeneration(ctx context.Context, generation *model.DeltaGeneration, cause error) error {
-	if c.log != nil {
-		fields := logrus.Fields{
-			"imageRepository": generation.ImageRepository,
-			"sourceDigest":    generation.SourceDigest,
-			"targetDigest":    generation.TargetDigest,
-		}
-		if generation.Phase != nil {
-			fields["phase"] = *generation.Phase
-		}
-		c.log.WithFields(fields).WithError(cause).Error("delta generation failed")
+	fields := logrus.Fields{
+		"imageRepository": generation.ImageRepository,
+		"sourceDigest":    generation.SourceDigest,
+		"targetDigest":    generation.TargetDigest,
 	}
+	if generation.Phase != nil {
+		fields["phase"] = *generation.Phase
+	}
+	c.log.WithFields(fields).WithError(cause).Error("delta generation failed")
 
 	writeCtx, cancel := persistContext(ctx)
 	defer cancel()
