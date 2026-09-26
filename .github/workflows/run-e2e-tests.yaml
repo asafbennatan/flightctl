@@ -108,40 +108,6 @@ jobs:
           OS_ID: ${{ inputs.os_id }}
         run: |
           set -euo pipefail
-          # The bundled package image uses an OCI manifest. Skopeo's Docker daemon
-          # transport rejects it, so use Podman for this image and the later
-          # Testcontainers steps. Keep the OCI manifest and digest unchanged.
-          PODMAN_SOCKET="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
-          mkdir -p "$(dirname "${PODMAN_SOCKET}")"
-          if [[ ! -S "${PODMAN_SOCKET}" ]]; then
-            podman system service --time=0 "unix://${PODMAN_SOCKET}" \
-              > "${RUNNER_TEMP}/flightctl-e2e-podman-api.log" 2>&1 &
-            echo "$!" > "${RUNNER_TEMP}/flightctl-e2e-podman-api.pid"
-          fi
-          export DOCKER_HOST="unix://${PODMAN_SOCKET}"
-          export CONTAINER_HOST="${DOCKER_HOST}"
-          echo "DOCKER_HOST=${DOCKER_HOST}" >> "${GITHUB_ENV}"
-          echo "CONTAINER_HOST=${CONTAINER_HOST}" >> "${GITHUB_ENV}"
-
-          podman_api_ready=false
-          for _ in $(seq 1 30); do
-            if curl --silent --show-error --fail --unix-socket "${PODMAN_SOCKET}" \
-              http://localhost/_ping >/dev/null 2>&1; then
-              podman_api_ready=true
-              break
-            fi
-            sleep 1
-          done
-          if [[ "${podman_api_ready}" != true ]]; then
-            echo "ERROR: Podman API did not become available at ${PODMAN_SOCKET}"
-            cat "${RUNNER_TEMP}/flightctl-e2e-podman-api.log" 2>/dev/null || true
-            exit 1
-          fi
-
-          # Keep runtime detection aligned with test/harness/containers/docker_host.go.
-          . ./test/scripts/detect_container_runtime.sh
-          configure_testcontainers_docker_host
-
           echo "Downloaded test artifacts:"
           tree test-artifacts
 
@@ -152,8 +118,7 @@ jobs:
             exit 1
           fi
           mv "test-artifacts/agent-images-bundle-${OS_ID}.tar" bin/agent-artifacts/
-          BUNDLE="bin/agent-artifacts/agent-images-bundle-${OS_ID}.tar"
-          echo "Agent bundle: ${BUNDLE}"
+          echo "Agent bundle: bin/agent-artifacts/agent-images-bundle-${OS_ID}.tar"
 
           # Stage qcow2
           mkdir -p bin/output/qcow2
@@ -163,42 +128,6 @@ jobs:
           fi
           mv "test-artifacts/disk.qcow2" bin/output/qcow2/disk.qcow2
           echo "✓ QCOW2 image: bin/output/qcow2/disk.qcow2"
-
-          PACKAGE_REF="quay.io/flightctl/flightctl-device:package"
-          CONTAINER_RUNTIME="$(detect_testcontainers_runtime)"
-          echo "Detected testcontainers runtime: ${CONTAINER_RUNTIME} (DOCKER_HOST=${DOCKER_HOST:-unset})"
-          if [[ "${CONTAINER_RUNTIME}" != "podman" ]]; then
-            echo "ERROR: package-mode OCI image staging requires the Podman runtime"
-            exit 1
-          fi
-          layout="$(mktemp -d)"
-          trap 'rm -rf -- "${layout}"' EXIT
-          tar -xf "${BUNDLE}" -C "${layout}"
-          src="oci:${layout}/oci:package"
-          expected_digest="$(skopeo inspect --format '{{.Digest}}' "${src}")"
-          config_digest="$(skopeo inspect --raw "${src}" | jq -er '.config.digest')"
-          archive="${layout}/package.oci.tar"
-          archive_ref="oci-archive:${archive}:package"
-          echo "Creating an OCI archive while preserving ${expected_digest}"
-          skopeo copy --preserve-digests "${src}" "${archive_ref}"
-          archive_digest="$(skopeo inspect --format '{{.Digest}}' "${archive_ref}")"
-          if [[ "${archive_digest}" != "${expected_digest}" ]]; then
-            echo "ERROR: OCI archive changed manifest digest: source ${expected_digest}, archive ${archive_digest}"
-            exit 1
-          fi
-
-          echo "Loading OCI archive into Podman through its API"
-          podman --url "${DOCKER_HOST}" load -i "${archive}"
-          image_id="${config_digest#sha256:}"
-          loaded_digest="$(podman --url "${DOCKER_HOST}" image inspect --format '{{.Digest}}' "${image_id}")"
-          if [[ "${loaded_digest}" != "${expected_digest}" ]]; then
-            echo "ERROR: Podman load changed manifest digest: source ${expected_digest}, loaded ${loaded_digest}"
-            exit 1
-          fi
-          podman --url "${DOCKER_HOST}" tag "${image_id}" "${PACKAGE_REF}"
-          podman --url "${DOCKER_HOST}" image exists "${PACKAGE_REF}"
-          rm -rf "${layout}"
-          trap - EXIT
 
           # Cleanup
           rm -rf test-artifacts
@@ -304,11 +233,3 @@ jobs:
           namespace-external: 'flightctl-external'
           namespace-internal: 'flightctl-internal'
           log-directory: 'e2e-logs-${{ steps.compute-hash.outputs.hash }}-node-${{ matrix.ginkgo_node }}-logs'
-
-      - name: Stop temporary Podman API service
-        if: always()
-        run: |
-          if [[ -f "${RUNNER_TEMP}/flightctl-e2e-podman-api.pid" ]]; then
-            kill "$(cat "${RUNNER_TEMP}/flightctl-e2e-podman-api.pid")" 2>/dev/null || true
-            rm -f "${RUNNER_TEMP}/flightctl-e2e-podman-api.pid"
-          fi
